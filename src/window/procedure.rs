@@ -1,9 +1,7 @@
-use std::sync::{Arc, Barrier};
-
 use crossbeam::channel::Sender;
 use windows::Win32::{
   Foundation::*,
-  UI::{Shell::DefSubclassProc, WindowsAndMessaging::*},
+  UI::{Shell::DefSubclassProc, WindowsAndMessaging},
 };
 
 #[allow(unused)]
@@ -11,7 +9,6 @@ use super::window_message::{Message, WindowMessage};
 
 pub struct SubclassWindowData {
   pub sender: Sender<Message>,
-  pub barrier: Arc<Barrier>,
 }
 
 pub extern "system" fn wnd_proc(
@@ -21,8 +18,8 @@ pub extern "system" fn wnd_proc(
   l_param: LPARAM,
 ) -> LRESULT {
   match message {
-    WM_CLOSE => LRESULT(0),
-    _ => unsafe { DefWindowProcW(h_wnd, message, w_param, l_param) },
+    WindowsAndMessaging::WM_CLOSE => LRESULT(0),
+    _ => unsafe { WindowsAndMessaging::DefWindowProcW(h_wnd, message, w_param, l_param) },
   }
 }
 
@@ -37,23 +34,21 @@ pub extern "system" fn subclass_proc(
   let data: &SubclassWindowData = unsafe { std::mem::transmute(dw_ref_data) };
 
   let win_message = Message::new(h_wnd, message, w_param, l_param);
+  #[allow(clippy::match_single_binding)]
   match win_message {
     Message::Window(WindowMessage::Resizing { .. } | WindowMessage::Moving { .. }) => {
-      // let string = format!("PROC: {win_message:?}");
       let _ = data.sender.send(win_message);
-      data.barrier.wait();
-      // println!("PROC: {string}");
     }
     _ => {
-      let _ = data.sender.send(win_message);
+      let _ = data.sender.try_send(win_message);
     }
   };
 
   match message {
-    WM_CLOSE => LRESULT(0),
-    WM_DESTROY => {
+    WindowsAndMessaging::WM_CLOSE => LRESULT(0),
+    WindowsAndMessaging::WM_DESTROY => {
       unsafe {
-        PostQuitMessage(0);
+        WindowsAndMessaging::PostQuitMessage(0);
       }
       LRESULT(0)
     }

@@ -7,6 +7,7 @@ pub struct WindowState {
   pub hinstance: isize,
   pub size_state: SizeState,
   pub title: String,
+  pub subtitle: String,
   pub color_mode: ColorMode,
   pub visibility: Visibility,
   pub flow: Flow,

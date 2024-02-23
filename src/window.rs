@@ -1,10 +1,7 @@
 // Reference for multithreaded input processing:
 //   * https://www.jendrikillner.com/post/rust-game-part-3/
 //   * https://github.com/jendrikillner/RustMatch3/blob/rust-game-part-3/
-use std::{
-  sync::{Arc, Barrier, RwLock},
-  thread::JoinHandle,
-};
+use std::{sync::RwLock, thread::JoinHandle};
 
 use crossbeam::channel::{Receiver, Sender, TryRecvError};
 #[cfg(all(feature = "rwh_05", not(feature = "rwh_06")))]
@@ -83,8 +80,6 @@ pub struct Window {
   window_thread: Handle<Option<JoinHandle<WindowResult<()>>>>,
   receiver: Receiver<Message>,
   current_stage: Handle<Stage>,
-
-  barrier: Arc<Barrier>,
 }
 
 impl Window {
@@ -95,10 +90,8 @@ impl Window {
 
   pub fn new(settings: WindowSettings) -> Result<Self, WindowError> {
     let (sender, receiver) = crossbeam::channel::unbounded();
-    let barrier = Arc::new(Barrier::new(2));
 
-    let window_thread =
-      Handle::new(Some(Self::window_loop(settings.clone(), sender, barrier.clone())?));
+    let window_thread = Handle::new(Some(Self::window_loop(settings.clone(), sender)?));
 
     // block until first message sent (which will be the window opening)
     if let Message::Window(WindowMessage::Ready { h_wnd, hinstance }) = receiver.recv()? {
@@ -108,6 +101,7 @@ impl Window {
         h_wnd,
         hinstance,
         title: settings.title,
+        subtitle: String::new(),
         color_mode: settings.color_mode,
         visibility: settings.visibility,
         flow: settings.flow,
@@ -154,7 +148,6 @@ impl Window {
         window_thread,
         receiver,
         current_stage: Handle::new(Stage::Looping),
-        barrier,
       };
 
       let color_mode = window.state.get().color_mode;
@@ -208,9 +201,19 @@ impl Window {
     self.state.get().title.to_owned()
   }
 
-  pub fn set_title(&self, title: &str) {
+  pub fn set_title(&self, title: impl AsRef<str>) {
+    self.state.get_mut().title = title.as_ref().to_owned();
+    let title = HSTRING::from(format!("{}{}", title.as_ref(), self.state.get().subtitle));
     unsafe {
-      let _ = SetWindowTextW(HWND(self.state.get().h_wnd), &HSTRING::from(title));
+      let _ = SetWindowTextW(HWND(self.state.get().h_wnd), &title);
+    }
+  }
+
+  pub fn set_subtitle(&self, subtitle: impl AsRef<str>) {
+    self.state.get_mut().subtitle = subtitle.as_ref().to_owned();
+    let title = HSTRING::from(format!("{}{}", self.state.get().title, subtitle.as_ref()));
+    unsafe {
+      let _ = SetWindowTextW(HWND(self.state.get().h_wnd), &title);
     }
   }
 
@@ -241,10 +244,15 @@ impl Window {
   }
 
   fn handle_message(&self, message: Message) -> Option<Message> {
-    self.state.get_mut().sizing_or_moving = matches!(
-      message,
-      Message::Window(WindowMessage::Resizing { .. } | WindowMessage::Moving { .. })
-    );
+    match message {
+      Message::Window(WindowMessage::StartedSizingOrMoving) => {
+        self.state.get_mut().sizing_or_moving = true;
+      }
+      Message::Window(WindowMessage::StoppedSizingOrMoving) => {
+        self.state.get_mut().sizing_or_moving = false;
+      }
+      _ => (),
+    }
 
     match message {
       Message::CloseRequested => {
@@ -281,14 +289,9 @@ impl Window {
   }
 
   fn next_message(&self, should_wait: bool) -> Option<Message> {
-    if self.state.get().sizing_or_moving {
-      self.barrier.wait();
-      self.state.get_mut().sizing_or_moving = false;
-    }
-
     let current_stage = *self.current_stage.get();
 
-    match current_stage {
+    let next = match current_stage {
       Stage::Looping => {
         if should_wait {
           match self.receiver.recv() {
@@ -336,7 +339,9 @@ impl Window {
         }
         None
       }
-    }
+    };
+
+    next
   }
 
   /// Waits for next window message before returning.
@@ -456,7 +461,6 @@ impl Window {
   fn window_loop(
     settings: WindowSettings,
     sender: Sender<Message>,
-    barrier: Arc<Barrier>,
   ) -> WindowResult<JoinHandle<WindowResult<()>>> {
     let h_wnd = RwLock::new(HWND::default());
 
@@ -469,7 +473,6 @@ impl Window {
 
         let window_data_ptr = Box::into_raw(Box::new(SubclassWindowData {
           sender: sender.clone(),
-          barrier,
         }));
 
         unsafe {

@@ -18,22 +18,20 @@ fn main() -> WindowResult<()> {
   let mut last_time = Instant::now();
   let mut engine_time = TimeSettings::default().build();
 
-  for msg in &window {
-    if let Message::None = msg {
-      let time = engine_time.time();
-      on_frame_infallible(
-        &mut engine_time,
-        || {},
-        || {
-          let now = Instant::now();
-          let elapsed = now.duration_since(last_time);
-          if elapsed >= Duration::from_secs_f64(0.20) {
-            println!("FPS: {:?}", 1.0 / time.average_delta_secs());
-            last_time = now;
-          }
-        },
-      );
-    }
+  for _msg in &window {
+    let time = engine_time.time();
+    on_frame_infallible(
+      &mut engine_time,
+      || {},
+      || {
+        let now = Instant::now();
+        let elapsed = now.duration_since(last_time);
+        if elapsed >= Duration::from_secs_f64(0.20) {
+          window.set_subtitle(format!(" | FPS: {:.1?}", 1.0 / time.average_delta_secs()));
+          last_time = now;
+        }
+      },
+    );
   }
 
   Ok(())
