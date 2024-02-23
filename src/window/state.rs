@@ -11,4 +11,6 @@ pub struct WindowState {
   pub visibility: Visibility,
   pub flow: Flow,
   pub input: Input,
+  pub close_on_x: bool,
+  pub sizing_or_moving: bool,
 }

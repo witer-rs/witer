@@ -125,7 +125,6 @@ pub enum KeyCode {
   RightAlt,
   RightSuper,
   Menu,
-  //   Compose, /// The "Compose" key on Linux.
   Caret,
   AbntC1,
   AbntC2,

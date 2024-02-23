@@ -1,25 +1,33 @@
 # ezwin-rs
 
+[![Static Badge](https://img.shields.io/badge/crates.io-ezwin?style=for-the-badge&color=E5AB37)](https://crates.io/crates/ezwin)
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/R6R8PGIU6)
 
 ```rust
 use ezwin::prelude::*;
 
-fn main() {
+fn main() -> WindowResult<()> {
   let window = Window::new(
     WindowSettings::default()
+      .with_close_on_x(false)
       .with_flow(Flow::Wait)
       .with_title("Easy Window")
       .with_size((800, 600)),
-  ).unwrap();
+  )?;
 
-  for message in window {
-    println!("{:?}", message);
+  for msg in &window {
+    if let Message::CloseRequested = msg {
+      window.close();
+    }
+
+    println!("{:?}", msg)
   }
+
+  Ok(())
 }
 ```
 
-## `ezwin` is a easy-to-use Win32 windowing library
+## `ezwin` is an easy-to-use Win32 windowing library
 
 ⚠️ This project is still very much a WIP; I am only one student, after all. ⚠️
 

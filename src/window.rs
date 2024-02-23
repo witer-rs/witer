@@ -52,6 +52,7 @@ use crate::{
     state::WindowState,
     window_message::{KeyboardMessage, Message, MouseMessage},
   },
+  Handle,
 };
 
 pub mod builder;
@@ -70,12 +71,12 @@ pub struct Window {
   raw_window_handle: RawWindowHandle,
   #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
   raw_display_handle: RawDisplayHandle,
-  state: WindowState,
-  window_thread: Option<JoinHandle<WindowResult<()>>>,
+
+  state: Handle<WindowState>,
+  window_thread: Handle<Option<JoinHandle<WindowResult<()>>>>,
   receiver: Receiver<Message>,
   barrier: Arc<Barrier>,
-  current_stage: Stage,
-  sizing_or_moving: bool,
+  current_stage: Handle<Stage>,
 }
 
 impl Drop for Window {
@@ -96,8 +97,11 @@ impl Window {
     let (sender, receiver) = crossbeam::channel::unbounded();
     let barrier = Arc::new(Barrier::new(2));
 
-    let window_thread =
-      Some(Self::window_loop(settings.clone(), sender, barrier.clone())?);
+    let window_thread = Handle::new(Some(Self::window_loop(
+      settings.clone(),
+      sender,
+      barrier.clone(),
+    )?));
 
     // block until first message sent (which will be the window opening)
     if let Message::State(StateMessage::Ready { h_wnd, hinstance }) =
@@ -105,7 +109,7 @@ impl Window {
     {
       let input = Input::new();
 
-      let state = WindowState {
+      let state = Handle::new(WindowState {
         h_wnd,
         hinstance,
         title: settings.title,
@@ -114,7 +118,9 @@ impl Window {
         flow: settings.flow,
         input,
         size_state: SizeState::Normal,
-      };
+        close_on_x: settings.close_on_x,
+        sizing_or_moving: false,
+      });
 
       #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
       let raw_window_handle = {
@@ -144,12 +150,13 @@ impl Window {
         receiver,
         barrier,
         // input_queue: Default::default(),
-        current_stage: Stage::Looping,
-        sizing_or_moving: false,
+        current_stage: Handle::new(Stage::Looping),
       };
 
-      window.set_color_mode(window.state.color_mode);
-      window.set_visibility(window.state.visibility);
+      let color_mode = window.state.get().color_mode;
+      window.set_color_mode(color_mode);
+      let visibility = window.state.get().visibility;
+      window.set_visibility(visibility);
 
       Ok(window)
     } else {
@@ -158,9 +165,9 @@ impl Window {
   }
 
   pub fn set_visibility(&mut self, visibility: Visibility) {
-    self.state.visibility = visibility;
+    self.state.get_mut().visibility = visibility;
     unsafe {
-      ShowWindow(HWND(self.state.h_wnd), match visibility {
+      ShowWindow(HWND(self.state.get().h_wnd), match visibility {
         Visibility::Shown => SW_SHOW,
         Visibility::Hidden => SW_HIDE,
       });
@@ -168,11 +175,11 @@ impl Window {
   }
 
   pub fn set_color_mode(&mut self, color_mode: ColorMode) {
-    self.state.color_mode = color_mode;
+    self.state.get_mut().color_mode = color_mode;
     let dark_mode = BOOL::from(color_mode == ColorMode::Dark);
     if let Err(error) = unsafe {
       DwmSetWindowAttribute(
-        HWND(self.state.h_wnd),
+        HWND(self.state.get().h_wnd),
         DWMWA_USE_IMMERSIVE_DARK_MODE,
         std::ptr::addr_of!(dark_mode) as *const std::ffi::c_void,
         std::mem::size_of::<BOOL>() as u32,
@@ -182,20 +189,28 @@ impl Window {
     };
   }
 
-  pub fn title(&self) -> &str {
-    &self.state.title
+  pub fn flow(&self) -> Flow {
+    self.state.get().flow
+  }
+
+  pub fn title(&self) -> String {
+    self.state.get().title.to_owned()
   }
 
   pub fn set_title(&self, title: &str) {
     unsafe {
-      let _ = SetWindowTextW(HWND(self.state.h_wnd), &HSTRING::from(title));
+      let _ =
+        SetWindowTextW(HWND(self.state.get().h_wnd), &HSTRING::from(title));
     }
   }
 
   pub fn size(&self) -> Size {
     let mut window_rect = RECT::default();
     let _ = unsafe {
-      GetWindowRect(HWND(self.state.h_wnd), std::ptr::addr_of_mut!(window_rect))
+      GetWindowRect(
+        HWND(self.state.get().h_wnd),
+        std::ptr::addr_of_mut!(window_rect),
+      )
     };
     Size {
       width: window_rect.right - window_rect.left,
@@ -206,7 +221,10 @@ impl Window {
   pub fn inner_size(&self) -> Size {
     let mut client_rect = RECT::default();
     let _ = unsafe {
-      GetClientRect(HWND(self.state.h_wnd), std::ptr::addr_of_mut!(client_rect))
+      GetClientRect(
+        HWND(self.state.get().h_wnd),
+        std::ptr::addr_of_mut!(client_rect),
+      )
     };
     Size {
       width: client_rect.right - client_rect.left,
@@ -214,12 +232,12 @@ impl Window {
     }
   }
 
-  pub fn close(&mut self) {
-    self.current_stage = Stage::Exiting;
+  pub fn close(&self) {
+    *self.current_stage.get_mut() = Stage::Exiting;
   }
 
-  fn handle_message(&mut self, message: Message) -> Option<Message> {
-    self.sizing_or_moving = matches!(
+  fn handle_message(&self, message: Message) -> Option<Message> {
+    self.state.get_mut().sizing_or_moving = matches!(
       message,
       Message::State(
         StateMessage::Resizing { .. } | StateMessage::Moving { .. }
@@ -230,22 +248,29 @@ impl Window {
       Message::CloseRequested => {
         // TODO: Add manual custom close behavior back
         debug!("Close Requested");
-        self.close();
+        if self.state.get().close_on_x {
+          self.close();
+        }
       }
       Message::State(StateMessage::Resizing { size_state }) => {
-        self.state.size_state = size_state;
+        self.state.get_mut().size_state = size_state;
       }
       Message::State(StateMessage::Moving { .. }) => {}
       Message::Keyboard(KeyboardMessage::Key {
         key_code, state, ..
       }) => {
-        self.state.input.update_keyboard_state(key_code, state);
+        self
+          .state
+          .get_mut()
+          .input
+          .update_keyboard_state(key_code, state);
       }
       Message::Mouse(MouseMessage::Button {
         mouse_code, state, ..
       }) => {
         self
           .state
+          .get_mut()
           .input
           .update_mouse_button_state(mouse_code, state);
       }
@@ -255,20 +280,22 @@ impl Window {
     Some(message)
   }
 
-  fn next_message(&mut self, should_wait: bool) -> Option<Message> {
-    if self.sizing_or_moving {
+  fn next_message(&self, should_wait: bool) -> Option<Message> {
+    if self.state.get().sizing_or_moving {
       self.barrier.wait();
-      self.sizing_or_moving = false;
+      self.state.get_mut().sizing_or_moving = false;
     }
 
-    match self.current_stage {
+    let current_stage = *self.current_stage.get();
+
+    match current_stage {
       Stage::Looping => {
         if should_wait {
           match self.receiver.recv() {
             Ok(message) => self.handle_message(message),
             _ => {
               error!("channel between main and window was closed!");
-              self.current_stage = Stage::Exiting;
+              *self.current_stage.get_mut() = Stage::Exiting;
               Some(Message::None)
             }
           }
@@ -277,7 +304,7 @@ impl Window {
             Ok(message) => self.handle_message(message),
             Err(TryRecvError::Disconnected) => {
               error!("channel between main and window was closed!");
-              self.current_stage = Stage::Exiting;
+              *self.current_stage.get_mut() = Stage::Exiting;
               Some(Message::None)
             }
             _ => Some(Message::None),
@@ -285,19 +312,19 @@ impl Window {
         }
       }
       Stage::Exiting => {
-        self.current_stage = Stage::ExitLoop;
+        *self.current_stage.get_mut() = Stage::ExitLoop;
         Some(Message::Closing)
       }
       Stage::ExitLoop => {
         let _ = unsafe {
           PostMessageW(
-            HWND(self.state.h_wnd),
+            HWND(self.state.get().h_wnd),
             Self::MSG_MAIN_CLOSE_REQ,
             WPARAM(0),
             LPARAM(0),
           )
         };
-        if let Some(thread) = self.window_thread.take() {
+        if let Some(thread) = self.window_thread.get_mut().take() {
           let _ = thread.join();
         }
         None
@@ -311,7 +338,7 @@ impl Window {
   ///
   /// Use this if you want the application to only react to window events.
   #[allow(unused)]
-  pub fn wait(&mut self) -> Option<Message> {
+  pub fn wait(&self) -> Option<Message> {
     self.next_message(true)
   }
 
@@ -325,19 +352,56 @@ impl Window {
   ///
   /// ***Note:** the window message thread will still block until a message is
   /// received from Windows.*
-  pub fn poll(&mut self) -> Option<Message> {
+  pub fn poll(&self) -> Option<Message> {
     self.next_message(false)
   }
 }
 
-impl Iterator for Window {
+pub struct MessageIterator<'a> {
+  window: &'a Window,
+}
+
+impl<'a> Iterator for MessageIterator<'a> {
   type Item = Message;
 
   fn next(&mut self) -> Option<Self::Item> {
-    match self.state.flow {
-      Flow::Wait => self.wait(),
-      Flow::Poll => self.poll(),
+    match self.window.flow() {
+      Flow::Wait => self.window.wait(),
+      Flow::Poll => self.window.poll(),
     }
+  }
+}
+
+impl<'a> IntoIterator for &'a Window {
+  type IntoIter = MessageIterator<'a>;
+  type Item = Message;
+
+  fn into_iter(self) -> Self::IntoIter {
+    MessageIterator { window: self }
+  }
+}
+
+pub struct MessageIteratorMut<'a> {
+  window: &'a mut Window,
+}
+
+impl<'a> Iterator for MessageIteratorMut<'a> {
+  type Item = Message;
+
+  fn next(&mut self) -> Option<Self::Item> {
+    match self.window.flow() {
+      Flow::Wait => self.window.wait(),
+      Flow::Poll => self.window.poll(),
+    }
+  }
+}
+
+impl<'a> IntoIterator for &'a mut Window {
+  type IntoIter = MessageIteratorMut<'a>;
+  type Item = Message;
+
+  fn into_iter(self) -> Self::IntoIter {
+    MessageIteratorMut { window: self }
   }
 }
 

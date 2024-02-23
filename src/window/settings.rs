@@ -50,6 +50,7 @@ pub struct WindowSettings {
   pub flow: Flow,
   pub color_mode: ColorMode,
   pub visibility: Visibility,
+  pub close_on_x: bool,
 }
 
 impl Default for WindowSettings {
@@ -59,6 +60,7 @@ impl Default for WindowSettings {
     let flow = Flow::default();
     let color_mode = ColorMode::default();
     let visibility = Visibility::default();
+    let close_on_x = true;
 
     Self {
       title,
@@ -66,6 +68,7 @@ impl Default for WindowSettings {
       flow,
       color_mode,
       visibility,
+      close_on_x,
     }
   }
 }
@@ -93,6 +96,11 @@ impl WindowSettings {
 
   pub fn with_visibility(mut self, visibility: Visibility) -> Self {
     self.visibility = visibility;
+    self
+  }
+
+  pub fn with_close_on_x(mut self, close_on_x: bool) -> Self {
+    self.close_on_x = close_on_x;
     self
   }
 }
