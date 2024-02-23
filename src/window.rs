@@ -153,7 +153,6 @@ impl Window {
       };
 
       window.set_color_mode(window.state.color_mode);
-      window.set_visibility(window.state.visibility);
 
       Ok(window)
     } else {
