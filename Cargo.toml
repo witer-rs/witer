@@ -30,3 +30,7 @@ rwh_06 = { package = "raw-window-handle", version = "0.6", features = ["std"], o
 [dependencies.windows]
 version = "0.53"
 features = ["Win32_Foundation", "Win32_Security", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_System_LibraryLoader", "Win32_System_SystemServices", "Win32_UI_Input", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Shell"]
+
+[workspace]
+resolver = "2"
+members = ["examples/koyote"]
