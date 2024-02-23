@@ -33,7 +33,10 @@ use windows::{
   core::{HSTRING, PCWSTR},
   Win32::{
     Foundation::*,
-    Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_USE_IMMERSIVE_DARK_MODE},
+    Graphics::{
+      Dwm::{DwmSetWindowAttribute, DWMWA_USE_IMMERSIVE_DARK_MODE},
+      Gdi::{RedrawWindow, RDW_ERASENOW, RDW_INVALIDATE},
+    },
     System::LibraryLoader::GetModuleHandleW,
     UI::{Shell::SetWindowSubclass, WindowsAndMessaging::*},
   },
@@ -41,10 +44,10 @@ use windows::{
 
 use self::{
   stage::Stage,
-  window_message::{SizeState, StateMessage},
+  window_message::{SizeState, WindowMessage},
 };
 use crate::{
-  debug::{error::WindowError, validation::ValidationLayer, WindowResult},
+  debug::{error::WindowError, WindowResult},
   window::{
     input::Input,
     procedure::SubclassWindowData,
@@ -59,6 +62,8 @@ pub mod builder;
 
 pub mod input;
 pub mod main_message;
+#[cfg(feature = "opengl")]
+mod opengl;
 pub mod procedure;
 pub mod settings;
 pub mod stage;
@@ -71,18 +76,15 @@ pub struct Window {
   raw_window_handle: RawWindowHandle,
   #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
   raw_display_handle: RawDisplayHandle,
+  #[cfg(feature = "opengl")]
+  gl_context: opengl::GlContext,
 
   state: Handle<WindowState>,
   window_thread: Handle<Option<JoinHandle<WindowResult<()>>>>,
   receiver: Receiver<Message>,
-  barrier: Arc<Barrier>,
   current_stage: Handle<Stage>,
-}
 
-impl Drop for Window {
-  fn drop(&mut self) {
-    ValidationLayer::instance().shutdown();
-  }
+  barrier: Arc<Barrier>,
 }
 
 impl Window {
@@ -92,21 +94,14 @@ impl Window {
   pub const WINDOW_THREAD_ID: &'static str = "window";
 
   pub fn new(settings: WindowSettings) -> Result<Self, WindowError> {
-    ValidationLayer::instance().init();
-
     let (sender, receiver) = crossbeam::channel::unbounded();
     let barrier = Arc::new(Barrier::new(2));
 
-    let window_thread = Handle::new(Some(Self::window_loop(
-      settings.clone(),
-      sender,
-      barrier.clone(),
-    )?));
+    let window_thread =
+      Handle::new(Some(Self::window_loop(settings.clone(), sender, barrier.clone())?));
 
     // block until first message sent (which will be the window opening)
-    if let Message::State(StateMessage::Ready { h_wnd, hinstance }) =
-      receiver.recv()?
-    {
+    if let Message::Window(WindowMessage::Ready { h_wnd, hinstance }) = receiver.recv()? {
       let input = Input::new();
 
       let state = Handle::new(WindowState {
@@ -125,8 +120,7 @@ impl Window {
       #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
       let raw_window_handle = {
         let mut handle = Win32WindowHandle::new(
-          std::num::NonZeroIsize::new(h_wnd)
-            .expect("window handle should not be zero"),
+          std::num::NonZeroIsize::new(h_wnd).expect("window handle should not be zero"),
         );
         let hinstance = std::num::NonZeroIsize::new(hinstance)
           .expect("instance handle should not be zero");
@@ -140,17 +134,27 @@ impl Window {
         RawDisplayHandle::from(handle)
       };
 
-      let mut window = Self {
+      #[cfg(feature = "opengl")]
+      let gl_context = {
+        let hdc = unsafe { windows::Win32::Graphics::Gdi::GetDC(HWND(h_wnd)) };
+        opengl::GlContext {
+          hdc,
+          // gl_context: opengl::create_context()?,
+        }
+      };
+
+      let window = Self {
         #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
         raw_window_handle,
         #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
         raw_display_handle,
+        #[cfg(feature = "opengl")]
+        gl_context,
         state,
         window_thread,
         receiver,
-        barrier,
-        // input_queue: Default::default(),
         current_stage: Handle::new(Stage::Looping),
+        barrier,
       };
 
       let color_mode = window.state.get().color_mode;
@@ -164,7 +168,7 @@ impl Window {
     }
   }
 
-  pub fn set_visibility(&mut self, visibility: Visibility) {
+  pub fn set_visibility(&self, visibility: Visibility) {
     self.state.get_mut().visibility = visibility;
     unsafe {
       ShowWindow(HWND(self.state.get().h_wnd), match visibility {
@@ -174,7 +178,7 @@ impl Window {
     }
   }
 
-  pub fn set_color_mode(&mut self, color_mode: ColorMode) {
+  pub fn set_color_mode(&self, color_mode: ColorMode) {
     self.state.get_mut().color_mode = color_mode;
     let dark_mode = BOOL::from(color_mode == ColorMode::Dark);
     if let Err(error) = unsafe {
@@ -189,6 +193,13 @@ impl Window {
     };
   }
 
+  pub fn redraw(&self) {
+    unsafe {
+      let h_wnd = self.state.get().h_wnd;
+      RedrawWindow(HWND(h_wnd), None, None, RDW_INVALIDATE | RDW_ERASENOW);
+    }
+  }
+
   pub fn flow(&self) -> Flow {
     self.state.get().flow
   }
@@ -199,18 +210,14 @@ impl Window {
 
   pub fn set_title(&self, title: &str) {
     unsafe {
-      let _ =
-        SetWindowTextW(HWND(self.state.get().h_wnd), &HSTRING::from(title));
+      let _ = SetWindowTextW(HWND(self.state.get().h_wnd), &HSTRING::from(title));
     }
   }
 
   pub fn size(&self) -> Size {
     let mut window_rect = RECT::default();
     let _ = unsafe {
-      GetWindowRect(
-        HWND(self.state.get().h_wnd),
-        std::ptr::addr_of_mut!(window_rect),
-      )
+      GetWindowRect(HWND(self.state.get().h_wnd), std::ptr::addr_of_mut!(window_rect))
     };
     Size {
       width: window_rect.right - window_rect.left,
@@ -221,10 +228,7 @@ impl Window {
   pub fn inner_size(&self) -> Size {
     let mut client_rect = RECT::default();
     let _ = unsafe {
-      GetClientRect(
-        HWND(self.state.get().h_wnd),
-        std::ptr::addr_of_mut!(client_rect),
-      )
+      GetClientRect(HWND(self.state.get().h_wnd), std::ptr::addr_of_mut!(client_rect))
     };
     Size {
       width: client_rect.right - client_rect.left,
@@ -239,23 +243,19 @@ impl Window {
   fn handle_message(&self, message: Message) -> Option<Message> {
     self.state.get_mut().sizing_or_moving = matches!(
       message,
-      Message::State(
-        StateMessage::Resizing { .. } | StateMessage::Moving { .. }
-      )
+      Message::Window(WindowMessage::Resizing { .. } | WindowMessage::Moving { .. })
     );
 
     match message {
       Message::CloseRequested => {
-        // TODO: Add manual custom close behavior back
-        debug!("Close Requested");
         if self.state.get().close_on_x {
           self.close();
         }
       }
-      Message::State(StateMessage::Resizing { size_state }) => {
+      Message::Window(WindowMessage::Resizing { size_state }) => {
         self.state.get_mut().size_state = size_state;
       }
-      Message::State(StateMessage::Moving { .. }) => {}
+      Message::Window(WindowMessage::Moving { .. }) => {}
       Message::Keyboard(KeyboardMessage::Key {
         key_code, state, ..
       }) => {
@@ -316,6 +316,13 @@ impl Window {
         Some(Message::Closing)
       }
       Stage::ExitLoop => {
+        #[cfg(feature = "opengl")]
+        {
+          let hwnd = self.state.get().h_wnd;
+          let hdc = self.gl_context.hdc;
+          unsafe { windows::Win32::Graphics::Gdi::ReleaseDC(HWND(hwnd), hdc) };
+        }
+
         let _ = unsafe {
           PostMessageW(
             HWND(self.state.get().h_wnd),
@@ -425,8 +432,8 @@ impl HasWindowHandle for Window {
 unsafe impl HasRawWindowHandle for Window {
   fn raw_window_handle(&self) -> RawWindowHandle {
     let mut handle = Win32WindowHandle::empty();
-    handle.hwnd = self.state.h_wnd as *mut std::ffi::c_void;
-    handle.hinstance = self.state.hinstance as *mut std::ffi::c_void;
+    handle.hwnd = self.state.get().h_wnd as *mut std::ffi::c_void;
+    handle.hinstance = self.state.get().hinstance as *mut std::ffi::c_void;
     RawWindowHandle::Win32(handle)
   }
 }
@@ -458,44 +465,7 @@ impl Window {
       .name(Self::WINDOW_THREAD_ID.to_owned())
       .spawn(move || -> WindowResult<()> {
         let hinstance: HINSTANCE = unsafe { GetModuleHandleW(None)? }.into();
-        debug_assert_ne!(hinstance.0, 0);
-        let title = HSTRING::from(settings.title);
-        let window_class = title.clone();
-
-        let wc = WNDCLASSEXW {
-          cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
-          style: CS_VREDRAW | CS_HREDRAW | CS_DBLCLKS,
-          cbWndExtra: std::mem::size_of::<WNDCLASSEXW>() as i32,
-          lpfnWndProc: Some(procedure::wnd_proc),
-          hInstance: hinstance,
-          hCursor: unsafe { LoadCursorW(None, IDC_ARROW)? },
-          lpszClassName: PCWSTR(window_class.as_ptr()),
-          ..Default::default()
-        };
-
-        unsafe {
-          let atom = RegisterClassExW(&wc);
-          debug_assert_ne!(atom, 0);
-        }
-
-        {
-          *h_wnd.write().unwrap() = unsafe {
-            CreateWindowExW(
-              WINDOW_EX_STYLE::default(),
-              &window_class,
-              &title,
-              WS_OVERLAPPEDWINDOW,
-              CW_USEDEFAULT,
-              CW_USEDEFAULT,
-              settings.size.width,
-              settings.size.height,
-              None,
-              None,
-              hinstance,
-              None,
-            )
-          };
-        }
+        *h_wnd.write().unwrap() = Self::create_hwnd(settings)?.0;
 
         let window_data_ptr = Box::into_raw(Box::new(SubclassWindowData {
           sender: sender.clone(),
@@ -512,7 +482,7 @@ impl Window {
         }
 
         // Send opened message to main function
-        sender.send(Message::State(StateMessage::Ready {
+        sender.send(Message::Window(WindowMessage::Ready {
           h_wnd: h_wnd.read().unwrap().0,
           hinstance: hinstance.0,
         }))?;
@@ -548,6 +518,57 @@ impl Window {
       Some(Message::new(msg.hwnd, msg.message, msg.wParam, msg.lParam))
     } else {
       None
+    }
+  }
+
+  pub(crate) fn create_hwnd(
+    settings: WindowSettings,
+  ) -> WindowResult<(HWND, WNDCLASSEXW)> {
+    let hinstance: HINSTANCE = unsafe { GetModuleHandleW(None)? }.into();
+    debug_assert_ne!(hinstance.0, 0);
+    let title = HSTRING::from(settings.title);
+    let window_class = title.clone();
+
+    let wc = WNDCLASSEXW {
+      cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
+      style: CS_VREDRAW | CS_HREDRAW | CS_DBLCLKS | CS_OWNDC,
+      cbWndExtra: std::mem::size_of::<WNDCLASSEXW>() as i32,
+      lpfnWndProc: Some(procedure::wnd_proc),
+      hInstance: hinstance,
+      hCursor: unsafe { LoadCursorW(None, IDC_ARROW)? },
+      lpszClassName: PCWSTR(window_class.as_ptr()),
+      ..Default::default()
+    };
+
+    {
+      let atom = unsafe { RegisterClassExW(&wc) };
+      debug_assert_ne!(atom, 0);
+    }
+
+    let hwnd = unsafe {
+      CreateWindowExW(
+        WINDOW_EX_STYLE::default(),
+        &window_class,
+        &title,
+        WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
+        CW_USEDEFAULT,
+        CW_USEDEFAULT,
+        settings.size.width,
+        settings.size.height,
+        None,
+        None,
+        hinstance,
+        None,
+      )
+    };
+
+    if hwnd.0 == 0 {
+      match unsafe { GetLastError() } {
+        Ok(()) => Err(WindowError::Error("HWND was null".to_owned())),
+        Err(error) => Err(error.into()),
+      }
+    } else {
+      Ok((hwnd, wc))
     }
   }
 }

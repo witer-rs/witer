@@ -7,7 +7,7 @@ use windows::Win32::{
 };
 
 #[allow(unused)]
-use super::window_message::{Message, StateMessage};
+use super::window_message::{Message, WindowMessage};
 
 pub struct SubclassWindowData {
   pub sender: Sender<Message>,
@@ -38,9 +38,7 @@ pub extern "system" fn subclass_proc(
 
   let win_message = Message::new(h_wnd, message, w_param, l_param);
   match win_message {
-    Message::State(
-      StateMessage::Resizing { .. } | StateMessage::Moving { .. },
-    ) => {
+    Message::Window(WindowMessage::Resizing { .. } | WindowMessage::Moving { .. }) => {
       // let string = format!("PROC: {win_message:?}");
       let _ = data.sender.send(win_message);
       data.barrier.wait();

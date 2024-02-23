@@ -1,7 +1,7 @@
 # https://rust-lang.github.io/rustfmt/
 tab_spaces                 = 2
 fn_call_width              = 80
-max_width                  = 80
+max_width                  = 90
 group_imports              = "StdExternalCrate"
 reorder_impl_items         = true
 overflow_delimited_expr    = true

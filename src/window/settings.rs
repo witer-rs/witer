@@ -51,6 +51,7 @@ pub struct WindowSettings {
   pub color_mode: ColorMode,
   pub visibility: Visibility,
   pub close_on_x: bool,
+  pub with_gl_context: bool,
 }
 
 impl Default for WindowSettings {
@@ -61,6 +62,7 @@ impl Default for WindowSettings {
     let color_mode = ColorMode::default();
     let visibility = Visibility::default();
     let close_on_x = true;
+    let with_gl_context = true;
 
     Self {
       title,
@@ -69,6 +71,7 @@ impl Default for WindowSettings {
       color_mode,
       visibility,
       close_on_x,
+      with_gl_context,
     }
   }
 }
@@ -101,6 +104,12 @@ impl WindowSettings {
 
   pub fn with_close_on_x(mut self, close_on_x: bool) -> Self {
     self.close_on_x = close_on_x;
+    self
+  }
+
+  #[cfg(feature = "opengl")]
+  pub fn with_gl_context(mut self, with_gl_context: bool) -> Self {
+    self.with_gl_context = with_gl_context;
     self
   }
 }

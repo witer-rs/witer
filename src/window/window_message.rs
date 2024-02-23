@@ -10,11 +10,7 @@ use windows::Win32::{
     MODIFIERKEYS_FLAGS,
   },
   UI::{
-    Input::KeyboardAndMouse::{
-      MapVirtualKeyW,
-      MAPVK_VSC_TO_VK_EX,
-      VIRTUAL_KEY,
-    },
+    Input::KeyboardAndMouse::{MapVirtualKeyW, MAPVK_VSC_TO_VK_EX, VIRTUAL_KEY},
     WindowsAndMessaging,
   },
 };
@@ -43,7 +39,7 @@ pub enum SizeState {
 pub enum Message {
   #[default]
   None,
-  State(StateMessage),
+  Window(WindowMessage),
   Keyboard(KeyboardMessage),
   Mouse(MouseMessage),
   Other {
@@ -57,8 +53,9 @@ pub enum Message {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
-pub enum StateMessage {
+pub enum WindowMessage {
   Ready { h_wnd: isize, hinstance: isize },
+  Draw,
   Resizing { size_state: SizeState },
   Moving,
   Resized,
@@ -100,37 +97,29 @@ pub enum MouseMessage {
 }
 
 impl Message {
-  pub fn new(
-    h_wnd: HWND,
-    message: u32,
-    w_param: WPARAM,
-    l_param: LPARAM,
-  ) -> Self {
+  pub fn new(h_wnd: HWND, message: u32, w_param: WPARAM, l_param: LPARAM) -> Self {
     match message {
       WindowsAndMessaging::WM_CLOSE => Message::CloseRequested,
       WindowsAndMessaging::WM_DESTROY => Message::Closing,
+      WindowsAndMessaging::WM_PAINT => Message::Window(WindowMessage::Draw),
       WindowsAndMessaging::WM_ENTERSIZEMOVE => {
-        Message::State(StateMessage::StartedSizingOrMoving)
+        Message::Window(WindowMessage::StartedSizingOrMoving)
       }
       WindowsAndMessaging::WM_EXITSIZEMOVE => {
-        Message::State(StateMessage::StoppedSizingOrMoving)
+        Message::Window(WindowMessage::StoppedSizingOrMoving)
       }
-      WindowsAndMessaging::WM_SIZING => {
-        Message::State(StateMessage::Resizing {
-          size_state: if w_param.0 as u32 != WindowsAndMessaging::SIZE_MINIMIZED
-          {
-            SizeState::Normal
-          } else {
-            SizeState::Minimized
-          },
-        })
-      }
-      WindowsAndMessaging::WM_MOVING => Message::State(StateMessage::Moving),
-      WindowsAndMessaging::WM_SIZE => Message::State(StateMessage::Resized),
-      WindowsAndMessaging::WM_MOVE => Message::State(StateMessage::Moved),
+      WindowsAndMessaging::WM_SIZING => Message::Window(WindowMessage::Resizing {
+        size_state: if w_param.0 as u32 != WindowsAndMessaging::SIZE_MINIMIZED {
+          SizeState::Normal
+        } else {
+          SizeState::Minimized
+        },
+      }),
+      WindowsAndMessaging::WM_MOVING => Message::Window(WindowMessage::Moving),
+      WindowsAndMessaging::WM_SIZE => Message::Window(WindowMessage::Resized),
+      WindowsAndMessaging::WM_MOVE => Message::Window(WindowMessage::Moved),
       msg
-        if (WindowsAndMessaging::WM_KEYFIRST
-          ..=WindowsAndMessaging::WM_KEYLAST)
+        if (WindowsAndMessaging::WM_KEYFIRST..=WindowsAndMessaging::WM_KEYLAST)
           .contains(&msg) =>
       {
         Self::new_keyboard_message(l_param)
@@ -150,8 +139,7 @@ impl Message {
         Self::new_mouse_button_message(message, w_param, l_param)
       }
       WindowsAndMessaging::WM_MOUSEMOVE => {
-        let (x, y) =
-          (signed_lo_word(l_param.0 as i32), signed_hi_word(l_param.0 as i32));
+        let (x, y) = (signed_lo_word(l_param.0 as i32), signed_hi_word(l_param.0 as i32));
         Message::Mouse(MouseMessage::Cursor { x, y })
       }
       WindowsAndMessaging::WM_MOUSEWHEEL => {
@@ -174,8 +162,7 @@ impl Message {
   }
 
   fn new_keyboard_message(l_param: LPARAM) -> Message {
-    let flags =
-      hi_word(unsafe { std::mem::transmute::<i32, u32>(l_param.0 as i32) });
+    let flags = hi_word(unsafe { std::mem::transmute::<i32, u32>(l_param.0 as i32) });
 
     let is_extended_key = (flags & WindowsAndMessaging::KF_EXTENDED as u16)
       == WindowsAndMessaging::KF_EXTENDED as u16;
@@ -205,8 +192,8 @@ impl Message {
       let was_key_down = (flags & WindowsAndMessaging::KF_REPEAT as u16)
         == WindowsAndMessaging::KF_REPEAT as u16;
       let repeat_count = lo_word(l_param.0 as u32);
-      let is_key_up = (flags & WindowsAndMessaging::KF_UP as u16)
-        == WindowsAndMessaging::KF_UP as u16;
+      let is_key_up =
+        (flags & WindowsAndMessaging::KF_UP as u16) == WindowsAndMessaging::KF_UP as u16;
 
       if is_key_up {
         KeyState::Released
@@ -225,11 +212,7 @@ impl Message {
     })
   }
 
-  fn new_mouse_button_message(
-    message: u32,
-    w_param: WPARAM,
-    l_param: LPARAM,
-  ) -> Message {
+  fn new_mouse_button_message(message: u32, w_param: WPARAM, l_param: LPARAM) -> Message {
     let flags = w_param.0 as u32;
 
     let mouse_code: MouseCode = {
@@ -247,9 +230,7 @@ impl Message {
         | WindowsAndMessaging::WM_XBUTTONDOWN
         | WindowsAndMessaging::WM_XBUTTONUP => {
           let hi_flags = hi_word(flags);
-          if (hi_flags & WindowsAndMessaging::XBUTTON1)
-            == WindowsAndMessaging::XBUTTON1
-          {
+          if (hi_flags & WindowsAndMessaging::XBUTTON1) == WindowsAndMessaging::XBUTTON1 {
             MouseCode::Back
           } else {
             MouseCode::Forward
@@ -276,26 +257,22 @@ impl Message {
       let is_x2_down = (mod_flags & MK_XBUTTON2) == MK_XBUTTON2;
 
       let is_down = match message {
-        WindowsAndMessaging::WM_LBUTTONDBLCLK
-        | WindowsAndMessaging::WM_LBUTTONDOWN
+        WindowsAndMessaging::WM_LBUTTONDBLCLK | WindowsAndMessaging::WM_LBUTTONDOWN
           if is_l_down =>
         {
           true
         }
-        WindowsAndMessaging::WM_MBUTTONDBLCLK
-        | WindowsAndMessaging::WM_MBUTTONDOWN
+        WindowsAndMessaging::WM_MBUTTONDBLCLK | WindowsAndMessaging::WM_MBUTTONDOWN
           if is_m_down =>
         {
           true
         }
-        WindowsAndMessaging::WM_RBUTTONDBLCLK
-        | WindowsAndMessaging::WM_RBUTTONDOWN
+        WindowsAndMessaging::WM_RBUTTONDBLCLK | WindowsAndMessaging::WM_RBUTTONDOWN
           if is_r_down =>
         {
           true
         }
-        WindowsAndMessaging::WM_XBUTTONDBLCLK
-        | WindowsAndMessaging::WM_XBUTTONDOWN
+        WindowsAndMessaging::WM_XBUTTONDBLCLK | WindowsAndMessaging::WM_XBUTTONDOWN
           if is_x1_down || is_x2_down =>
         {
           true
@@ -310,8 +287,7 @@ impl Message {
       }
     };
 
-    let (x, y) =
-      (signed_lo_word(l_param.0 as i32), signed_hi_word(l_param.0 as i32));
+    let (x, y) = (signed_lo_word(l_param.0 as i32), signed_hi_word(l_param.0 as i32));
 
     Message::Mouse(MouseMessage::Button {
       mouse_code,
