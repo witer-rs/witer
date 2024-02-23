@@ -355,6 +355,21 @@ impl Window {
   pub fn poll(&self) -> Option<Message> {
     self.next_message(false)
   }
+
+  fn follow_flow(&self) -> Option<Message> {
+    match self.flow() {
+      Flow::Wait => self.wait(),
+      Flow::Poll => self.poll(),
+    }
+  }
+
+  pub fn iter(&self) -> MessageIterator {
+    MessageIterator { window: self }
+  }
+
+  pub fn iter_mut(&mut self) -> MessageIteratorMut {
+    MessageIteratorMut { window: self }
+  }
 }
 
 pub struct MessageIterator<'a> {
@@ -365,19 +380,16 @@ impl<'a> Iterator for MessageIterator<'a> {
   type Item = Message;
 
   fn next(&mut self) -> Option<Self::Item> {
-    match self.window.flow() {
-      Flow::Wait => self.window.wait(),
-      Flow::Poll => self.window.poll(),
-    }
+    self.window.follow_flow()
   }
 }
 
 impl<'a> IntoIterator for &'a Window {
-  type Item = Message;
   type IntoIter = MessageIterator<'a>;
+  type Item = Message;
 
   fn into_iter(self) -> Self::IntoIter {
-    MessageIterator { window: self }
+    self.iter()
   }
 }
 
@@ -389,19 +401,16 @@ impl<'a> Iterator for MessageIteratorMut<'a> {
   type Item = Message;
 
   fn next(&mut self) -> Option<Self::Item> {
-    match self.window.flow() {
-      Flow::Wait => self.window.wait(),
-      Flow::Poll => self.window.poll(),
-    }
+    self.window.follow_flow()
   }
 }
 
 impl<'a> IntoIterator for &'a mut Window {
-  type Item = Message;
   type IntoIter = MessageIteratorMut<'a>;
+  type Item = Message;
 
   fn into_iter(self) -> Self::IntoIter {
-    MessageIteratorMut { window: self }
+    self.iter_mut()
   }
 }
 
