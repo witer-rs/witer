@@ -6,24 +6,9 @@
 ```rust
 use ezwin::prelude::*;
 
-fn main() -> WindowResult<()> {
-  let window = Window::new(
-    WindowSettings::default()
-      .with_close_on_x(false)
-      .with_flow(Flow::Wait)
-      .with_title("Easy Window")
-      .with_size((800, 600)),
-  )?;
-
-  for msg in &window {
-    if let Message::CloseRequested = msg {
-      window.close();
-    }
-
-    println!("{:?}", msg)
-  }
-
-  Ok(())
+fn main() {
+  let window = Window::new(WindowSettings::default()).unwrap();
+  for message in &window {}
 }
 ```
 
@@ -45,3 +30,7 @@ This layout was chosen to allow for the window messages not to block the applica
 ## Cargo Features
 
 * **`rwh_05` / `rwh_06`:** use the appropriate version of `raw-window-handle`. `rwh_06` is the default.
+
+## Examples
+
+Examples are a work-in-progress, but you can see a sample crate in the `examples` folder.
