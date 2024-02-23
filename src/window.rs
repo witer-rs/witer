@@ -90,10 +90,6 @@ impl Window {
   pub const WINDOW_SUBCLASS_ID: usize = 0;
   pub const WINDOW_THREAD_ID: &'static str = "window";
 
-  // pub fn builder() -> WindowBuilder<MissingTitle, MissingSize> {
-  //   Default::default()
-  // }
-
   pub fn new(settings: WindowSettings) -> Result<Self, WindowError> {
     ValidationLayer::instance().init();
 
@@ -153,6 +149,7 @@ impl Window {
       };
 
       window.set_color_mode(window.state.color_mode);
+      window.set_visibility(window.state.visibility);
 
       Ok(window)
     } else {

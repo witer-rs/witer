@@ -1,5 +1,5 @@
 pub use crate::{
-  debug::validation::ValidationLayer,
+  debug::{validation::ValidationLayer, WindowResult},
   window::{
     main_message::MainMessage,
     settings::{Flow, WindowSettings},
