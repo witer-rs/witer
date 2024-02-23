@@ -373,8 +373,8 @@ impl<'a> Iterator for MessageIterator<'a> {
 }
 
 impl<'a> IntoIterator for &'a Window {
-  type IntoIter = MessageIterator<'a>;
   type Item = Message;
+  type IntoIter = MessageIterator<'a>;
 
   fn into_iter(self) -> Self::IntoIter {
     MessageIterator { window: self }
@@ -397,8 +397,8 @@ impl<'a> Iterator for MessageIteratorMut<'a> {
 }
 
 impl<'a> IntoIterator for &'a mut Window {
-  type IntoIter = MessageIteratorMut<'a>;
   type Item = Message;
+  type IntoIter = MessageIteratorMut<'a>;
 
   fn into_iter(self) -> Self::IntoIter {
     MessageIteratorMut { window: self }
