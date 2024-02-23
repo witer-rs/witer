@@ -8,6 +8,7 @@ license     = "MIT"
 readme      = "README.md"
 keywords    = ["win32", "windows", "windowing"]
 categories  = ["game-development", "rendering", "gui"]
+repository = "https://github.com/GTLugo/ezwin"
 
 [features]
 default = ["rwh_06"]
