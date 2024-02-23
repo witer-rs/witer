@@ -1,10 +1,10 @@
 [package]
 name        = "ezwin"
 description = "Easy, minimal Win32 window creation"
-version     = "2.0.0"
+version     = "2.0.1"
 edition     = "2021"
 authors     = ["Gabriel Lugo <dev.gabriel.lugo@gmail.com>"]
-license     = "MIT"
+license     = "MIT OR Apache-2.0"
 readme      = "README.md"
 keywords    = ["win32", "windows", "windowing"]
 categories  = ["game-development", "rendering", "gui"]
