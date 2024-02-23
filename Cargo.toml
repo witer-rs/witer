@@ -1,13 +1,13 @@
 [package]
 name        = "ezwin"
-description = "bau bau"
-version     = "0.1.0"
+description = "Easy, minimal Win32 window creation"
+version     = "1.0.0"
 edition     = "2021"
 authors     = ["Gabriel Lugo <dev.gabriel.lugo@gmail.com>"]
 license     = "MIT"
 readme      = "README.md"
-keywords    = ["Win32"]
-categories  = []
+keywords    = ["win32", "windows", "windowing"]
+categories  = ["game-development", "rendering", "gui"]
 
 [features]
 default = ["rwh_06"]
