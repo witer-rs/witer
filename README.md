@@ -7,7 +7,13 @@
 use ezwin::prelude::*;
 
 fn main() {
-  let window = Window::new(WindowSettings::default()).unwrap();
+  // configure
+  let settings = WindowSettings::default();
+  
+  // create
+  let window = Window::new(settings).unwrap();
+  
+  // run
   for message in &window {}
 }
 ```
