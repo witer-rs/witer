@@ -1,4 +1,3 @@
-use enumflags2::BitFlags;
 use windows::Win32::{
   Foundation::{HWND, LPARAM, WPARAM},
   System::SystemServices::{
@@ -15,7 +14,7 @@ use windows::Win32::{
   },
 };
 
-use super::input::{modifier::Modifiers, mouse::Button};
+use super::input::mouse::Button;
 use crate::{
   hi_word,
   lo_byte,
@@ -45,7 +44,12 @@ pub enum Message {
   #[default]
   None,
   Window(WindowMessage),
-  Keyboard(KeyboardMessage),
+  Keyboard {
+    key: Key,
+    state: KeyState,
+    scan_code: u16,
+    is_extended_key: bool,
+  },
   Mouse(MouseMessage),
   Other {
     h_wnd: isize,
@@ -67,19 +71,6 @@ pub enum WindowMessage {
   Moved,
   StartedSizingOrMoving,
   StoppedSizingOrMoving,
-}
-
-#[derive(Debug, PartialEq, Eq, Clone, Hash)]
-pub enum KeyboardMessage {
-  Key {
-    key: Key,
-    state: KeyState,
-    scan_code: u16,
-    is_extended_key: bool,
-  },
-  Modifiers {
-    mods: BitFlags<Modifiers>,
-  },
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -209,12 +200,12 @@ impl Message {
       }
     };
 
-    Message::Keyboard(KeyboardMessage::Key {
+    Message::Keyboard {
       key: key_code,
       state,
       scan_code,
       is_extended_key,
-    })
+    }
   }
 
   fn new_mouse_button_message(message: u32, w_param: WPARAM, l_param: LPARAM) -> Message {

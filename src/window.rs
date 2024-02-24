@@ -51,7 +51,7 @@ use crate::{
     procedure::SubclassWindowData,
     settings::{ColorMode, Flow, Size, Visibility, WindowSettings},
     state::WindowState,
-    window_message::{KeyboardMessage, Message, MouseMessage},
+    window_message::{Message, MouseMessage},
   },
 };
 
@@ -264,7 +264,7 @@ impl Window {
         self.state.get_mut().size_state = size_state;
       }
       Message::Window(WindowMessage::Moving { .. }) => {}
-      Message::Keyboard(KeyboardMessage::Key { key, state, .. }) => {
+      Message::Keyboard { key, state, .. } => {
         self.state.get_mut().input.update_key_state(key, state);
         self.state.get_mut().input.update_modifiers_state();
       }

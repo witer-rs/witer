@@ -3,7 +3,7 @@ pub use crate::{
   window::{
     main_message::MainMessage,
     settings::{Flow, WindowSettings},
-    window_message::{KeyboardMessage, Message, MouseMessage, WindowMessage},
+    window_message::{Message, MouseMessage, WindowMessage},
     Window,
   },
 };
