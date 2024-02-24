@@ -2,7 +2,7 @@ use strum::EnumIter;
 
 #[derive(EnumIter, Debug, Copy, Clone, Eq, PartialEq, Hash)]
 #[repr(u16)]
-pub enum MouseCode {
+pub enum Button {
   Unknown = 0,
   Left = 1,
   Right = 2,

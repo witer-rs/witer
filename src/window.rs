@@ -45,6 +45,7 @@ use self::{
 };
 use crate::{
   debug::{error::WindowError, WindowResult},
+  handle::Handle,
   window::{
     input::Input,
     procedure::SubclassWindowData,
@@ -52,7 +53,6 @@ use crate::{
     state::WindowState,
     window_message::{KeyboardMessage, Message, MouseMessage},
   },
-  Handle,
 };
 
 pub mod builder;
@@ -264,23 +264,16 @@ impl Window {
         self.state.get_mut().size_state = size_state;
       }
       Message::Window(WindowMessage::Moving { .. }) => {}
-      Message::Keyboard(KeyboardMessage::Key {
-        key_code, state, ..
-      }) => {
-        self
-          .state
-          .get_mut()
-          .input
-          .update_keyboard_state(key_code, state);
+      Message::Keyboard(KeyboardMessage::Key { key, state, .. }) => {
+        self.state.get_mut().input.update_key_state(key, state);
+        self.state.get_mut().input.update_modifiers_state();
       }
-      Message::Mouse(MouseMessage::Button {
-        mouse_code, state, ..
-      }) => {
+      Message::Mouse(MouseMessage::Button { button, state, .. }) => {
         self
           .state
           .get_mut()
           .input
-          .update_mouse_button_state(mouse_code, state);
+          .update_mouse_button_state(button, state);
       }
       _ => {}
     }

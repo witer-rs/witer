@@ -1,119 +1,131 @@
-pub mod button;
-pub mod keyboard;
+pub mod key;
 pub mod modifier;
 pub mod mouse;
+pub mod state;
 
 use std::collections::HashMap;
 
-use enumflags2::BitFlags;
 use strum::IntoEnumIterator;
 
-use self::button::ButtonState;
-use crate::window::input::{
-  button::KeyState,
-  keyboard::KeyCode,
-  modifier::Modifiers,
-  mouse::MouseCode,
-};
+use self::state::KeyState;
+use crate::window::input::{key::Key, mouse::Button, state::ButtonState};
 
 #[derive(Debug)]
 pub struct Input {
-  keys: HashMap<KeyCode, KeyState>,
-  modifiers: BitFlags<Modifiers>,
-  mouse_buttons: HashMap<MouseCode, ButtonState>,
+  mouse_buttons: HashMap<Button, ButtonState>,
+  keys: HashMap<Key, KeyState>,
+  shift: ButtonState,
+  ctrl: ButtonState,
+  alt: ButtonState,
+  win: ButtonState,
 }
 
 impl Input {
   pub fn new() -> Self {
-    let keys = {
-      let mut map = HashMap::default();
-      for code in KeyCode::iter() {
-        map.insert(code, KeyState::Released);
-      }
-      map
-    };
-
-    let modifiers = Default::default();
-
     let mouse_buttons = {
       let mut map = HashMap::default();
-      for code in MouseCode::iter() {
+      for code in Button::iter() {
         map.insert(code, ButtonState::Released);
       }
       map
     };
 
+    let keys = {
+      let mut map = HashMap::default();
+      for code in Key::iter() {
+        map.insert(code, KeyState::Released);
+      }
+      map
+    };
+
     Self {
-      keys,
-      modifiers,
       mouse_buttons,
+      keys,
+      shift: Default::default(),
+      ctrl: Default::default(),
+      alt: Default::default(),
+      win: Default::default(),
     }
   }
 
   // KEYBOARD
 
-  pub fn key_state(&self, code: KeyCode) -> KeyState {
-    self.keys.get(&code).copied().unwrap_or(KeyState::Released)
+  pub fn key(&self, keycode: Key) -> KeyState {
+    self
+      .keys
+      .get(&keycode)
+      .copied()
+      .unwrap_or(KeyState::Released)
   }
 
-  pub fn key_down(&self, code: KeyCode) -> bool {
-    !matches!(self.key_state(code), KeyState::Released)
-  }
-
-  pub fn update_keyboard_state(&mut self, key_code: KeyCode, state: KeyState) {
-    if let Some(key_state) = self.keys.get_mut(&key_code) {
+  pub(crate) fn update_key_state(&mut self, keycode: Key, state: KeyState) {
+    if let Some(key_state) = self.keys.get_mut(&keycode) {
       *key_state = state;
     }
   }
 
   // MOUSE
 
-  pub fn mouse_button_state(&self, code: MouseCode) -> ButtonState {
+  pub fn mouse(&self, button: Button) -> ButtonState {
     self
       .mouse_buttons
-      .get(&code)
+      .get(&button)
       .copied()
       .unwrap_or(ButtonState::Released)
   }
 
-  pub fn mouse_button_down(&self, code: MouseCode) -> bool {
-    !matches!(self.mouse_button_state(code), ButtonState::Released)
-  }
-
-  pub(crate) fn update_mouse_button_state(
-    &mut self,
-    mouse_code: MouseCode,
-    state: ButtonState,
-  ) {
-    if let Some(button_state) = self.mouse_buttons.get_mut(&mouse_code) {
-      *button_state = state;
+  pub(crate) fn update_mouse_button_state(&mut self, button: Button, state: ButtonState) {
+    if let Some(mouse_state) = self.mouse_buttons.get_mut(&button) {
+      *mouse_state = state;
     }
   }
 
   // MODS
 
-  pub fn modifiers_state(&self) -> BitFlags<Modifiers> {
-    self.modifiers
+  pub fn shift(&self) -> ButtonState {
+    self.shift
   }
 
-  pub fn modifier_down(&self, modifier: Modifiers) -> bool {
-    self.modifiers.contains(modifier)
+  pub fn ctrl(&self) -> ButtonState {
+    self.ctrl
   }
 
-  pub fn modifiers_down(&self, modifiers: BitFlags<Modifiers>) -> bool {
-    self.modifiers.contains(modifiers)
+  pub fn alt(&self) -> ButtonState {
+    self.alt
   }
 
-  //   pub(crate) fn update_modifiers_state(&mut self, modifiers:
-  // ModifiersState) -> BitFlags<Modifiers> {     // TODO: just swap to bit
-  // manipulation to speed up. Stop being lazy, Gabriel.     for modifier in
-  // Modifiers::iter() {       if modifiers.contains(modifier.into()) !=
-  // self.modifiers.contains(modifier) {         self.modifiers.
-  // toggle(modifier);       }
-  //     }
+  pub fn win(&self) -> ButtonState {
+    self.win
+  }
 
-  //     self.modifiers
-  //   }
+  pub(crate) fn update_modifiers_state(&mut self) {
+    self.shift =
+      if self.key(Key::LeftShift).is_held() || self.key(Key::RightShift).is_held() {
+        ButtonState::Pressed
+      } else {
+        ButtonState::Released
+      };
+
+    self.ctrl =
+      if self.key(Key::LeftControl).is_held() || self.key(Key::RightControl).is_held() {
+        ButtonState::Pressed
+      } else {
+        ButtonState::Released
+      };
+
+    self.alt = if self.key(Key::LeftAlt).is_held() || self.key(Key::RightAlt).is_held() {
+      ButtonState::Pressed
+    } else {
+      ButtonState::Released
+    };
+
+    self.win =
+      if self.key(Key::LeftSuper).is_held() || self.key(Key::RightSuper).is_held() {
+        ButtonState::Pressed
+      } else {
+        ButtonState::Released
+      };
+  }
 }
 
 impl Default for Input {

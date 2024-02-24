@@ -15,13 +15,18 @@ use windows::Win32::{
   },
 };
 
-use super::input::{
-  button::{ButtonState, KeyState},
-  keyboard::KeyCode,
-  modifier::Modifiers,
-  mouse::MouseCode,
+use super::input::{modifier::Modifiers, mouse::Button};
+use crate::{
+  hi_word,
+  lo_byte,
+  lo_word,
+  signed_hi_word,
+  signed_lo_word,
+  window::input::{
+    key::Key,
+    state::{ButtonState, KeyState},
+  },
 };
-use crate::{hi_word, lo_byte, lo_word, signed_hi_word, signed_lo_word};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum MessagePriority {
@@ -67,7 +72,7 @@ pub enum WindowMessage {
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub enum KeyboardMessage {
   Key {
-    key_code: KeyCode,
+    key: Key,
     state: KeyState,
     scan_code: u16,
     is_extended_key: bool,
@@ -80,7 +85,7 @@ pub enum KeyboardMessage {
 #[derive(Debug, PartialEq, Clone)]
 pub enum MouseMessage {
   Button {
-    mouse_code: MouseCode,
+    button: Button,
     state: ButtonState,
     x: i16,
     y: i16,
@@ -169,7 +174,7 @@ impl Message {
 
     let mut scan_code = lo_byte(flags) as u16;
 
-    let key_code: KeyCode = {
+    let key_code: Key = {
       let extended_scan_code = u16::from_le_bytes([scan_code as u8, 0xE0]);
       let extended_virtual_keycode = VIRTUAL_KEY(lo_word(unsafe {
         MapVirtualKeyW(extended_scan_code as u32, MAPVK_VSC_TO_VK_EX)
@@ -198,14 +203,14 @@ impl Message {
       if is_key_up {
         KeyState::Released
       } else if was_key_down {
-        KeyState::Held { repeat_count }
+        KeyState::Held(repeat_count)
       } else {
         KeyState::Pressed
       }
     };
 
     Message::Keyboard(KeyboardMessage::Key {
-      key_code,
+      key: key_code,
       state,
       scan_code,
       is_extended_key,
@@ -215,28 +220,28 @@ impl Message {
   fn new_mouse_button_message(message: u32, w_param: WPARAM, l_param: LPARAM) -> Message {
     let flags = w_param.0 as u32;
 
-    let mouse_code: MouseCode = {
+    let mouse_code: Button = {
       match message {
         WindowsAndMessaging::WM_LBUTTONDBLCLK
         | WindowsAndMessaging::WM_LBUTTONDOWN
-        | WindowsAndMessaging::WM_LBUTTONUP => MouseCode::Left,
+        | WindowsAndMessaging::WM_LBUTTONUP => Button::Left,
         WindowsAndMessaging::WM_MBUTTONDBLCLK
         | WindowsAndMessaging::WM_MBUTTONDOWN
-        | WindowsAndMessaging::WM_MBUTTONUP => MouseCode::Middle,
+        | WindowsAndMessaging::WM_MBUTTONUP => Button::Middle,
         WindowsAndMessaging::WM_RBUTTONDBLCLK
         | WindowsAndMessaging::WM_RBUTTONDOWN
-        | WindowsAndMessaging::WM_RBUTTONUP => MouseCode::Right,
+        | WindowsAndMessaging::WM_RBUTTONUP => Button::Right,
         WindowsAndMessaging::WM_XBUTTONDBLCLK
         | WindowsAndMessaging::WM_XBUTTONDOWN
         | WindowsAndMessaging::WM_XBUTTONUP => {
           let hi_flags = hi_word(flags);
           if (hi_flags & WindowsAndMessaging::XBUTTON1) == WindowsAndMessaging::XBUTTON1 {
-            MouseCode::Back
+            Button::Back
           } else {
-            MouseCode::Forward
+            Button::Forward
           }
         }
-        _ => MouseCode::Unknown,
+        _ => Button::Unknown,
       }
     };
 
@@ -290,7 +295,7 @@ impl Message {
     let (x, y) = (signed_lo_word(l_param.0 as i32), signed_hi_word(l_param.0 as i32));
 
     Message::Mouse(MouseMessage::Button {
-      mouse_code,
+      button: mouse_code,
       state,
       x,
       y,
