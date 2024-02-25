@@ -22,9 +22,17 @@ fn main() {
 
 ⚠️ This project is still very much a WIP; I am only one student, after all. ⚠️
 
+## Goals
+
 The main goal of `ezwin` is to have a simple, easy-to-use API. The target audience is game developers looking to create
-a window quickly and easily. I aim to have feature-parity with `winit` eventually as a secondary goal. Cross-platform 
-support is unlikely, but pull requests are welcomed if anyone else wants to tackle it.
+a window quickly and easily. I aim to have feature-parity with `winit` eventually as a secondary goal. 
+
+Cross-platform support is unlikely, but pull requests are welcomed if anyone else wants to tackle it. 
+
+I would like to eventually transition from using `windows` to `windows-sys` to benefit from better compile times, 
+as the wrappers included in the former are redundant for this crate.
+
+## Details
 
 There are **2** primary threads in `ezwin`:
 
