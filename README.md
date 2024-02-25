@@ -39,7 +39,9 @@ There are **2** primary threads in `ezwin`:
 * **main:** where all the main user code is executed.
 * **window:** where the window is created and the message pump lives.
 
-This layout was chosen to allow for the window messages not to block the application.
+This layout was chosen to allow for the window messages not to block the application. The window thread will proceed
+unblocked normally unless the user executes an action that necessitates a sync point. For now, the only actions that
+requires sync points are resizes and moves.
 
 ## Cargo Features
 
