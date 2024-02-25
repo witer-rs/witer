@@ -110,7 +110,8 @@ impl Window {
         flow: settings.flow,
         window_mode: WindowMode::Normal,
         close_on_x: settings.close_on_x,
-        sizing_or_moving: false,
+        is_sizing_or_moving: false,
+        is_closing: false,
       });
 
       #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
@@ -245,17 +246,22 @@ impl Window {
     }
   }
 
+  pub fn is_closing(&self) -> bool {
+    self.state.get_mut().is_closing
+  }
+
   pub fn close(&self) {
+    self.state.get_mut().is_closing = true;
     *self.current_stage.get_mut() = Stage::Exiting;
   }
 
   fn handle_message(&self, message: Message) -> Option<Message> {
     match message {
       Message::Window(WindowMessage::StartedSizingOrMoving) => {
-        self.state.get_mut().sizing_or_moving = true;
+        self.state.get_mut().is_sizing_or_moving = true;
       }
       Message::Window(WindowMessage::StoppedSizingOrMoving) => {
-        self.state.get_mut().sizing_or_moving = false;
+        self.state.get_mut().is_sizing_or_moving = false;
       }
       _ => (),
     }
