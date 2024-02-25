@@ -1,7 +1,10 @@
 // Reference for multithreaded input processing:
 //   * https://www.jendrikillner.com/post/rust-game-part-3/
 //   * https://github.com/jendrikillner/RustMatch3/blob/rust-game-part-3/
-use std::{sync::RwLock, thread::JoinHandle};
+use std::{
+  sync::{RwLock, RwLockReadGuard},
+  thread::JoinHandle,
+};
 
 use crossbeam::channel::{Receiver, Sender, TryRecvError};
 #[cfg(all(feature = "rwh_05", not(feature = "rwh_06")))]
@@ -41,7 +44,7 @@ use windows::{
 
 use self::{
   stage::Stage,
-  window_message::{SizeState, WindowMessage},
+  window_message::{WindowMessage, WindowMode},
 };
 use crate::{
   debug::{error::WindowError, WindowResult},
@@ -75,7 +78,9 @@ pub struct Window {
   raw_display_handle: RawDisplayHandle,
   #[cfg(feature = "opengl")]
   gl_context: opengl::GlContext,
-
+  hwnd: isize,
+  hinstance: isize,
+  input: Handle<Input>,
   state: Handle<WindowState>,
   window_thread: Handle<Option<JoinHandle<WindowResult<()>>>>,
   receiver: Receiver<Message>,
@@ -94,19 +99,16 @@ impl Window {
     let window_thread = Handle::new(Some(Self::window_loop(settings.clone(), sender)?));
 
     // block until first message sent (which will be the window opening)
-    if let Message::Window(WindowMessage::Ready { h_wnd, hinstance }) = receiver.recv()? {
-      let input = Input::new();
+    if let Message::Window(WindowMessage::Ready { hwnd, hinstance }) = receiver.recv()? {
+      let input = Handle::new(Input::new());
 
       let state = Handle::new(WindowState {
-        h_wnd,
-        hinstance,
         title: settings.title,
         subtitle: String::new(),
         color_mode: settings.color_mode,
         visibility: settings.visibility,
         flow: settings.flow,
-        input,
-        size_state: SizeState::Normal,
+        window_mode: WindowMode::Normal,
         close_on_x: settings.close_on_x,
         sizing_or_moving: false,
       });
@@ -114,7 +116,7 @@ impl Window {
       #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
       let raw_window_handle = {
         let mut handle = Win32WindowHandle::new(
-          std::num::NonZeroIsize::new(h_wnd).expect("window handle should not be zero"),
+          std::num::NonZeroIsize::new(hwnd).expect("window handle should not be zero"),
         );
         let hinstance = std::num::NonZeroIsize::new(hinstance)
           .expect("instance handle should not be zero");
@@ -138,12 +140,15 @@ impl Window {
       };
 
       let window = Self {
+        hwnd,
+        hinstance,
         #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
         raw_window_handle,
         #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
         raw_display_handle,
         #[cfg(feature = "opengl")]
         gl_context,
+        input,
         state,
         window_thread,
         receiver,
@@ -164,7 +169,7 @@ impl Window {
   pub fn set_visibility(&self, visibility: Visibility) {
     self.state.get_mut().visibility = visibility;
     unsafe {
-      ShowWindow(HWND(self.state.get().h_wnd), match visibility {
+      ShowWindow(HWND(self.hwnd), match visibility {
         Visibility::Shown => SW_SHOW,
         Visibility::Hidden => SW_HIDE,
       });
@@ -176,7 +181,7 @@ impl Window {
     let dark_mode = BOOL::from(color_mode == ColorMode::Dark);
     if let Err(error) = unsafe {
       DwmSetWindowAttribute(
-        HWND(self.state.get().h_wnd),
+        HWND(self.hwnd),
         DWMWA_USE_IMMERSIVE_DARK_MODE,
         std::ptr::addr_of!(dark_mode) as *const std::ffi::c_void,
         std::mem::size_of::<BOOL>() as u32,
@@ -188,8 +193,7 @@ impl Window {
 
   pub fn redraw(&self) {
     unsafe {
-      let h_wnd = self.state.get().h_wnd;
-      RedrawWindow(HWND(h_wnd), None, None, RDW_INVALIDATE | RDW_ERASENOW);
+      RedrawWindow(HWND(self.hwnd), None, None, RDW_INVALIDATE | RDW_ERASENOW);
     }
   }
 
@@ -201,11 +205,15 @@ impl Window {
     self.state.get().title.to_owned()
   }
 
+  pub fn input(&self) -> RwLockReadGuard<Input> {
+    self.input.get()
+  }
+
   pub fn set_title(&self, title: impl AsRef<str>) {
     self.state.get_mut().title = title.as_ref().to_owned();
     let title = HSTRING::from(format!("{}{}", title.as_ref(), self.state.get().subtitle));
     unsafe {
-      let _ = SetWindowTextW(HWND(self.state.get().h_wnd), &title);
+      let _ = SetWindowTextW(HWND(self.hwnd), &title);
     }
   }
 
@@ -213,15 +221,14 @@ impl Window {
     self.state.get_mut().subtitle = subtitle.as_ref().to_owned();
     let title = HSTRING::from(format!("{}{}", self.state.get().title, subtitle.as_ref()));
     unsafe {
-      let _ = SetWindowTextW(HWND(self.state.get().h_wnd), &title);
+      let _ = SetWindowTextW(HWND(self.hwnd), &title);
     }
   }
 
   pub fn size(&self) -> Size {
     let mut window_rect = RECT::default();
-    let _ = unsafe {
-      GetWindowRect(HWND(self.state.get().h_wnd), std::ptr::addr_of_mut!(window_rect))
-    };
+    let _ =
+      unsafe { GetWindowRect(HWND(self.hwnd), std::ptr::addr_of_mut!(window_rect)) };
     Size {
       width: window_rect.right - window_rect.left,
       height: window_rect.bottom - window_rect.top,
@@ -230,9 +237,8 @@ impl Window {
 
   pub fn inner_size(&self) -> Size {
     let mut client_rect = RECT::default();
-    let _ = unsafe {
-      GetClientRect(HWND(self.state.get().h_wnd), std::ptr::addr_of_mut!(client_rect))
-    };
+    let _ =
+      unsafe { GetClientRect(HWND(self.hwnd), std::ptr::addr_of_mut!(client_rect)) };
     Size {
       width: client_rect.right - client_rect.left,
       height: client_rect.bottom - client_rect.top,
@@ -261,18 +267,17 @@ impl Window {
         }
       }
       Message::Window(WindowMessage::Resizing { size_state }) => {
-        self.state.get_mut().size_state = size_state;
+        self.state.get_mut().window_mode = size_state;
       }
       Message::Window(WindowMessage::Moving { .. }) => {}
       Message::Keyboard { key, state, .. } => {
-        self.state.get_mut().input.update_key_state(key, state);
-        self.state.get_mut().input.update_modifiers_state();
+        self.input.get_mut().update_key_state(key, state);
+        self.input.get_mut().update_modifiers_state();
       }
       Message::Mouse(MouseMessage::Button { button, state, .. }) => {
         self
-          .state
-          .get_mut()
           .input
+          .get_mut()
           .update_mouse_button_state(button, state);
       }
       _ => {}
@@ -320,12 +325,7 @@ impl Window {
         }
 
         let _ = unsafe {
-          PostMessageW(
-            HWND(self.state.get().h_wnd),
-            Self::MSG_MAIN_CLOSE_REQ,
-            WPARAM(0),
-            LPARAM(0),
-          )
+          PostMessageW(HWND(self.hwnd), Self::MSG_MAIN_CLOSE_REQ, WPARAM(0), LPARAM(0))
         };
         if let Some(thread) = self.window_thread.get_mut().take() {
           let _ = thread.join();
@@ -430,8 +430,8 @@ impl HasWindowHandle for Window {
 unsafe impl HasRawWindowHandle for Window {
   fn raw_window_handle(&self) -> RawWindowHandle {
     let mut handle = Win32WindowHandle::empty();
-    handle.hwnd = self.state.get().h_wnd as *mut std::ffi::c_void;
-    handle.hinstance = self.state.get().hinstance as *mut std::ffi::c_void;
+    handle.hwnd = self.hwnd as *mut std::ffi::c_void;
+    handle.hinstance = self.hinstance as *mut std::ffi::c_void;
     RawWindowHandle::Win32(handle)
   }
 }
@@ -479,7 +479,7 @@ impl Window {
 
         // Send opened message to main function
         sender.send(Message::Window(WindowMessage::Ready {
-          h_wnd: h_wnd.read().unwrap().0,
+          hwnd: h_wnd.read().unwrap().0,
           hinstance: hinstance.0,
         }))?;
 

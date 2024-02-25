@@ -34,7 +34,7 @@ pub enum MessagePriority {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum SizeState {
+pub enum WindowMode {
   Normal,
   Minimized,
 }
@@ -52,10 +52,10 @@ pub enum Message {
   },
   Mouse(MouseMessage),
   Other {
-    h_wnd: isize,
+    hwnd: isize,
     message: u32,
-    w_param: usize,
-    l_param: isize,
+    wparam: usize,
+    lparam: isize,
   },
   CloseRequested,
   Closing,
@@ -63,9 +63,9 @@ pub enum Message {
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub enum WindowMessage {
-  Ready { h_wnd: isize, hinstance: isize },
+  Ready { hwnd: isize, hinstance: isize },
   Draw,
-  Resizing { size_state: SizeState },
+  Resizing { size_state: WindowMode },
   Moving,
   Resized,
   Moved,
@@ -106,9 +106,9 @@ impl Message {
       }
       WindowsAndMessaging::WM_SIZING => Message::Window(WindowMessage::Resizing {
         size_state: if w_param.0 as u32 != WindowsAndMessaging::SIZE_MINIMIZED {
-          SizeState::Normal
+          WindowMode::Normal
         } else {
-          SizeState::Minimized
+          WindowMode::Minimized
         },
       }),
       WindowsAndMessaging::WM_MOVING => Message::Window(WindowMessage::Moving),
@@ -149,10 +149,10 @@ impl Message {
         Message::Mouse(MouseMessage::Scroll { x: delta, y: 0.0 })
       }
       _ => Message::Other {
-        h_wnd: h_wnd.0,
+        hwnd: h_wnd.0,
         message,
-        w_param: w_param.0,
-        l_param: l_param.0,
+        wparam: w_param.0,
+        lparam: l_param.0,
       },
     }
   }

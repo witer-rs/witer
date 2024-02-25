@@ -8,9 +8,11 @@ use std::collections::HashMap;
 use strum::IntoEnumIterator;
 
 use self::state::KeyState;
-use crate::window::input::{key::Key, mouse::Button, state::ButtonState};
+use crate::{
+  handle::Handle,
+  window::input::{key::Key, mouse::Button, state::ButtonState},
+};
 
-#[derive(Debug)]
 pub struct Input {
   mouse_buttons: HashMap<Button, ButtonState>,
   keys: HashMap<Key, KeyState>,
