@@ -325,7 +325,7 @@ impl Window {
         }
 
         let _ = unsafe {
-          PostMessageW(HWND(self.hwnd), Self::MSG_MAIN_CLOSE_REQ, WPARAM(0), LPARAM(0))
+          SendMessageW(HWND(self.hwnd), Self::MSG_MAIN_CLOSE_REQ, WPARAM(0), LPARAM(0))
         };
         if let Some(thread) = self.window_thread.get_mut().take() {
           let _ = thread.join();
@@ -484,19 +484,7 @@ impl Window {
         }))?;
 
         // Message pump
-        while let Some(message) = Self::message_pump() {
-          #[allow(clippy::single_match)]
-          match message {
-            Message::Other {
-              message: Window::MSG_MAIN_CLOSE_REQ,
-              ..
-            } => {
-              let _ = unsafe { DestroyWindow(*h_wnd.read().unwrap()) };
-              break;
-            }
-            _ => {}
-          }
-        }
+        while Self::message_pump().is_some() {}
 
         Ok(())
       })?;

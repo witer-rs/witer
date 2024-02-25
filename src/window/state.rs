@@ -1,4 +1,4 @@
-use super::{input::Input, window_message::WindowMode};
+use super::window_message::WindowMode;
 use crate::window::settings::{ColorMode, Flow, Visibility};
 
 #[derive(Debug)]

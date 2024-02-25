@@ -1,17 +1,14 @@
-pub mod key;
-pub mod modifier;
-pub mod mouse;
-pub mod state;
-
 use std::collections::HashMap;
 
 use strum::IntoEnumIterator;
 
 use self::state::KeyState;
-use crate::{
-  handle::Handle,
-  window::input::{key::Key, mouse::Button, state::ButtonState},
-};
+use crate::window::input::{key::Key, mouse::Button, state::ButtonState};
+
+pub mod key;
+pub mod modifier;
+pub mod mouse;
+pub mod state;
 
 pub struct Input {
   mouse_buttons: HashMap<Button, ButtonState>,

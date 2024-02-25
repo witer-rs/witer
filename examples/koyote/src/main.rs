@@ -18,7 +18,18 @@ fn main() -> WindowResult<()> {
   let mut last_time = Instant::now();
   let mut engine_time = TimeSettings::default().build();
 
-  for _msg in &window {
+  for msg in &window {
+    if let Message::None = msg {
+      window.redraw();
+    }
+
+    if let Message::Window(WindowMessage::Draw) = msg {
+      println!("{:?}", window.input().key(Key::Escape));
+      if window.input().key(Key::Escape).is_pressed() {
+        window.close();
+      }
+    }
+
     let time = engine_time.time();
     on_frame_infallible(
       &mut engine_time,
