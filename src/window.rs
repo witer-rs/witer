@@ -1,12 +1,9 @@
 // Reference for multithreaded input processing:
 //   * https://www.jendrikillner.com/post/rust-game-part-3/
 //   * https://github.com/jendrikillner/RustMatch3/blob/rust-game-part-3/
-use std::{
-  sync::{RwLock, RwLockReadGuard},
-  thread::JoinHandle,
-};
+use std::{sync::RwLock, thread::JoinHandle};
 
-use crossbeam::channel::{Receiver, Sender, TryRecvError};
+use crossbeam::channel::{Sender, TryRecvError};
 #[cfg(all(feature = "rwh_05", not(feature = "rwh_06")))]
 use rwh_05::{
   HasRawDisplayHandle,
@@ -49,6 +46,7 @@ use self::{
 use crate::{
   debug::{error::WindowError, WindowResult},
   handle::Handle,
+  prelude::{ButtonState, Key, KeyState, Mouse},
   window::{
     input::Input,
     procedure::SubclassWindowData,
@@ -72,19 +70,9 @@ pub mod window_message;
 
 #[allow(unused)]
 pub struct Window {
-  #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
-  raw_window_handle: RawWindowHandle,
-  #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
-  raw_display_handle: RawDisplayHandle,
-  #[cfg(feature = "opengl")]
-  gl_context: opengl::GlContext,
   hwnd: isize,
   hinstance: isize,
-  input: Handle<Input>,
   state: Handle<WindowState>,
-  window_thread: Handle<Option<JoinHandle<WindowResult<()>>>>,
-  receiver: Receiver<Message>,
-  current_stage: Handle<Stage>,
 }
 
 impl Window {
@@ -96,23 +84,11 @@ impl Window {
   pub fn new(settings: WindowSettings) -> Result<Self, WindowError> {
     let (sender, receiver) = crossbeam::channel::unbounded();
 
-    let window_thread = Handle::new(Some(Self::window_loop(settings.clone(), sender)?));
+    let window_thread = Some(Self::window_loop(settings.clone(), sender)?);
 
     // block until first message sent (which will be the window opening)
     if let Message::Window(WindowMessage::Ready { hwnd, hinstance }) = receiver.recv()? {
-      let input = Handle::new(Input::new());
-
-      let state = Handle::new(WindowState {
-        title: settings.title,
-        subtitle: String::new(),
-        color_mode: settings.color_mode,
-        visibility: settings.visibility,
-        flow: settings.flow,
-        window_mode: WindowMode::Normal,
-        close_on_x: settings.close_on_x,
-        is_sizing_or_moving: false,
-        is_closing: false,
-      });
+      let input = Input::new();
 
       #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
       let raw_window_handle = {
@@ -131,29 +107,30 @@ impl Window {
         RawDisplayHandle::from(handle)
       };
 
-      #[cfg(feature = "opengl")]
-      let gl_context = {
-        let hdc = unsafe { windows::Win32::Graphics::Gdi::GetDC(HWND(h_wnd)) };
-        opengl::GlContext {
-          hdc,
-          // gl_context: opengl::create_context()?,
-        }
-      };
-
-      let window = Self {
-        hwnd,
-        hinstance,
+      let state = Handle::new(WindowState {
         #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
         raw_window_handle,
         #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
         raw_display_handle,
-        #[cfg(feature = "opengl")]
-        gl_context,
-        input,
-        state,
+        window_mode: WindowMode::Normal,
+        title: settings.title,
+        subtitle: String::new(),
+        color_mode: settings.color_mode,
+        visibility: settings.visibility,
+        flow: settings.flow,
+        current_stage: Stage::Looping,
+        close_on_x: settings.close_on_x,
+        is_sizing_or_moving: false,
+        is_closing: false,
         window_thread,
         receiver,
-        current_stage: Handle::new(Stage::Looping),
+        input,
+      });
+
+      let window = Self {
+        hwnd,
+        hinstance,
+        state,
       };
 
       let color_mode = window.state.get().color_mode;
@@ -206,10 +183,6 @@ impl Window {
     self.state.get().title.to_owned()
   }
 
-  pub fn input(&self) -> RwLockReadGuard<Input> {
-    self.input.get()
-  }
-
   pub fn set_title(&self, title: impl AsRef<str>) {
     self.state.get_mut().title = title.as_ref().to_owned();
     let title = HSTRING::from(format!("{}{}", title.as_ref(), self.state.get().subtitle));
@@ -246,13 +219,43 @@ impl Window {
     }
   }
 
+  // KEYBOARD
+
+  pub fn key(&self, keycode: Key) -> KeyState {
+    self.state.get().input.key(keycode)
+  }
+
+  // MOUSE
+
+  pub fn mouse(&self, button: Mouse) -> ButtonState {
+    self.state.get().input.mouse(button)
+  }
+
+  // MODS
+
+  pub fn shift(&self) -> ButtonState {
+    self.state.get().input.shift()
+  }
+
+  pub fn ctrl(&self) -> ButtonState {
+    self.state.get().input.ctrl()
+  }
+
+  pub fn alt(&self) -> ButtonState {
+    self.state.get().input.alt()
+  }
+
+  pub fn win(&self) -> ButtonState {
+    self.state.get().input.win()
+  }
+
   pub fn is_closing(&self) -> bool {
     self.state.get_mut().is_closing
   }
 
   pub fn close(&self) {
     self.state.get_mut().is_closing = true;
-    *self.current_stage.get_mut() = Stage::Exiting;
+    self.state.get_mut().current_stage = Stage::Exiting;
   }
 
   fn handle_message(&self, message: Message) -> Option<Message> {
@@ -277,13 +280,14 @@ impl Window {
       }
       Message::Window(WindowMessage::Moving { .. }) => {}
       Message::Keyboard { key, state, .. } => {
-        self.input.get_mut().update_key_state(key, state);
-        self.input.get_mut().update_modifiers_state();
+        self.state.get_mut().input.update_key_state(key, state);
+        self.state.get_mut().input.update_modifiers_state();
       }
       Message::Mouse(MouseMessage::Button { button, state, .. }) => {
         self
-          .input
+          .state
           .get_mut()
+          .input
           .update_mouse_button_state(button, state);
       }
       _ => {}
@@ -293,25 +297,26 @@ impl Window {
   }
 
   fn next_message(&self, should_wait: bool) -> Option<Message> {
-    let current_stage = *self.current_stage.get();
+    let current_stage = self.state.get_mut().current_stage;
+    let receiver = self.state.get().receiver.clone();
 
     let next = match current_stage {
       Stage::Looping => {
         if should_wait {
-          match self.receiver.recv() {
+          match receiver.recv() {
             Ok(message) => self.handle_message(message),
             _ => {
               error!("channel between main and window was closed!");
-              *self.current_stage.get_mut() = Stage::Exiting;
+              self.state.get_mut().current_stage = Stage::Exiting;
               Some(Message::None)
             }
           }
         } else {
-          match self.receiver.try_recv() {
+          match receiver.try_recv() {
             Ok(message) => self.handle_message(message),
             Err(TryRecvError::Disconnected) => {
               error!("channel between main and window was closed!");
-              *self.current_stage.get_mut() = Stage::Exiting;
+              self.state.get_mut().current_stage = Stage::Exiting;
               Some(Message::None)
             }
             _ => Some(Message::None),
@@ -319,7 +324,7 @@ impl Window {
         }
       }
       Stage::Exiting => {
-        *self.current_stage.get_mut() = Stage::ExitLoop;
+        self.state.get_mut().current_stage = Stage::ExitLoop;
         Some(Message::Closing)
       }
       Stage::ExitLoop => {
@@ -333,7 +338,7 @@ impl Window {
         let _ = unsafe {
           SendMessageW(HWND(self.hwnd), Self::MSG_MAIN_CLOSE_REQ, WPARAM(0), LPARAM(0))
         };
-        if let Some(thread) = self.window_thread.get_mut().take() {
+        if let Some(thread) = self.state.get_mut().window_thread.take() {
           let _ = thread.join();
         }
         None
@@ -428,7 +433,7 @@ impl<'a> IntoIterator for &'a mut Window {
 #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
 impl HasWindowHandle for Window {
   fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {
-    Ok(unsafe { WindowHandle::borrow_raw(self.raw_window_handle) })
+    Ok(unsafe { WindowHandle::borrow_raw(self.state.get().raw_window_handle) })
   }
 }
 
@@ -445,7 +450,7 @@ unsafe impl HasRawWindowHandle for Window {
 #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
 impl HasDisplayHandle for Window {
   fn display_handle(&self) -> Result<DisplayHandle<'_>, HandleError> {
-    Ok(unsafe { DisplayHandle::borrow_raw(self.raw_display_handle) })
+    Ok(unsafe { DisplayHandle::borrow_raw(self.state.get().raw_display_handle) })
   }
 }
 

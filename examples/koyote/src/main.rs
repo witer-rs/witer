@@ -24,8 +24,7 @@ fn main() -> WindowResult<()> {
     }
 
     if let Message::Window(WindowMessage::Draw) = msg {
-      println!("{:?}", window.input().key(Key::Escape));
-      if window.input().key(Key::Escape).is_pressed() {
+      if window.key(Key::Escape).is_pressed() {
         window.close();
       }
     }

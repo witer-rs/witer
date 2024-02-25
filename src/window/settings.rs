@@ -106,10 +106,4 @@ impl WindowSettings {
     self.close_on_x = close_on_x;
     self
   }
-
-  #[cfg(feature = "opengl")]
-  pub fn with_gl_context(mut self, with_gl_context: bool) -> Self {
-    self.with_gl_context = with_gl_context;
-    self
-  }
 }

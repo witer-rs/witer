@@ -3,7 +3,7 @@ pub use crate::{
   window::{
     input::{
       key::Key,
-      mouse::Button,
+      mouse::Mouse,
       state::{ButtonState, KeyState},
       Input,
     },

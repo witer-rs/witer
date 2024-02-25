@@ -14,7 +14,7 @@ use windows::Win32::{
   },
 };
 
-use super::input::mouse::Button;
+use super::input::mouse::Mouse;
 use crate::{
   hi_word,
   lo_byte,
@@ -76,7 +76,7 @@ pub enum WindowMessage {
 #[derive(Debug, PartialEq, Clone)]
 pub enum MouseMessage {
   Button {
-    button: Button,
+    button: Mouse,
     state: ButtonState,
     x: i16,
     y: i16,
@@ -211,28 +211,28 @@ impl Message {
   fn new_mouse_button_message(message: u32, w_param: WPARAM, l_param: LPARAM) -> Message {
     let flags = w_param.0 as u32;
 
-    let mouse_code: Button = {
+    let mouse_code: Mouse = {
       match message {
         WindowsAndMessaging::WM_LBUTTONDBLCLK
         | WindowsAndMessaging::WM_LBUTTONDOWN
-        | WindowsAndMessaging::WM_LBUTTONUP => Button::Left,
+        | WindowsAndMessaging::WM_LBUTTONUP => Mouse::Left,
         WindowsAndMessaging::WM_MBUTTONDBLCLK
         | WindowsAndMessaging::WM_MBUTTONDOWN
-        | WindowsAndMessaging::WM_MBUTTONUP => Button::Middle,
+        | WindowsAndMessaging::WM_MBUTTONUP => Mouse::Middle,
         WindowsAndMessaging::WM_RBUTTONDBLCLK
         | WindowsAndMessaging::WM_RBUTTONDOWN
-        | WindowsAndMessaging::WM_RBUTTONUP => Button::Right,
+        | WindowsAndMessaging::WM_RBUTTONUP => Mouse::Right,
         WindowsAndMessaging::WM_XBUTTONDBLCLK
         | WindowsAndMessaging::WM_XBUTTONDOWN
         | WindowsAndMessaging::WM_XBUTTONUP => {
           let hi_flags = hi_word(flags);
           if (hi_flags & WindowsAndMessaging::XBUTTON1) == WindowsAndMessaging::XBUTTON1 {
-            Button::Back
+            Mouse::Back
           } else {
-            Button::Forward
+            Mouse::Forward
           }
         }
-        _ => Button::Unknown,
+        _ => Mouse::Unknown,
       }
     };
 
