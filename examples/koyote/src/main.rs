@@ -13,6 +13,8 @@ fn main() -> WindowResult<()> {
       .with_size((800, 600)),
   )?;
 
+  println!("{:?} | {:?}", window.size(), window.inner_size());
+
   // Loop
 
   let mut last_time = Instant::now();
@@ -27,6 +29,10 @@ fn main() -> WindowResult<()> {
       if window.key(Key::Escape).is_pressed() {
         window.close();
       }
+    }
+
+    if let Message::Window(WindowMessage::Resizing { .. }) = msg {
+      println!("{:?} | {:?}", window.size(), window.inner_size());
     }
 
     let time = engine_time.time();

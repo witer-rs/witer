@@ -65,7 +65,7 @@ pub enum Message {
 pub enum WindowMessage {
   Ready { hwnd: isize, hinstance: isize },
   Draw,
-  Resizing { size_state: WindowMode },
+  Resizing { window_mode: WindowMode },
   Moving,
   Resized,
   Moved,
@@ -105,7 +105,7 @@ impl Message {
         Message::Window(WindowMessage::StoppedSizingOrMoving)
       }
       WindowsAndMessaging::WM_SIZING => Message::Window(WindowMessage::Resizing {
-        size_state: if w_param.0 as u32 != WindowsAndMessaging::SIZE_MINIMIZED {
+        window_mode: if w_param.0 as u32 != WindowsAndMessaging::SIZE_MINIMIZED {
           WindowMode::Normal
         } else {
           WindowMode::Minimized

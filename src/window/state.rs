@@ -9,7 +9,7 @@ use crate::{
   debug::WindowResult,
   prelude::{Input, Message},
   window::{
-    settings::{ColorMode, Flow, Visibility},
+    settings::{ColorMode, Flow, Size, Visibility},
     stage::Stage,
   },
 };
@@ -23,6 +23,8 @@ pub struct WindowState {
   pub window_mode: WindowMode,
   pub title: String,
   pub subtitle: String,
+  pub size: Size,
+  pub inner_size: Size,
   pub color_mode: ColorMode,
   pub visibility: Visibility,
   pub flow: Flow,

@@ -107,6 +107,13 @@ impl Window {
         RawDisplayHandle::from(handle)
       };
 
+      let mut client_rect = RECT::default();
+      let _ = unsafe { GetClientRect(HWND(hwnd), std::ptr::addr_of_mut!(client_rect)) };
+      let inner_size = Size {
+        width: client_rect.right - client_rect.left,
+        height: client_rect.bottom - client_rect.top,
+      };
+
       let state = Handle::new(WindowState {
         #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
         raw_window_handle,
@@ -115,6 +122,8 @@ impl Window {
         window_mode: WindowMode::Normal,
         title: settings.title,
         subtitle: String::new(),
+        size: settings.size,
+        inner_size,
         color_mode: settings.color_mode,
         visibility: settings.visibility,
         flow: settings.flow,
@@ -200,23 +209,11 @@ impl Window {
   }
 
   pub fn size(&self) -> Size {
-    let mut window_rect = RECT::default();
-    let _ =
-      unsafe { GetWindowRect(HWND(self.hwnd), std::ptr::addr_of_mut!(window_rect)) };
-    Size {
-      width: window_rect.right - window_rect.left,
-      height: window_rect.bottom - window_rect.top,
-    }
+    self.state.get().size
   }
 
   pub fn inner_size(&self) -> Size {
-    let mut client_rect = RECT::default();
-    let _ =
-      unsafe { GetClientRect(HWND(self.hwnd), std::ptr::addr_of_mut!(client_rect)) };
-    Size {
-      width: client_rect.right - client_rect.left,
-      height: client_rect.bottom - client_rect.top,
-    }
+    self.state.get().inner_size
   }
 
   // KEYBOARD
@@ -259,38 +256,60 @@ impl Window {
   }
 
   fn handle_message(&self, message: Message) -> Option<Message> {
-    match message {
-      Message::Window(WindowMessage::StartedSizingOrMoving) => {
-        self.state.get_mut().is_sizing_or_moving = true;
-      }
-      Message::Window(WindowMessage::StoppedSizingOrMoving) => {
-        self.state.get_mut().is_sizing_or_moving = false;
-      }
-      _ => (),
-    }
-
-    match message {
+    match &message {
       Message::CloseRequested => {
         if self.state.get().close_on_x {
           self.close();
         }
       }
-      Message::Window(WindowMessage::Resizing { size_state }) => {
-        self.state.get_mut().window_mode = size_state;
-      }
-      Message::Window(WindowMessage::Moving { .. }) => {}
-      Message::Keyboard { key, state, .. } => {
+      Message::Window(message) => match message {
+        WindowMessage::StartedSizingOrMoving => {
+          self.state.get_mut().is_sizing_or_moving = true;
+        }
+        WindowMessage::StoppedSizingOrMoving => {
+          self.state.get_mut().is_sizing_or_moving = false;
+        }
+        WindowMessage::Resizing { window_mode } => {
+          let mut window_rect = RECT::default();
+          let _ = unsafe {
+            GetWindowRect(HWND(self.hwnd), std::ptr::addr_of_mut!(window_rect))
+          };
+          let size = Size {
+            width: window_rect.right - window_rect.left,
+            height: window_rect.bottom - window_rect.top,
+          };
+
+          let mut client_rect = RECT::default();
+          let _ = unsafe {
+            GetClientRect(HWND(self.hwnd), std::ptr::addr_of_mut!(client_rect))
+          };
+          let inner_size = Size {
+            width: client_rect.right - client_rect.left,
+            height: client_rect.bottom - client_rect.top,
+          };
+
+          {
+            let mut state = self.state.get_mut();
+            state.window_mode = *window_mode;
+            state.size = size;
+            state.inner_size = inner_size;
+          }
+        }
+        WindowMessage::Moving { .. } => (),
+        _ => (),
+      },
+      &Message::Keyboard { key, state, .. } => {
         self.state.get_mut().input.update_key_state(key, state);
         self.state.get_mut().input.update_modifiers_state();
       }
-      Message::Mouse(MouseMessage::Button { button, state, .. }) => {
+      &Message::Mouse(MouseMessage::Button { button, state, .. }) => {
         self
           .state
           .get_mut()
           .input
           .update_mouse_button_state(button, state);
       }
-      _ => {}
+      _ => (),
     }
 
     Some(message)
