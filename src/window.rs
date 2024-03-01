@@ -32,17 +32,14 @@ use windows::{
     Foundation::*,
     Graphics::{
       Dwm::{DwmSetWindowAttribute, DWMWA_USE_IMMERSIVE_DARK_MODE},
-      Gdi::{RedrawWindow, RDW_ERASENOW, RDW_INVALIDATE},
+      Gdi::{RedrawWindow, RDW_ERASENOW, RDW_INTERNALPAINT, RDW_INVALIDATE},
     },
     System::LibraryLoader::GetModuleHandleW,
     UI::{Shell::SetWindowSubclass, WindowsAndMessaging::*},
   },
 };
 
-use self::{
-  stage::Stage,
-  window_message::{WindowMessage, WindowMode},
-};
+use self::{stage::Stage, window_message::WindowMessage};
 use crate::{
   debug::{error::WindowError, WindowResult},
   handle::Handle,
@@ -107,23 +104,15 @@ impl Window {
         RawDisplayHandle::from(handle)
       };
 
-      let mut client_rect = RECT::default();
-      let _ = unsafe { GetClientRect(HWND(hwnd), std::ptr::addr_of_mut!(client_rect)) };
-      let inner_size = Size {
-        width: client_rect.right - client_rect.left,
-        height: client_rect.bottom - client_rect.top,
-      };
-
       let state = Handle::new(WindowState {
         #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
         raw_window_handle,
         #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
         raw_display_handle,
-        window_mode: WindowMode::Normal,
         title: settings.title,
         subtitle: String::new(),
-        size: settings.size,
-        inner_size,
+        // size: settings.size,
+        // inner_size,
         color_mode: settings.color_mode,
         visibility: settings.visibility,
         flow: settings.flow,
@@ -180,7 +169,7 @@ impl Window {
 
   pub fn redraw(&self) {
     unsafe {
-      RedrawWindow(HWND(self.hwnd), None, None, RDW_INVALIDATE | RDW_ERASENOW);
+      RedrawWindow(HWND(self.hwnd), None, None, RDW_INTERNALPAINT);
     }
   }
 
@@ -209,11 +198,23 @@ impl Window {
   }
 
   pub fn size(&self) -> Size {
-    self.state.get().size
+    let mut window_rect = RECT::default();
+    let _ =
+      unsafe { GetWindowRect(HWND(self.hwnd), std::ptr::addr_of_mut!(window_rect)) };
+    Size {
+      width: window_rect.right - window_rect.left,
+      height: window_rect.bottom - window_rect.top,
+    }
   }
 
   pub fn inner_size(&self) -> Size {
-    self.state.get().inner_size
+    let mut client_rect = RECT::default();
+    let _ =
+      unsafe { GetClientRect(HWND(self.hwnd), std::ptr::addr_of_mut!(client_rect)) };
+    Size {
+      width: client_rect.right - client_rect.left,
+      height: client_rect.bottom - client_rect.top,
+    }
   }
 
   // KEYBOARD
@@ -269,33 +270,11 @@ impl Window {
         WindowMessage::StoppedSizingOrMoving => {
           self.state.get_mut().is_sizing_or_moving = false;
         }
-        WindowMessage::Resizing { window_mode } => {
-          let mut window_rect = RECT::default();
-          let _ = unsafe {
-            GetWindowRect(HWND(self.hwnd), std::ptr::addr_of_mut!(window_rect))
-          };
-          let size = Size {
-            width: window_rect.right - window_rect.left,
-            height: window_rect.bottom - window_rect.top,
-          };
-
-          let mut client_rect = RECT::default();
-          let _ = unsafe {
-            GetClientRect(HWND(self.hwnd), std::ptr::addr_of_mut!(client_rect))
-          };
-          let inner_size = Size {
-            width: client_rect.right - client_rect.left,
-            height: client_rect.bottom - client_rect.top,
-          };
-
-          {
-            let mut state = self.state.get_mut();
-            state.window_mode = *window_mode;
-            state.size = size;
-            state.inner_size = inner_size;
-          }
-        }
-        WindowMessage::Moving { .. } => (),
+        // WindowMessage::Resizing { window_mode } => {
+        //   let mut state = self.state.get_mut();
+        //   state.window_mode = *window_mode;
+        // }
+        // WindowMessage::Moving { .. } => (),
         _ => (),
       },
       &Message::Keyboard { key, state, .. } => {
@@ -577,10 +556,7 @@ impl Window {
     };
 
     if hwnd.0 == 0 {
-      match unsafe { GetLastError() } {
-        Ok(()) => Err(WindowError::Error("HWND was null".to_owned())),
-        Err(error) => Err(error.into()),
-      }
+      Err(WindowError::Win32Error(windows::core::Error::from_win32()))
     } else {
       Ok((hwnd, wc))
     }

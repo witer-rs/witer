@@ -4,12 +4,11 @@ use crossbeam::channel::Receiver;
 #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
 use rwh_06::{RawDisplayHandle, RawWindowHandle};
 
-use super::window_message::WindowMode;
 use crate::{
   debug::WindowResult,
   prelude::{Input, Message},
   window::{
-    settings::{ColorMode, Flow, Size, Visibility},
+    settings::{ColorMode, Flow, Visibility},
     stage::Stage,
   },
 };
@@ -20,11 +19,9 @@ pub struct WindowState {
   pub raw_window_handle: RawWindowHandle,
   #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
   pub raw_display_handle: RawDisplayHandle,
-  pub window_mode: WindowMode,
+  // pub window_mode: WindowMode,
   pub title: String,
   pub subtitle: String,
-  pub size: Size,
-  pub inner_size: Size,
   pub color_mode: ColorMode,
   pub visibility: Visibility,
   pub flow: Flow,

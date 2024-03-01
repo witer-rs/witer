@@ -14,7 +14,7 @@ use windows::Win32::{
   },
 };
 
-use super::input::mouse::Mouse;
+use super::{input::mouse::Mouse, settings::Size};
 use crate::{
   hi_word,
   lo_byte,
@@ -65,9 +65,9 @@ pub enum Message {
 pub enum WindowMessage {
   Ready { hwnd: isize, hinstance: isize },
   Draw,
-  Resizing { window_mode: WindowMode },
-  Moving,
-  Resized,
+  // Resizing { window_mode: WindowMode },
+  // Moving,
+  Resized { size: Size },
   Moved,
   StartedSizingOrMoving,
   StoppedSizingOrMoving,
@@ -104,16 +104,23 @@ impl Message {
       WindowsAndMessaging::WM_EXITSIZEMOVE => {
         Message::Window(WindowMessage::StoppedSizingOrMoving)
       }
-      WindowsAndMessaging::WM_SIZING => Message::Window(WindowMessage::Resizing {
-        window_mode: if w_param.0 as u32 != WindowsAndMessaging::SIZE_MINIMIZED {
-          WindowMode::Normal
-        } else {
-          WindowMode::Minimized
-        },
-      }),
-      WindowsAndMessaging::WM_MOVING => Message::Window(WindowMessage::Moving),
-      WindowsAndMessaging::WM_SIZE => Message::Window(WindowMessage::Resized),
-      WindowsAndMessaging::WM_MOVE => Message::Window(WindowMessage::Moved),
+      // WindowsAndMessaging::WM_SIZING => Message::Window(WindowMessage::Resizing {
+      //   window_mode: if w_param.0 as u32 != WindowsAndMessaging::SIZE_MINIMIZED {
+      //     WindowMode::Normal
+      //   } else {
+      //     WindowMode::Minimized
+      //   },
+      // }),
+      // WindowsAndMessaging::WM_MOVING => Message::Window(WindowMessage::Moving),
+      WindowsAndMessaging::WM_SIZE => {
+        let width = lo_word(l_param.0 as u32) as i32;
+        let height = hi_word(l_param.0 as u32) as i32;
+
+        Message::Window(WindowMessage::Resized {
+          size: Size { width, height },
+        })
+      }
+      WindowsAndMessaging::WM_WINDOWPOSCHANGED => Message::Window(WindowMessage::Moved),
       msg
         if (WindowsAndMessaging::WM_KEYFIRST..=WindowsAndMessaging::WM_KEYLAST)
           .contains(&msg) =>

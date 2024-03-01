@@ -25,6 +25,30 @@ pub struct Size {
   pub height: i32,
 }
 
+impl From<Size> for (u32, u32) {
+  fn from(val: Size) -> Self {
+    (val.width as u32, val.height as u32)
+  }
+}
+
+impl From<Size> for (i32, i32) {
+  fn from(val: Size) -> Self {
+    (val.width, val.height)
+  }
+}
+
+impl From<Size> for [u32; 2] {
+  fn from(val: Size) -> Self {
+    [val.width as u32, val.height as u32]
+  }
+}
+
+impl From<Size> for [i32; 2] {
+  fn from(val: Size) -> Self {
+    [val.width, val.height]
+  }
+}
+
 impl Default for Size {
   fn default() -> Self {
     Self {

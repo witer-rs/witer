@@ -36,14 +36,16 @@ pub extern "system" fn subclass_proc(
 
   let win_message = Message::new(h_wnd, message, w_param, l_param);
   #[allow(clippy::match_single_binding)]
-  match win_message {
-    Message::Window(WindowMessage::Resizing { .. } | WindowMessage::Moving { .. }) => {
-      let _ = data.sender.send(win_message);
-    }
-    _ => {
-      let _ = data.sender.try_send(win_message);
-    }
-  };
+  if matches!(
+    message,
+    WindowsAndMessaging::WM_SIZING
+      | WindowsAndMessaging::WM_MOVING
+      | WindowsAndMessaging::WM_MOVE
+  ) {
+    // do nothing, these are just spammy
+  } else {
+    let _ = data.sender.send(win_message);
+  }
 
   match message {
     Window::MSG_MAIN_CLOSE_REQ => {

@@ -31,7 +31,7 @@ fn main() -> WindowResult<()> {
       }
     }
 
-    if let Message::Window(WindowMessage::Resizing { .. }) = msg {
+    if let Message::Window(WindowMessage::Resized { .. }) = msg {
       println!("{:?} | {:?}", window.size(), window.inner_size());
     }
 
