@@ -43,12 +43,12 @@ pub extern "system" fn subclass_proc(
 
     match current_stage {
       Stage::Looping => {
-        dispatcher.update(window, handle_message(window, message));
+        dispatcher.callback(window, handle_message(window, message));
       }
       Stage::Closing => {
         window.state.get_mut().current_stage = Stage::Destroyed;
 
-        dispatcher.update(window, Message::Closing);
+        dispatcher.callback(window, Message::Closing);
       }
       Stage::Destroyed => {
         window.state.get_mut().current_stage = Stage::ExitLoop;
@@ -62,7 +62,7 @@ pub extern "system" fn subclass_proc(
 
         unsafe { DestroyWindow(hwnd) }.expect("failed to destroy window");
 
-        dispatcher.update(window, Message::Destroyed);
+        dispatcher.callback(window, Message::Destroyed);
       }
       Stage::ExitLoop => (),
     }

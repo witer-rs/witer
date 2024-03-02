@@ -289,7 +289,7 @@ impl Window {
 
 #[allow(unused)]
 pub trait WindowProcedure {
-  fn update(&mut self, window: &Arc<Window>, message: Message) {}
+  fn callback(&mut self, window: &Arc<Window>, message: Message) {}
 }
 
 fn create_hwnd(settings: WindowSettings) -> WindowResult<(HWND, WNDCLASSEXW)> {

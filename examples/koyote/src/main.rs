@@ -57,7 +57,7 @@ impl App {
 }
 
 impl WindowProcedure for App {
-  fn update(&mut self, window: &Arc<Window>, message: Message) {
+  fn callback(&mut self, window: &Arc<Window>, message: Message) {
     match message {
       Message::Window(WindowMessage::Draw) => {
         self.draw(window);
