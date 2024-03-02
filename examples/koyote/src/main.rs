@@ -3,7 +3,7 @@
 use std::time::{Duration, Instant};
 
 use ezwin::prelude::*;
-use foxy_time::{EngineTime, TimeSettings};
+use foxy_time::TimeSettings;
 
 fn main() -> WindowResult<()> {
   let window = Window::new(
@@ -18,7 +18,7 @@ fn main() -> WindowResult<()> {
   // Loop
 
   let mut last_time = Instant::now();
-  let mut engine_time = TimeSettings::default().build();
+  let mut time = TimeSettings::default().build();
 
   for msg in &window {
     if let Message::None = msg {
@@ -35,43 +35,18 @@ fn main() -> WindowResult<()> {
       println!("{:?} | {:?}", window.size(), window.inner_size());
     }
 
-    let time = engine_time.time();
-    on_frame_infallible(
-      &mut engine_time,
-      || {},
-      || {
-        let now = Instant::now();
-        let elapsed = now.duration_since(last_time);
-        if elapsed >= Duration::from_secs_f64(0.20) {
-          window.set_subtitle(format!(" | FPS: {:.1?}", 1.0 / time.average_delta_secs()));
-          last_time = now;
-        }
-      },
-    );
+    time.update();
+    while time.should_do_tick_unchecked() {
+      time.tick();
+    }
+
+    let now = Instant::now();
+    let elapsed = now.duration_since(last_time);
+    if elapsed >= Duration::from_secs_f64(0.20) {
+      window.set_subtitle(format!(" | FPS: {:.1?}", 1.0 / time.average_delta_secs()));
+      last_time = now;
+    }
   }
 
   Ok(())
-}
-
-// fn on_frame<T, E>(time: &mut EngineTime, mut on_tick: impl FnMut() ->
-// Result<T, E>, mut on_update: impl FnMut() -> Result<T, E>) -> Result<T, E> {
-//   time.update();
-//   while time.should_do_tick_unchecked() {
-//     time.tick();
-//     on_tick()?;
-//   }
-//   on_update()
-// }
-
-fn on_frame_infallible(
-  time: &mut EngineTime,
-  mut on_tick: impl FnMut(),
-  mut on_update: impl FnMut(),
-) {
-  time.update();
-  while time.should_do_tick_unchecked() {
-    time.tick();
-    on_tick();
-  }
-  on_update();
 }

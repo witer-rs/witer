@@ -32,7 +32,7 @@ use windows::{
     Foundation::*,
     Graphics::{
       Dwm::{DwmSetWindowAttribute, DWMWA_USE_IMMERSIVE_DARK_MODE},
-      Gdi::{RedrawWindow, RDW_ERASENOW, RDW_INTERNALPAINT, RDW_INVALIDATE},
+      Gdi::{RedrawWindow, RDW_INTERNALPAINT},
     },
     System::LibraryLoader::GetModuleHandleW,
     UI::{Shell::SetWindowSubclass, WindowsAndMessaging::*},

@@ -41,6 +41,7 @@ pub extern "system" fn subclass_proc(
     WindowsAndMessaging::WM_SIZING
       | WindowsAndMessaging::WM_MOVING
       | WindowsAndMessaging::WM_MOVE
+      | WindowsAndMessaging::WM_SETTEXT
   ) {
     // do nothing, these are just spammy
   } else {
