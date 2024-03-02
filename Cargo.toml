@@ -36,4 +36,4 @@ features = ["Win32_Foundation", "Win32_Security", "Win32_System_Threading", "Win
 
 [workspace]
 resolver = "2"
-members  = ["examples/koyote", "examples/ookami", "examples/foxy", "examples/foxy_renderer"]
+members  = ["examples/koyote"]
