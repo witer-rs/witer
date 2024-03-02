@@ -4,6 +4,7 @@ use strum::Display;
 #[derive(Debug, Display, Clone, Copy)]
 pub enum Stage {
   Looping,
-  Exiting,
+  Closing,
+  Destroyed,
   ExitLoop,
 }

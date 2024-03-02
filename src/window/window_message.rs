@@ -14,7 +14,7 @@ use windows::Win32::{
   },
 };
 
-use super::{input::mouse::Mouse, settings::Size};
+use super::{input::mouse::Mouse, settings::Size, Window};
 use crate::{
   hi_word,
   lo_byte,
@@ -59,6 +59,9 @@ pub enum Message {
   },
   CloseRequested,
   Closing,
+  Destroyed,
+  LoopExit,
+  Ignored,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
@@ -95,6 +98,11 @@ pub enum MouseMessage {
 impl Message {
   pub fn new(h_wnd: HWND, message: u32, w_param: WPARAM, l_param: LPARAM) -> Self {
     match message {
+      WindowsAndMessaging::WM_SETTEXT
+      | WindowsAndMessaging::WM_SIZING
+      | WindowsAndMessaging::WM_MOVING
+      | WindowsAndMessaging::WM_MOVE => Message::Ignored,
+      Window::MSG_EMPTY => Message::None,
       WindowsAndMessaging::WM_CLOSE => Message::CloseRequested,
       WindowsAndMessaging::WM_DESTROY => Message::Closing,
       WindowsAndMessaging::WM_PAINT => Message::Window(WindowMessage::Draw),
