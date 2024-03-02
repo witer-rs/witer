@@ -1,1 +1,0 @@
-# Renderer for Foxy
