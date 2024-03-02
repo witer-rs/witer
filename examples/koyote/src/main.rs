@@ -5,20 +5,19 @@ use std::{
   time::{Duration, Instant},
 };
 
-use ezwin::{prelude::*, window::callback::Callback};
+use ezwin::{prelude::*, window::{callback::Callback, run}};
 use foxy_time::{Time, TimeSettings};
 
 fn main() -> WindowResult<()> {
   let window = Window::new(
     App::new(),
     WindowSettings::default()
-      .with_close_on_x(false)
       .with_flow(Flow::Poll)
       .with_title("Easy Window")
       .with_size((800, 600)),
   )?;
-
-  window.run();
+  
+  run(&window);
 
   Ok(())
 }
@@ -58,20 +57,13 @@ impl App {
 
 impl Callback for App {
   fn callback(&mut self, window: &Arc<Window>, message: Message) {
-    if !matches!(message, Message::Unidentified { .. }) {
+    if !matches!(message, Message::Unidentified { .. } | Message::None | Message::Window(WindowMessage::Draw)) {
       println!("{message:?}");
     }
 
     match message {
-      Message::Window(WindowMessage::CloseRequested) => {
-        window.close();
-      }
-      Message::Window(WindowMessage::Draw) => {}
-      _ => {
-        // window.request_redraw();
-      }
+      Message::Window(WindowMessage::Draw) => self.draw(window),
+      _ => window.request_redraw(),
     }
-
-    self.draw(window);
   }
 }

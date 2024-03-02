@@ -41,7 +41,7 @@ use windows::{
   },
 };
 
-use self::{callback::{Callback, WindowCallback}, stage::Stage};
+use self::{callback::Callback, stage::Stage};
 use crate::{
   debug::{error::WindowError, WindowResult},
   handle::Handle,
@@ -76,6 +76,19 @@ pub mod window_message;
 //   pub fn dispatch(&self) {}
 // }
 
+pub fn run(window: &Arc<Window>) {
+  if window.state.get().stage == Stage::Ready {
+    // prevent re-entry
+    {
+      window.state.get_mut().stage = Stage::Looping;
+    }
+
+    while Window::message_pump(window) {}
+  } else {
+    panic!("Do not call run within callback")
+  }
+}
+
 #[allow(unused)]
 pub struct Window {
   hinstance: HINSTANCE,
@@ -89,7 +102,10 @@ impl Window {
   pub const WINDOW_SUBCLASS_ID: usize = 0;
   pub const WINDOW_THREAD_ID: &'static str = "window";
 
-  pub fn new(callback: impl Callback + 'static, settings: WindowSettings) -> Result<Arc<Self>, WindowError> {
+  pub fn new(
+    callback: impl Callback + 'static,
+    settings: WindowSettings,
+  ) -> Result<Arc<Self>, WindowError> {
     HWND::default();
     let hinstance: HINSTANCE = unsafe { GetModuleHandleW(None)? }.into();
     let hwnd = Self::create_hwnd(settings.clone())?.0;
@@ -132,7 +148,7 @@ impl Window {
         visibility: settings.visibility,
         flow: settings.flow,
         close_on_x: settings.close_on_x,
-        stage: Stage::Looping,
+        stage: Stage::Ready,
         // receiver,
         input,
         message: Some(Message::None),
@@ -212,48 +228,39 @@ impl Window {
     }
   }
 
-  pub fn run(self: &Arc<Self>) {
-    while Self::message_pump(self).is_some() {}
-  }
-
-  fn message_pump(window: &Arc<Window>) -> Option<Message> {
+  fn message_pump(&self) -> bool {
     let mut msg = MSG::default();
-    if window.flow() == Flow::Poll {
-      Self::poll(window, &mut msg)
+    if self.flow() == Flow::Poll {
+      self.poll(&mut msg)
     } else {
       Self::wait(&mut msg)
     }
   }
 
-  fn poll(window: &Arc<Window>, msg: &mut MSG) -> Option<Message> {
-    if unsafe { PeekMessageW(msg, None, 0, 0, WindowsAndMessaging::PM_REMOVE) }.as_bool()
-    {
+  fn poll(&self, msg: &mut MSG) -> bool {
+    let has_message =
+      unsafe { PeekMessageW(msg, None, 0, 0, WindowsAndMessaging::PM_REMOVE) }.as_bool();
+    if has_message {
       unsafe {
         TranslateMessage(msg);
         DispatchMessageW(msg);
       }
     } else {
-      let _ =
-        unsafe { PostMessageW(window.hwnd, Window::MSG_EMPTY, WPARAM(0), LPARAM(0)) };
+      let _ = unsafe { PostMessageW(self.hwnd, Window::MSG_EMPTY, WPARAM(0), LPARAM(0)) };
     }
 
-    if msg.message == WindowsAndMessaging::WM_QUIT {
-      None
-    } else {
-      Some(Message::new(msg.hwnd, msg.message, msg.wParam, msg.lParam))
-    }
+    msg.message != WindowsAndMessaging::WM_QUIT
   }
 
-  fn wait(msg: &mut MSG) -> Option<Message> {
-    if unsafe { GetMessageW(msg, None, 0, 0) }.as_bool() {
+  fn wait(msg: &mut MSG) -> bool {
+    let keeping_going = unsafe { GetMessageW(msg, None, 0, 0) }.as_bool();
+    if keeping_going {
       unsafe {
         TranslateMessage(msg);
         DispatchMessageW(msg);
       }
-      Some(Message::new(msg.hwnd, msg.message, msg.wParam, msg.lParam))
-    } else {
-      None
     }
+    keeping_going
   }
 
   pub fn set_visibility(&self, visibility: Visibility) {
