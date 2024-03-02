@@ -9,7 +9,7 @@ pub use crate::{
     },
     main_message::MainMessage,
     settings::{Flow, WindowSettings},
-    window_message::{Message, MouseMessage, WindowMessage},
+    window_message::{Message, WindowMessage},
     Window,
   },
 };

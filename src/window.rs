@@ -41,7 +41,7 @@ use windows::{
   },
 };
 
-use self::stage::Stage;
+use self::{callback::{Callback, WindowCallback}, stage::Stage};
 use crate::{
   debug::{error::WindowError, WindowResult},
   handle::Handle,
@@ -57,6 +57,7 @@ use crate::{
 
 pub mod builder;
 
+pub mod callback;
 pub mod input;
 pub mod main_message;
 #[cfg(feature = "opengl")]
@@ -84,19 +85,14 @@ pub struct Window {
 
 impl Window {
   pub const MSG_EMPTY: u32 = WM_USER + 10;
-  pub const MSG_STAGE_CLOSING: u32 = WM_USER + 11;
-  pub const MSG_STAGE_DESTROYED: u32 = WM_USER + 12;
-  pub const MSG_STAGE_EXIT_LOOP: u32 = WM_USER + 13;
+  pub const MSG_STAGE_EXIT_LOOP: u32 = WM_USER + 11;
   pub const WINDOW_SUBCLASS_ID: usize = 0;
   pub const WINDOW_THREAD_ID: &'static str = "window";
 
-  pub fn new(
-    procedure: impl WindowProcedure + 'static,
-    settings: WindowSettings,
-  ) -> Result<Arc<Self>, WindowError> {
+  pub fn new(callback: impl Callback + 'static, settings: WindowSettings) -> Result<Arc<Self>, WindowError> {
     HWND::default();
     let hinstance: HINSTANCE = unsafe { GetModuleHandleW(None)? }.into();
-    let hwnd = create_hwnd(settings.clone())?.0;
+    let hwnd = Self::create_hwnd(settings.clone())?.0;
 
     // block until first message sent (which will be the window opening)
     // if let Message::Window(WindowMessage::Ready { hwnd, hinstance }) =
@@ -135,18 +131,17 @@ impl Window {
         color_mode: settings.color_mode,
         visibility: settings.visibility,
         flow: settings.flow,
-        current_stage: Stage::Looping,
         close_on_x: settings.close_on_x,
-        is_sizing_or_moving: false,
-        is_closing: false,
+        stage: Stage::Looping,
         // receiver,
         input,
+        message: Some(Message::None),
       }),
     });
 
     let window_data_ptr = Box::into_raw(Box::new(SubclassWindowData {
       window: window.clone(),
-      dispatcher: Box::new(procedure),
+      callback: Box::new(callback),
     }));
 
     unsafe {
@@ -166,8 +161,99 @@ impl Window {
     Ok(window)
   }
 
+  fn create_hwnd(settings: WindowSettings) -> WindowResult<(HWND, WNDCLASSEXW)> {
+    let hinstance: HINSTANCE = unsafe { GetModuleHandleW(None)? }.into();
+    debug_assert_ne!(hinstance.0, 0);
+    let title = HSTRING::from(settings.title);
+    let window_class = title.clone();
+
+    let wc = WNDCLASSEXW {
+      cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
+      style: WindowsAndMessaging::CS_VREDRAW
+        | WindowsAndMessaging::CS_HREDRAW
+        | WindowsAndMessaging::CS_DBLCLKS
+        | WindowsAndMessaging::CS_OWNDC,
+      cbWndExtra: std::mem::size_of::<WNDCLASSEXW>() as i32,
+      lpfnWndProc: Some(procedure::wnd_proc),
+      hInstance: hinstance,
+      hCursor: unsafe { LoadCursorW(None, IDC_ARROW)? },
+      lpszClassName: PCWSTR(window_class.as_ptr()),
+      ..Default::default()
+    };
+
+    {
+      let atom = unsafe { RegisterClassExW(&wc) };
+      debug_assert_ne!(atom, 0);
+    }
+
+    let hwnd = unsafe {
+      CreateWindowExW(
+        WINDOW_EX_STYLE::default(),
+        &window_class,
+        &title,
+        WindowsAndMessaging::WS_OVERLAPPEDWINDOW
+          | WindowsAndMessaging::WS_CLIPCHILDREN
+          | WindowsAndMessaging::WS_CLIPSIBLINGS,
+        WindowsAndMessaging::CW_USEDEFAULT,
+        WindowsAndMessaging::CW_USEDEFAULT,
+        settings.size.width,
+        settings.size.height,
+        None,
+        None,
+        hinstance,
+        None,
+      )
+    };
+
+    if hwnd.0 == 0 {
+      Err(WindowError::Win32Error(windows::core::Error::from_win32()))
+    } else {
+      Ok((hwnd, wc))
+    }
+  }
+
   pub fn run(self: &Arc<Self>) {
-    while message_pump(self).is_some() {}
+    while Self::message_pump(self).is_some() {}
+  }
+
+  fn message_pump(window: &Arc<Window>) -> Option<Message> {
+    let mut msg = MSG::default();
+    if window.flow() == Flow::Poll {
+      Self::poll(window, &mut msg)
+    } else {
+      Self::wait(&mut msg)
+    }
+  }
+
+  fn poll(window: &Arc<Window>, msg: &mut MSG) -> Option<Message> {
+    if unsafe { PeekMessageW(msg, None, 0, 0, WindowsAndMessaging::PM_REMOVE) }.as_bool()
+    {
+      unsafe {
+        TranslateMessage(msg);
+        DispatchMessageW(msg);
+      }
+    } else {
+      let _ =
+        unsafe { PostMessageW(window.hwnd, Window::MSG_EMPTY, WPARAM(0), LPARAM(0)) };
+    }
+
+    if msg.message == WindowsAndMessaging::WM_QUIT {
+      None
+    } else {
+      Some(Message::new(msg.hwnd, msg.message, msg.wParam, msg.lParam))
+    }
+  }
+
+  fn wait(msg: &mut MSG) -> Option<Message> {
+    if unsafe { GetMessageW(msg, None, 0, 0) }.as_bool() {
+      unsafe {
+        TranslateMessage(msg);
+        DispatchMessageW(msg);
+      }
+      Some(Message::new(msg.hwnd, msg.message, msg.wParam, msg.lParam))
+    } else {
+      None
+    }
   }
 
   pub fn set_visibility(&self, visibility: Visibility) {
@@ -195,7 +281,7 @@ impl Window {
     };
   }
 
-  pub fn redraw(&self) {
+  pub fn request_redraw(&self) {
     unsafe {
       RedrawWindow(self.hwnd, None, None, RDW_INTERNALPAINT);
     }
@@ -278,117 +364,13 @@ impl Window {
   }
 
   pub fn is_closing(&self) -> bool {
-    self.state.get_mut().is_closing
+    matches!(self.state.get().stage, Stage::Closing | Stage::Closed)
   }
 
   pub fn close(&self) {
-    self.state.get_mut().is_closing = true;
-    self.state.get_mut().current_stage = Stage::Closing;
-  }
-}
+    self.state.get_mut().stage = Stage::Closing;
 
-#[allow(unused)]
-pub trait WindowProcedure {
-  fn callback(&mut self, window: &Arc<Window>, message: Message) {}
-}
-
-fn create_hwnd(settings: WindowSettings) -> WindowResult<(HWND, WNDCLASSEXW)> {
-  let hinstance: HINSTANCE = unsafe { GetModuleHandleW(None)? }.into();
-  debug_assert_ne!(hinstance.0, 0);
-  let title = HSTRING::from(settings.title);
-  let window_class = title.clone();
-
-  let wc = WNDCLASSEXW {
-    cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
-    style: CS_VREDRAW | CS_HREDRAW | CS_DBLCLKS | CS_OWNDC,
-    cbWndExtra: std::mem::size_of::<WNDCLASSEXW>() as i32,
-    lpfnWndProc: Some(procedure::wnd_proc),
-    hInstance: hinstance,
-    hCursor: unsafe { LoadCursorW(None, IDC_ARROW)? },
-    lpszClassName: PCWSTR(window_class.as_ptr()),
-    ..Default::default()
-  };
-
-  {
-    let atom = unsafe { RegisterClassExW(&wc) };
-    debug_assert_ne!(atom, 0);
-  }
-
-  let hwnd = unsafe {
-    CreateWindowExW(
-      WINDOW_EX_STYLE::default(),
-      &window_class,
-      &title,
-      WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
-      CW_USEDEFAULT,
-      CW_USEDEFAULT,
-      settings.size.width,
-      settings.size.height,
-      None,
-      None,
-      hinstance,
-      None,
-    )
-  };
-
-  if hwnd.0 == 0 {
-    Err(WindowError::Win32Error(windows::core::Error::from_win32()))
-  } else {
-    Ok((hwnd, wc))
-  }
-}
-
-fn message_pump(window: &Arc<Window>) -> Option<Message> {
-  let current_stage = window.state.get_mut().current_stage;
-  match current_stage {
-    Stage::Looping => (),
-    Stage::Closing => {
-      unsafe {
-        SendMessageW(window.hwnd, Window::MSG_STAGE_CLOSING, WPARAM(0), LPARAM(0))
-      };
-    }
-    Stage::Destroyed => {
-      unsafe {
-        SendMessageW(window.hwnd, Window::MSG_STAGE_DESTROYED, WPARAM(0), LPARAM(0))
-      };
-    }
-    Stage::ExitLoop => (),
-  }
-
-  let mut msg = MSG::default();
-  if window.flow() == Flow::Poll {
-    poll(window, &mut msg)
-  } else {
-    wait(&mut msg)
-  }
-}
-
-fn poll(window: &Arc<Window>, msg: &mut MSG) -> Option<Message> {
-  if unsafe { PeekMessageW(msg, None, 0, 0, PM_REMOVE) }.as_bool() {
-    unsafe {
-      TranslateMessage(msg);
-      DispatchMessageW(msg);
-    }
-  } else {
-    let _ = unsafe { PostMessageW(window.hwnd, Window::MSG_EMPTY, WPARAM(0), LPARAM(0)) };
-  }
-
-  if msg.message == WindowsAndMessaging::WM_QUIT {
-    None
-  } else {
-    Some(Message::new(msg.hwnd, msg.message, msg.wParam, msg.lParam))
-  }
-}
-
-fn wait(msg: &mut MSG) -> Option<Message> {
-  if unsafe { GetMessageW(msg, None, 0, 0) }.as_bool() {
-    unsafe {
-      TranslateMessage(msg);
-      DispatchMessageW(msg);
-    }
-    Some(Message::new(msg.hwnd, msg.message, msg.wParam, msg.lParam))
-  } else {
-    None
+    unsafe { DestroyWindow(self.hwnd) }.expect("failed to destroy window");
   }
 }
 

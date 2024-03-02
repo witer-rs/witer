@@ -5,13 +5,14 @@ use std::{
   time::{Duration, Instant},
 };
 
-use ezwin::{prelude::*, window::WindowProcedure};
+use ezwin::{prelude::*, window::callback::Callback};
 use foxy_time::{Time, TimeSettings};
 
 fn main() -> WindowResult<()> {
   let window = Window::new(
     App::new(),
     WindowSettings::default()
+      .with_close_on_x(false)
       .with_flow(Flow::Poll)
       .with_title("Easy Window")
       .with_size((800, 600)),
@@ -50,21 +51,27 @@ impl App {
     if elapsed >= Duration::from_secs_f64(0.20) {
       let title = format!(" | FPS: {:.1}", 1.0 / self.time.average_delta_secs());
       window.set_subtitle(title);
-      // println!("{}", title.clone());
       self.last_time = now;
     }
   }
 }
 
-impl WindowProcedure for App {
+impl Callback for App {
   fn callback(&mut self, window: &Arc<Window>, message: Message) {
+    if !matches!(message, Message::Unidentified { .. }) {
+      println!("{message:?}");
+    }
+
     match message {
-      Message::Window(WindowMessage::Draw) => {
-        self.draw(window);
+      Message::Window(WindowMessage::CloseRequested) => {
+        window.close();
       }
+      Message::Window(WindowMessage::Draw) => {}
       _ => {
-        window.redraw();
+        // window.request_redraw();
       }
     }
+
+    self.draw(window);
   }
 }

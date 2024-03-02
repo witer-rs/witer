@@ -4,11 +4,10 @@ use windows::core::HSTRING;
 
 use crate::{
   prelude::Input,
-  window::{
-    settings::{ColorMode, Flow, Visibility},
-    stage::Stage,
-  },
+  window::settings::{ColorMode, Flow, Visibility},
 };
+
+use super::{stage::Stage, window_message::Message};
 
 #[derive(Debug)]
 pub struct InternalState {
@@ -22,11 +21,10 @@ pub struct InternalState {
   pub color_mode: ColorMode,
   pub visibility: Visibility,
   pub flow: Flow,
-  pub current_stage: Stage,
   pub close_on_x: bool,
-  pub is_sizing_or_moving: bool,
-  pub is_closing: bool,
+  pub stage: Stage,
   // pub receiver: Receiver<Message>,
   // pub window_thread: Option<JoinHandle<WindowResult<()>>>,
   pub input: Input,
+  pub message: Option<Message>,
 }

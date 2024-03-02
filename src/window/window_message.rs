@@ -44,41 +44,32 @@ pub enum Message {
   #[default]
   None,
   Window(WindowMessage),
-  Keyboard {
-    key: Key,
-    state: KeyState,
-    scan_code: u16,
-    is_extended_key: bool,
-  },
-  Mouse(MouseMessage),
-  Other {
+  Unidentified {
     hwnd: isize,
     message: u32,
     wparam: usize,
     lparam: isize,
   },
-  CloseRequested,
-  Closing,
-  Destroyed,
-  LoopExit,
   Ignored,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Hash)]
-pub enum WindowMessage {
-  Ready { hwnd: isize, hinstance: isize },
-  Draw,
-  // Resizing { window_mode: WindowMode },
-  // Moving,
-  Resized { size: Size },
-  Moved,
-  StartedSizingOrMoving,
-  StoppedSizingOrMoving,
-}
-
 #[derive(Debug, PartialEq, Clone)]
-pub enum MouseMessage {
-  Button {
+pub enum WindowMessage {
+  Ready {
+    hwnd: isize,
+    hinstance: isize,
+  },
+  CloseRequested,
+  Closing,
+  Closed,
+  Draw,
+  Key {
+    key: Key,
+    state: KeyState,
+    scan_code: u16,
+    is_extended_key: bool,
+  },
+  MouseButton {
     button: Mouse,
     state: ButtonState,
     x: i16,
@@ -93,6 +84,8 @@ pub enum MouseMessage {
     x: f32,
     y: f32,
   },
+  Resized(Size),
+  Moved,
 }
 
 impl Message {
@@ -103,30 +96,15 @@ impl Message {
       | WindowsAndMessaging::WM_MOVING
       | WindowsAndMessaging::WM_MOVE => Message::Ignored,
       Window::MSG_EMPTY => Message::None,
-      WindowsAndMessaging::WM_CLOSE => Message::CloseRequested,
-      WindowsAndMessaging::WM_DESTROY => Message::Closing,
+      WindowsAndMessaging::WM_CLOSE => Message::Window(WindowMessage::CloseRequested),
+      WindowsAndMessaging::WM_DESTROY => Message::Window(WindowMessage::Closing),
+      WindowsAndMessaging::WM_NCDESTROY => Message::Window(WindowMessage::Closed),
       WindowsAndMessaging::WM_PAINT => Message::Window(WindowMessage::Draw),
-      WindowsAndMessaging::WM_ENTERSIZEMOVE => {
-        Message::Window(WindowMessage::StartedSizingOrMoving)
-      }
-      WindowsAndMessaging::WM_EXITSIZEMOVE => {
-        Message::Window(WindowMessage::StoppedSizingOrMoving)
-      }
-      // WindowsAndMessaging::WM_SIZING => Message::Window(WindowMessage::Resizing {
-      //   window_mode: if w_param.0 as u32 != WindowsAndMessaging::SIZE_MINIMIZED {
-      //     WindowMode::Normal
-      //   } else {
-      //     WindowMode::Minimized
-      //   },
-      // }),
-      // WindowsAndMessaging::WM_MOVING => Message::Window(WindowMessage::Moving),
       WindowsAndMessaging::WM_SIZE => {
         let width = lo_word(l_param.0 as u32) as i32;
         let height = hi_word(l_param.0 as u32) as i32;
 
-        Message::Window(WindowMessage::Resized {
-          size: Size { width, height },
-        })
+        Message::Window(WindowMessage::Resized(Size { width, height }))
       }
       WindowsAndMessaging::WM_WINDOWPOSCHANGED => Message::Window(WindowMessage::Moved),
       msg
@@ -151,19 +129,19 @@ impl Message {
       }
       WindowsAndMessaging::WM_MOUSEMOVE => {
         let (x, y) = (signed_lo_word(l_param.0 as i32), signed_hi_word(l_param.0 as i32));
-        Message::Mouse(MouseMessage::Cursor { x, y })
+        Message::Window(WindowMessage::Cursor { x, y })
       }
       WindowsAndMessaging::WM_MOUSEWHEEL => {
         let delta = signed_hi_word(w_param.0 as i32) as f32
           / WindowsAndMessaging::WHEEL_DELTA as f32;
-        Message::Mouse(MouseMessage::Scroll { x: 0.0, y: delta })
+        Message::Window(WindowMessage::Scroll { x: 0.0, y: delta })
       }
       WindowsAndMessaging::WM_MOUSEHWHEEL => {
         let delta = signed_hi_word(w_param.0 as i32) as f32
           / WindowsAndMessaging::WHEEL_DELTA as f32;
-        Message::Mouse(MouseMessage::Scroll { x: delta, y: 0.0 })
+        Message::Window(WindowMessage::Scroll { x: delta, y: 0.0 })
       }
-      _ => Message::Other {
+      _ => Message::Unidentified {
         hwnd: h_wnd.0,
         message,
         wparam: w_param.0,
@@ -215,12 +193,12 @@ impl Message {
       }
     };
 
-    Message::Keyboard {
+    Message::Window(WindowMessage::Key {
       key: key_code,
       state,
       scan_code,
       is_extended_key,
-    }
+    })
   }
 
   fn new_mouse_button_message(message: u32, w_param: WPARAM, l_param: LPARAM) -> Message {
@@ -300,7 +278,7 @@ impl Message {
 
     let (x, y) = (signed_lo_word(l_param.0 as i32), signed_hi_word(l_param.0 as i32));
 
-    Message::Mouse(MouseMessage::Button {
+    Message::Window(WindowMessage::MouseButton {
       button: mouse_code,
       state,
       x,

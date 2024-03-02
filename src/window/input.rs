@@ -59,7 +59,7 @@ impl Input {
     }
   }
 
-  pub fn update_mouse_button_state(&mut self, button: Mouse, state: ButtonState) {
+  pub fn update_mouse_state(&mut self, button: Mouse, state: ButtonState) {
     if let Some(mouse_state) = self.mouse_buttons.get_mut(&button) {
       *mouse_state = state;
     }
