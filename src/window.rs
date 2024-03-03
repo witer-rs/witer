@@ -115,31 +115,10 @@ impl Window {
     // receiver.recv()? {
     let input = Input::new();
 
-    #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
-    let raw_window_handle = {
-      let mut handle = Win32WindowHandle::new(
-        std::num::NonZeroIsize::new(hwnd.0).expect("window handle should not be zero"),
-      );
-      let hinstance = std::num::NonZeroIsize::new(hinstance.0)
-        .expect("instance handle should not be zero");
-      handle.hinstance = Some(hinstance);
-      RawWindowHandle::from(handle)
-    };
-
-    #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
-    let raw_display_handle = {
-      let handle = WindowsDisplayHandle::new();
-      RawDisplayHandle::from(handle)
-    };
-
     let window = Arc::new(Window {
       hinstance,
       hwnd,
       state: Handle::new(InternalState {
-        #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
-        raw_window_handle,
-        #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
-        raw_display_handle,
         title: settings.title.into(),
         subtitle: HSTRING::new(),
         // size: settings.size,
@@ -378,6 +357,54 @@ impl Window {
     self.state.get_mut().stage = Stage::Closing;
 
     unsafe { DestroyWindow(self.hwnd) }.expect("failed to destroy window");
+  }
+
+  #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
+  pub fn raw_window_handle(&self) -> RawWindowHandle {
+    let mut handle = Win32WindowHandle::new(
+      std::num::NonZeroIsize::new(self.hwnd.0).expect("window handle should not be zero"),
+    );
+    let hinstance = std::num::NonZeroIsize::new(self.hinstance.0)
+      .expect("instance handle should not be zero");
+    handle.hinstance = Some(hinstance);
+    RawWindowHandle::from(handle)
+  }
+
+  #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
+  pub fn raw_display_handle(&self) -> RawDisplayHandle {
+    let handle = WindowsDisplayHandle::new();
+    RawDisplayHandle::from(handle)
+  }
+}
+
+#[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
+impl HasWindowHandle for Window {
+  fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {
+    Ok(unsafe { WindowHandle::borrow_raw(self.raw_window_handle()) })
+  }
+}
+
+#[cfg(all(feature = "rwh_05", not(feature = "rwh_06")))]
+unsafe impl HasRawWindowHandle for Window {
+  fn raw_window_handle(&self) -> RawWindowHandle {
+    let mut handle = Win32WindowHandle::empty();
+    handle.hwnd = self.hwnd as *mut std::ffi::c_void;
+    handle.hinstance = self.hinstance as *mut std::ffi::c_void;
+    RawWindowHandle::Win32(handle)
+  }
+}
+
+#[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
+impl HasDisplayHandle for Window {
+  fn display_handle(&self) -> Result<DisplayHandle<'_>, HandleError> {
+    Ok(unsafe { DisplayHandle::borrow_raw(self.raw_display_handle()) })
+  }
+}
+
+#[cfg(all(feature = "rwh_05", not(feature = "rwh_06")))]
+unsafe impl HasRawDisplayHandle for Window {
+  fn raw_display_handle(&self) -> RawDisplayHandle {
+    RawDisplayHandle::Windows(WindowsDisplayHandle::empty())
   }
 }
 
