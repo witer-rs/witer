@@ -57,8 +57,6 @@ pub mod builder;
 pub mod callback;
 pub mod input;
 pub mod message;
-#[cfg(feature = "opengl")]
-mod opengl;
 pub mod procedure;
 pub mod settings;
 pub mod stage;
