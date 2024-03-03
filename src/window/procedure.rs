@@ -35,17 +35,14 @@ pub extern "system" fn subclass_proc(
   let data: &SubclassWindowData = unsafe { std::mem::transmute(dw_ref_data) };
 
   let win_message = Message::new(h_wnd, message, w_param, l_param);
-  #[allow(clippy::match_single_binding)]
-  if matches!(
+  if !matches!(
     message,
     WindowsAndMessaging::WM_SIZING
       | WindowsAndMessaging::WM_MOVING
       | WindowsAndMessaging::WM_MOVE
       | WindowsAndMessaging::WM_SETTEXT
   ) {
-    // do nothing, these are just spammy
-  } else {
-    let _ = data.sender.send(win_message);
+    let _ = data.sender.try_send(win_message);
   }
 
   match message {
