@@ -9,7 +9,7 @@ use windows::Win32::{
 };
 
 #[allow(unused)]
-use super::window_message::{Message, WindowMessage};
+use super::message::{Message, WindowMessage};
 use super::{Window, WindowProcedure};
 
 pub struct SubclassWindowData {

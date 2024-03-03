@@ -27,18 +27,6 @@ use crate::{
   },
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum MessagePriority {
-  Low,
-  High,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum WindowMode {
-  Normal,
-  Minimized,
-}
-
 #[derive(Debug, Default, PartialEq, Clone)]
 pub enum Message {
   #[default]
@@ -91,10 +79,6 @@ pub enum WindowMessage {
 impl Message {
   pub fn new(h_wnd: HWND, message: u32, w_param: WPARAM, l_param: LPARAM) -> Self {
     match message {
-      WindowsAndMessaging::WM_SETTEXT
-      | WindowsAndMessaging::WM_SIZING
-      | WindowsAndMessaging::WM_MOVING
-      | WindowsAndMessaging::WM_MOVE => Message::Ignored,
       Window::MSG_EMPTY => Message::None,
       WindowsAndMessaging::WM_CLOSE => Message::Window(WindowMessage::CloseRequested),
       WindowsAndMessaging::WM_DESTROY => Message::Window(WindowMessage::Closing),
@@ -141,6 +125,10 @@ impl Message {
           / WindowsAndMessaging::WHEEL_DELTA as f32;
         Message::Window(WindowMessage::Scroll { x: delta, y: 0.0 })
       }
+      WindowsAndMessaging::WM_SETTEXT
+      | WindowsAndMessaging::WM_SIZING
+      | WindowsAndMessaging::WM_MOVING
+      | WindowsAndMessaging::WM_MOVE => Message::Ignored,
       _ => Message::Unidentified {
         hwnd: h_wnd.0,
         message,

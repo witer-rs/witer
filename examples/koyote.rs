@@ -1,23 +1,18 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
-use std::{
-  sync::Arc,
-  time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
-use ezwin::{prelude::*, window::settings::Size};
+use ezwin::prelude::*;
 use foxy_time::{Time, TimeSettings};
 use wgpu::PresentMode;
 
 fn main() -> WindowResult<()> {
-  let window = Window::new::<App>(
-    WindowSettings::default()
-      .with_flow(Flow::Poll)
-      .with_title("Easy Window")
-      .with_size((800, 600)),
-  )?;
-
-  Window::run(&window);
+  WindowSettings::default()
+    .with_flow(Flow::Poll)
+    .with_title("Easy Window")
+    .with_size((800, 600))
+    .build::<App>()?
+    .run();
 
   Ok(())
 }
@@ -54,6 +49,7 @@ impl App {
     if elapsed >= Duration::from_secs_f64(0.20) {
       let title = format!(" | FPS: {:.1}", 1.0 / self.time.average_delta_secs());
       window.set_subtitle(title);
+
       self.last_time = now;
     }
 
@@ -176,15 +172,14 @@ impl WindowProcedure for App {
       self.resize(window.inner_size());
     }
 
-    if matches!(
-      message,
-      Message::Window(WindowMessage::Key { .. } | WindowMessage::MouseButton { .. })
-    ) {
-      println!("{message:?}");
-    }
-
-    match message {
-      Message::Window(WindowMessage::Draw) => self.draw(window),
+    match &message {
+      Message::Window(window_message) => match window_message {
+        WindowMessage::Draw => self.draw(window),
+        WindowMessage::Key { .. } | WindowMessage::MouseButton { .. } => {
+          println!("{message:?}");
+        }
+        _ => (),
+      },
       _ => window.request_redraw(),
     }
   }

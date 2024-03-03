@@ -1,3 +1,5 @@
+pub use std::sync::Arc;
+
 pub use crate::{
   debug::WindowResult,
   window::{
@@ -9,9 +11,8 @@ pub use crate::{
       state::{ButtonState, KeyState},
       Input,
     },
-    main_message::MainMessage,
-    settings::{Flow, WindowSettings},
-    window_message::{Message, WindowMessage},
+    message::{Message, WindowMessage},
+    settings::{Flow, Size, Visibility, WindowSettings},
     Window,
   },
 };

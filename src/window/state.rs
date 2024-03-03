@@ -1,6 +1,6 @@
 use windows::core::HSTRING;
 
-use super::{stage::Stage, window_message::Message};
+use super::{message::Message, stage::Stage};
 use crate::{
   prelude::Input,
   window::settings::{ColorMode, Flow, Visibility},

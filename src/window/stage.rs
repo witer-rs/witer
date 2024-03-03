@@ -6,5 +6,5 @@ pub enum Stage {
   Ready,
   Looping,
   Closing,
-  Closed,
+  Destroyed,
 }

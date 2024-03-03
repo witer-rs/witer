@@ -6,7 +6,6 @@ use self::state::KeyState;
 use crate::window::input::{key::Key, mouse::Mouse, state::ButtonState};
 
 pub mod key;
-pub mod modifier;
 pub mod mouse;
 pub mod state;
 
