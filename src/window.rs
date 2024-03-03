@@ -87,28 +87,7 @@ impl Window {
     if let Message::Window(WindowMessage::Ready { hwnd, hinstance }) = receiver.recv()? {
       let input = Input::new();
 
-      #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
-      let raw_window_handle = {
-        let mut handle = Win32WindowHandle::new(
-          std::num::NonZeroIsize::new(hwnd).expect("window handle should not be zero"),
-        );
-        let hinstance = std::num::NonZeroIsize::new(hinstance)
-          .expect("instance handle should not be zero");
-        handle.hinstance = Some(hinstance);
-        RawWindowHandle::from(handle)
-      };
-
-      #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
-      let raw_display_handle = {
-        let handle = WindowsDisplayHandle::new();
-        RawDisplayHandle::from(handle)
-      };
-
       let state = Handle::new(WindowState {
-        #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
-        raw_window_handle,
-        #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
-        raw_display_handle,
         title: settings.title,
         subtitle: String::new(),
         // size: settings.size,
@@ -429,9 +408,22 @@ impl<'a> IntoIterator for &'a mut Window {
 }
 
 #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
+impl Window {
+  fn raw_window_handle(&self) -> RawWindowHandle {
+    let mut handle = Win32WindowHandle::new(
+      std::num::NonZeroIsize::new(self.hwnd).expect("window handle should not be zero"),
+    );
+    let hinstance = std::num::NonZeroIsize::new(self.hinstance)
+      .expect("instance handle should not be zero");
+    handle.hinstance = Some(hinstance);
+    RawWindowHandle::from(handle)
+  }
+}
+
+#[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
 impl HasWindowHandle for Window {
   fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {
-    Ok(unsafe { WindowHandle::borrow_raw(self.state.get().raw_window_handle) })
+    Ok(unsafe { WindowHandle::borrow_raw(self.raw_window_handle()) })
   }
 }
 
@@ -446,9 +438,17 @@ unsafe impl HasRawWindowHandle for Window {
 }
 
 #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
+impl Window {
+  fn raw_display_handle(&self) -> RawDisplayHandle {
+    let handle = WindowsDisplayHandle::new();
+    RawDisplayHandle::from(handle)
+  }
+}
+
+#[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
 impl HasDisplayHandle for Window {
   fn display_handle(&self) -> Result<DisplayHandle<'_>, HandleError> {
-    Ok(unsafe { DisplayHandle::borrow_raw(self.state.get().raw_display_handle) })
+    Ok(unsafe { DisplayHandle::borrow_raw(self.raw_display_handle()) })
   }
 }
 

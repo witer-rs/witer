@@ -15,11 +15,6 @@ use crate::{
 
 #[derive(Debug)]
 pub struct WindowState {
-  #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
-  pub raw_window_handle: RawWindowHandle,
-  #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
-  pub raw_display_handle: RawDisplayHandle,
-  // pub window_mode: WindowMode,
   pub title: String,
   pub subtitle: String,
   pub color_mode: ColorMode,
