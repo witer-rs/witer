@@ -1,17 +1,9 @@
 pub trait MessageReciever {
-  fn dispatch(&self) {
-
-  }   
+  fn dispatch(&self) {}
 }
 
-fn main() {
-  
-}
+fn main() {}
 
-struct App {
+struct App {}
 
-}
-
-impl MessageReciever for App {
-
-}
+impl MessageReciever for App {}

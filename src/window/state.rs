@@ -1,11 +1,10 @@
 use windows::core::HSTRING;
 
+use super::{stage::Stage, window_message::Message};
 use crate::{
   prelude::Input,
   window::settings::{ColorMode, Flow, Visibility},
 };
-
-use super::{stage::Stage, window_message::Message};
 
 #[derive(Debug)]
 pub struct InternalState {

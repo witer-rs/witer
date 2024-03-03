@@ -76,19 +76,6 @@ pub mod window_message;
 //   pub fn dispatch(&self) {}
 // }
 
-pub fn run(window: &Arc<Window>) {
-  if window.state.get().stage == Stage::Ready {
-    // prevent re-entry
-    {
-      window.state.get_mut().stage = Stage::Looping;
-    }
-
-    while Window::message_pump(window) {}
-  } else {
-    panic!("Do not call run within callback")
-  }
-}
-
 #[allow(unused)]
 pub struct Window {
   hinstance: HINSTANCE,
@@ -102,8 +89,20 @@ impl Window {
   pub const WINDOW_SUBCLASS_ID: usize = 0;
   pub const WINDOW_THREAD_ID: &'static str = "window";
 
-  pub fn new(
-    callback: impl WindowProcedure + 'static,
+  pub fn run(window: &Arc<Window>) {
+    if window.state.get().stage == Stage::Ready {
+      // prevent re-entry
+      {
+        window.state.get_mut().stage = Stage::Looping;
+      }
+
+      while Window::message_pump(window) {}
+    } else {
+      panic!("Do not call run within callback")
+    }
+  }
+
+  pub fn new<WP: WindowProcedure + 'static>(
     settings: WindowSettings,
   ) -> Result<Arc<Self>, WindowError> {
     HWND::default();
@@ -136,7 +135,7 @@ impl Window {
 
     let window_data_ptr = Box::into_raw(Box::new(SubclassWindowData {
       window: window.clone(),
-      callback: Box::new(callback),
+      callback: Box::new(WP::new(&window)),
     }));
 
     unsafe {

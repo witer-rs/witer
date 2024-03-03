@@ -1,6 +1,8 @@
 pub use crate::{
   debug::WindowResult,
   window::{
+    self,
+    callback::WindowProcedure,
     input::{
       key::Key,
       mouse::Mouse,
