@@ -7,14 +7,25 @@
 use ezwin::prelude::*;
 
 fn main() {
-  // configure
-  let settings = WindowSettings::default();
-  
-  // create
-  let window = Window::new(settings).unwrap();
-  
-  // run
-  for message in &window {}
+  // configure and run
+  WindowSettings::default()
+    .build::<App>()
+    .unwrap()
+    .run();
+}
+
+// create an application and implement the window procedure
+struct App;
+
+impl WindowProcedure for App {
+  fn new(window: &Arc<Window>) -> Self {
+    // do stuff...
+    Self
+  }
+
+  fn procedure(&mut self, window: &Arc<Window>, message: Message) {
+    // do stuff...
+  }
 }
 ```
 
@@ -25,23 +36,21 @@ fn main() {
 ## Goals
 
 The main goal of `ezwin` is to have a simple, easy-to-use API. The target audience is game developers looking to create
-a window quickly and easily. I aim to have feature-parity with `winit` eventually as a secondary goal. 
+a window quickly and easily. I aim to have feature-parity with `winit` eventually as a secondary goal.
 
-Cross-platform support is unlikely, but pull requests are welcomed if anyone else wants to tackle it. 
+Cross-platform support is unlikely, but pull requests are welcomed if anyone else wants to tackle it.
 
-I would like to eventually transition from using `windows` to `windows-sys` to benefit from better compile times, 
+I would like to eventually transition from using `windows` to `windows-sys` to benefit from better compile times,
 as the wrappers included in the former are redundant for this crate.
 
-## Details
+## Why the rework?
 
-There are **2** primary threads in `ezwin`:
-
-* **main:** where all the main user code is executed.
-* **window:** where the window is created and the message pump lives.
-
-This layout was chosen to allow for the window messages not to block the application. The window thread will proceed
-unblocked normally unless the user executes an action that necessitates a sync point. For now, the only actions that
-require sync points are resizes and moves.
+I have to agree that the original API for `ezwin` was much nicer to work with, but it had a number of issues related to
+the multithreaded nature of things. The main issue which was the most difficult to solve, and I never could, was that of
+waiting for the previous message to complete before processing the next message without creating deadlocks. This is
+important to prevent issues related to resizing windows and to prevent excessive delays with input. I do plan on
+investigating further in the future a way to reintroduce an interator-based API, but for now, the rework should get
+things working properly.
 
 ## Cargo Features
 

@@ -1,30 +1,20 @@
-use std::thread::JoinHandle;
+use windows::core::HSTRING;
 
-use crossbeam::channel::Receiver;
-#[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
-use rwh_06::{RawDisplayHandle, RawWindowHandle};
-
+use super::{message::Message, stage::Stage};
 use crate::{
-  debug::WindowResult,
-  prelude::{Input, Message},
-  window::{
-    settings::{ColorMode, Flow, Visibility},
-    stage::Stage,
-  },
+  prelude::Input,
+  window::settings::{ColorMode, Flow, Visibility},
 };
 
 #[derive(Debug)]
-pub struct WindowState {
-  pub title: String,
-  pub subtitle: String,
+pub struct InternalState {
+  pub title: HSTRING,
+  pub subtitle: HSTRING,
   pub color_mode: ColorMode,
   pub visibility: Visibility,
   pub flow: Flow,
-  pub current_stage: Stage,
   pub close_on_x: bool,
-  pub is_sizing_or_moving: bool,
-  pub is_closing: bool,
-  pub receiver: Receiver<Message>,
-  pub window_thread: Option<JoinHandle<WindowResult<()>>>,
+  pub stage: Stage,
   pub input: Input,
+  pub message: Option<Message>,
 }

@@ -1,15 +1,18 @@
+pub use std::sync::Arc;
+
 pub use crate::{
   debug::WindowResult,
   window::{
+    self,
+    callback::WindowProcedure,
     input::{
       key::Key,
       mouse::Mouse,
       state::{ButtonState, KeyState},
       Input,
     },
-    main_message::MainMessage,
-    settings::{Flow, WindowSettings},
-    window_message::{Message, MouseMessage, WindowMessage},
+    message::{Message, WindowMessage},
+    settings::{Flow, Size, Visibility, WindowSettings},
     Window,
   },
 };

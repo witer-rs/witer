@@ -1,7 +1,7 @@
 [package]
 name        = "ezwin"
 description = "Easy, minimal Win32 window creation"
-version     = "2.9.0"
+version     = "3.0.0"
 edition     = "2021"
 authors     = ["Gabriel Lugo <dev.gabriel.lugo@gmail.com>"]
 license     = "MIT OR Apache-2.0"
@@ -12,28 +12,22 @@ repository  = "https://github.com/GTLugo/ezwin"
 
 [features]
 default = ["rwh_06"]
-# opengl = ["dep:glow", "windows/Win32_Graphics_OpenGL"]
-rwh_05 = ["dep:rwh_05"]
-rwh_06 = ["dep:rwh_06"]
+rwh_05  = ["dep:rwh_05"]
+rwh_06  = ["dep:rwh_06"]
 
 [dependencies]
 thiserror = "1.0"
 tracing   = "0.1"
-
-crossbeam  = "0.8"
-enumflags2 = "0.7"
-strum      = { version = "0.26", features = ["derive"] }
-itertools  = "0.12"
+strum     = { version = "0.26", features = ["derive"] }
 
 rwh_05 = { package = "raw-window-handle", version = "0.5.2", features = ["std"], optional = true }
 rwh_06 = { package = "raw-window-handle", version = "0.6", features = ["std"], optional = true }
-
-# glow = { version = "0.13", optional = true }
 
 [dependencies.windows]
 version  = "0.54"
 features = ["Win32_Foundation", "Win32_Security", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_System_LibraryLoader", "Win32_System_SystemServices", "Win32_UI_Input", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Shell"]
 
-[workspace]
-resolver = "2"
-members  = ["examples/koyote"]
+[dev-dependencies]
+foxy_time = { version = "1", path = "../foxy_time" }
+wgpu      = "0.19"
+pollster  = "0.3"

@@ -1,62 +1,77 @@
-use crossbeam::channel::Sender;
+use std::sync::Arc;
+
 use windows::Win32::{
   Foundation::*,
-  UI::{Shell::DefSubclassProc, WindowsAndMessaging, WindowsAndMessaging::DestroyWindow},
+  UI::{
+    Shell::DefSubclassProc,
+    WindowsAndMessaging::{self, PostQuitMessage},
+  },
 };
 
 #[allow(unused)]
-use super::window_message::{Message, WindowMessage};
-use crate::prelude::Window;
+use super::message::{Message, WindowMessage};
+use super::{Window, WindowProcedure};
 
 pub struct SubclassWindowData {
-  pub sender: Sender<Message>,
+  pub window: Arc<Window>,
+  pub callback: Box<dyn WindowProcedure>,
 }
 
 pub extern "system" fn wnd_proc(
-  h_wnd: HWND,
-  message: u32,
+  hwnd: HWND,
+  msg: u32,
   w_param: WPARAM,
   l_param: LPARAM,
 ) -> LRESULT {
-  match message {
-    WindowsAndMessaging::WM_CLOSE => LRESULT(0),
-    _ => unsafe { WindowsAndMessaging::DefWindowProcW(h_wnd, message, w_param, l_param) },
-  }
+  unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, w_param, l_param) }
 }
 
 pub extern "system" fn subclass_proc(
-  h_wnd: HWND,
-  message: u32,
+  hwnd: HWND,
+  msg: u32,
   w_param: WPARAM,
   l_param: LPARAM,
   _u_id_subclass: usize,
   dw_ref_data: usize,
 ) -> LRESULT {
-  let data: &SubclassWindowData = unsafe { std::mem::transmute(dw_ref_data) };
+  let SubclassWindowData { window, callback }: &mut SubclassWindowData =
+    unsafe { std::mem::transmute(dw_ref_data) };
 
-  let win_message = Message::new(h_wnd, message, w_param, l_param);
-  if !matches!(
-    message,
-    WindowsAndMessaging::WM_SIZING
-      | WindowsAndMessaging::WM_MOVING
-      | WindowsAndMessaging::WM_MOVE
-      | WindowsAndMessaging::WM_SETTEXT
-  ) {
-    let _ = data.sender.try_send(win_message);
+  let message = Message::new(hwnd, msg, w_param, l_param);
+  if message != Message::Ignored {
+    callback.procedure(window, handle_message(window, message));
   }
 
-  match message {
-    Window::MSG_MAIN_CLOSE_REQ => {
-      unsafe { DestroyWindow(h_wnd) }.expect("failed to destroy window");
-      LRESULT(0)
-    }
+  match msg {
     WindowsAndMessaging::WM_CLOSE => LRESULT(0),
-    WindowsAndMessaging::WM_DESTROY => {
-      unsafe {
-        WindowsAndMessaging::PostQuitMessage(0);
-      }
-      LRESULT(0)
-    }
-    _ => unsafe { DefSubclassProc(h_wnd, message, w_param, l_param) },
+    WindowsAndMessaging::WM_DESTROY => LRESULT(0),
+    _ => unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) },
   }
+}
+
+fn handle_message(window: &Arc<Window>, message: Message) -> Message {
+  if let Message::Window(window_message) = &message {
+    match window_message {
+      WindowMessage::CloseRequested => {
+        if window.state.get().close_on_x {
+          window.close();
+        }
+      }
+      WindowMessage::Closed => {
+        unsafe { PostQuitMessage(0) };
+      }
+      &WindowMessage::Key { key, state, .. } => {
+        window.state.get_mut().input.update_key_state(key, state);
+        window.state.get_mut().input.update_modifiers_state();
+      }
+      &WindowMessage::MouseButton { button, state, .. } => window
+        .state
+        .get_mut()
+        .input
+        .update_mouse_state(button, state),
+      _ => (),
+    }
+  }
+
+  message
 }

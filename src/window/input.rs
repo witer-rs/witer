@@ -6,7 +6,6 @@ use self::state::KeyState;
 use crate::window::input::{key::Key, mouse::Mouse, state::ButtonState};
 
 pub mod key;
-pub mod modifier;
 pub mod mouse;
 pub mod state;
 
@@ -59,7 +58,7 @@ impl Input {
     }
   }
 
-  pub fn update_mouse_button_state(&mut self, button: Mouse, state: ButtonState) {
+  pub fn update_mouse_state(&mut self, button: Mouse, state: ButtonState) {
     if let Some(mouse_state) = self.mouse_buttons.get_mut(&button) {
       *mouse_state = state;
     }
