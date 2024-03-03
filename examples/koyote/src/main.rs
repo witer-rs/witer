@@ -60,9 +60,9 @@ impl App {
 
 impl WindowProcedure for App {
   fn procedure(&mut self, window: &Arc<Window>, message: Message) {
-    if !matches!(
+    if matches!(
       message,
-      Message::Unidentified { .. } | Message::None | Message::Window(WindowMessage::Draw)
+      Message::Window(WindowMessage::Key { .. } | WindowMessage::MouseButton { .. })
     ) {
       println!("{message:?}");
     }
