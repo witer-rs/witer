@@ -388,8 +388,8 @@ impl HasWindowHandle for Window {
 unsafe impl HasRawWindowHandle for Window {
   fn raw_window_handle(&self) -> RawWindowHandle {
     let mut handle = Win32WindowHandle::empty();
-    handle.hwnd = self.hwnd as *mut std::ffi::c_void;
-    handle.hinstance = self.hinstance as *mut std::ffi::c_void;
+    handle.hwnd = self.hwnd.0 as *mut std::ffi::c_void;
+    handle.hinstance = self.hinstance.0 as *mut std::ffi::c_void;
     RawWindowHandle::Win32(handle)
   }
 }
