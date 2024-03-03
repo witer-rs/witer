@@ -41,7 +41,7 @@ use windows::{
   },
 };
 
-use self::{callback::Callback, stage::Stage};
+use self::{callback::WindowProcedure, stage::Stage};
 use crate::{
   debug::{error::WindowError, WindowResult},
   handle::Handle,
@@ -103,7 +103,7 @@ impl Window {
   pub const WINDOW_THREAD_ID: &'static str = "window";
 
   pub fn new(
-    callback: impl Callback + 'static,
+    callback: impl WindowProcedure + 'static,
     settings: WindowSettings,
   ) -> Result<Arc<Self>, WindowError> {
     HWND::default();

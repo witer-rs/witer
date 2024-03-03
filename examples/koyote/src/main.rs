@@ -5,7 +5,10 @@ use std::{
   time::{Duration, Instant},
 };
 
-use ezwin::{prelude::*, window::{callback::Callback, run}};
+use ezwin::{
+  prelude::*,
+  window::{callback::WindowProcedure, run},
+};
 use foxy_time::{Time, TimeSettings};
 
 fn main() -> WindowResult<()> {
@@ -16,7 +19,7 @@ fn main() -> WindowResult<()> {
       .with_title("Easy Window")
       .with_size((800, 600)),
   )?;
-  
+
   run(&window);
 
   Ok(())
@@ -55,9 +58,12 @@ impl App {
   }
 }
 
-impl Callback for App {
-  fn callback(&mut self, window: &Arc<Window>, message: Message) {
-    if !matches!(message, Message::Unidentified { .. } | Message::None | Message::Window(WindowMessage::Draw)) {
+impl WindowProcedure for App {
+  fn procedure(&mut self, window: &Arc<Window>, message: Message) {
+    if !matches!(
+      message,
+      Message::Unidentified { .. } | Message::None | Message::Window(WindowMessage::Draw)
+    ) {
       println!("{message:?}");
     }
 

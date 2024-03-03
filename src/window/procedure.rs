@@ -10,11 +10,11 @@ use windows::Win32::{
 
 #[allow(unused)]
 use super::window_message::{Message, WindowMessage};
-use super::{Callback, Window};
+use super::{Window, WindowProcedure};
 
 pub struct SubclassWindowData {
   pub window: Arc<Window>,
-  pub callback: Box<dyn Callback>,
+  pub callback: Box<dyn WindowProcedure>,
 }
 
 pub extern "system" fn wnd_proc(
@@ -39,7 +39,7 @@ pub extern "system" fn subclass_proc(
 
   let message = Message::new(hwnd, msg, w_param, l_param);
   if message != Message::Ignored {
-    callback.callback(window, handle_message(window, message));
+    callback.procedure(window, handle_message(window, message));
   }
 
   match msg {
