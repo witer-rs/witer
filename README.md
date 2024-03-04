@@ -41,6 +41,12 @@ Cross-platform support is unlikely, but pull requests are welcomed if anyone els
 I would like to eventually transition from using `windows` to `windows-sys` to benefit from better compile times,
 as the wrappers included in the former are redundant for this crate.
 
+## Examples
+
+You can find examples in [the examples folder](examples). You can also see the vulkano branch of
+[foxy-rs/foxy](https://github.com/foxy-rs/foxy/tree/vulkano), which as of the time of writing is utilizing `ezwin`, but
+is subject to change.
+
 ## Why the rework?
 
 I have to agree that the original API for `ezwin` was much nicer to work with, but it had a number of issues related to
