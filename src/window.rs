@@ -98,6 +98,9 @@ impl Window {
       state,
     });
 
+    let color_mode = window.state.get().color_mode;
+    window.set_color_mode(color_mode);
+
     Ok(window)
   }
 
@@ -111,8 +114,6 @@ impl Window {
       self.set_subclass(wndproc);
 
       // delay this to try to mitigate "flash"
-      let color_mode = self.state.get().color_mode;
-      self.set_color_mode(color_mode);
       let visibility = self.state.get().visibility;
       self.set_visibility(visibility);
 
