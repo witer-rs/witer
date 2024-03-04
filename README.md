@@ -19,7 +19,7 @@ fn main() {
 
 struct App;
 
-// implement the window procedure on your application
+// implement the window procedure for your application
 impl WindowProcedure for App {
   fn on_message(&mut self, window: &Arc<Window>, message: Message) {
     // do stuff...
