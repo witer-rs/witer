@@ -14,7 +14,7 @@ fn main() -> WindowResult<()> {
 
   let window = Window::new(settings).unwrap();
 
-  window.run_with_procedure(App::new(&window));
+  window.run(App::new(&window));
 
   Ok(())
 }

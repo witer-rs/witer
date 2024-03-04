@@ -5,7 +5,7 @@ fn main() {
 
   let window = Window::new(settings).unwrap();
 
-  window.run_with_procedure(App);
+  window.run(App);
 }
 
 struct App;

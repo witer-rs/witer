@@ -100,7 +100,7 @@ impl Window {
     Ok(window)
   }
 
-  pub fn run_with_procedure(self: &Arc<Self>, wndproc: impl WindowProcedure + 'static) {
+  pub fn run(self: &Arc<Self>, wndproc: impl WindowProcedure + 'static) {
     // prevent re-entry
     if self.state.get().stage == Stage::Ready {
       {

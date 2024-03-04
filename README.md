@@ -7,25 +7,21 @@
 use ezwin::prelude::*;
 
 fn main() {
-  // configure and run
-  WindowSettings::default()
-    .build::<App>()
-    .unwrap()
-    .run();
+  // configure
+  let settings = WindowSettings::default();
+
+  // create
+  let window = Window::new(settings).unwrap();
+
+  // run
+  window.run(App);
 }
 
-// create an application and implement the window procedure
 struct App;
 
+// implement the window procedure on your application
 impl WindowProcedure for App {
-  fn new(window: &Arc<Window>) -> Self {
-    // do stuff...
-    Self
-  }
-
-  fn procedure(&mut self, window: &Arc<Window>, message: Message) {
-    // do stuff...
-  }
+  fn on_message(&mut self, _window: &Arc<Window>, _message: Message) {}
 }
 ```
 
