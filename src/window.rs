@@ -75,26 +75,27 @@ impl Window {
   pub const WINDOW_SUBCLASS_ID: usize = 0;
 
   pub fn new(settings: WindowSettings) -> Result<Arc<Self>, WindowError> {
+    let input = Input::new();
+    let state = Handle::new(InternalState {
+      title: settings.title.clone().into(),
+      subtitle: HSTRING::new(),
+      color_mode: settings.color_mode,
+      visibility: settings.visibility,
+      flow: settings.flow,
+      close_on_x: settings.close_on_x,
+      stage: Stage::Ready,
+      input,
+      message: Some(Message::None),
+    });
+
     HWND::default();
     let hinstance: HINSTANCE = unsafe { GetModuleHandleW(None)? }.into();
-    let hwnd = Self::create_hwnd(settings.clone())?.0;
-
-    let input = Input::new();
+    let hwnd = Self::create_hwnd(settings.title, settings.size)?.0;
 
     let window = Arc::new(Window {
       hinstance,
       hwnd,
-      state: Handle::new(InternalState {
-        title: settings.title.into(),
-        subtitle: HSTRING::new(),
-        color_mode: settings.color_mode,
-        visibility: settings.visibility,
-        flow: settings.flow,
-        close_on_x: settings.close_on_x,
-        stage: Stage::Ready,
-        input,
-        message: Some(Message::None),
-      }),
+      state,
     });
 
     Ok(window)
@@ -107,19 +108,7 @@ impl Window {
         self.state.get_mut().stage = Stage::Looping;
       }
 
-      let window_data_ptr = Box::into_raw(Box::new(SubclassWindowData {
-        window: self.clone(),
-        wndproc: Box::new(wndproc),
-      }));
-
-      unsafe {
-        SetWindowSubclass(
-          self.hwnd,
-          Some(procedure::subclass_proc),
-          Window::WINDOW_SUBCLASS_ID,
-          window_data_ptr as usize,
-        );
-      }
+      self.set_subclass(wndproc);
 
       // delay this to try to mitigate "flash"
       let color_mode = self.state.get().color_mode;
@@ -135,10 +124,10 @@ impl Window {
     }
   }
 
-  fn create_hwnd(settings: WindowSettings) -> WindowResult<(HWND, WNDCLASSEXW)> {
+  fn create_hwnd(title: String, size: Size) -> WindowResult<(HWND, WNDCLASSEXW)> {
     let hinstance: HINSTANCE = unsafe { GetModuleHandleW(None)? }.into();
     debug_assert_ne!(hinstance.0, 0);
-    let title = HSTRING::from(settings.title);
+    let title = HSTRING::from(title);
     let window_class = title.clone();
 
     let wc = WNDCLASSEXW {
@@ -170,8 +159,8 @@ impl Window {
           | WindowsAndMessaging::WS_CLIPSIBLINGS,
         WindowsAndMessaging::CW_USEDEFAULT,
         WindowsAndMessaging::CW_USEDEFAULT,
-        settings.size.width,
-        settings.size.height,
+        size.width,
+        size.height,
         None,
         None,
         hinstance,
@@ -186,12 +175,28 @@ impl Window {
     }
   }
 
+  fn set_subclass(self: &Arc<Self>, wndproc: impl WindowProcedure + 'static) {
+    let window_data_ptr = Box::into_raw(Box::new(SubclassWindowData {
+      window: self.clone(),
+      wndproc: Box::new(wndproc),
+    }));
+
+    unsafe {
+      SetWindowSubclass(
+        self.hwnd,
+        Some(procedure::subclass_proc),
+        Window::WINDOW_SUBCLASS_ID,
+        window_data_ptr as usize,
+      );
+    }
+  }
+
   fn message_pump(&self) -> bool {
     let mut msg = MSG::default();
     if self.flow() == Flow::Poll {
       self.poll(&mut msg)
     } else {
-      Self::wait(&mut msg)
+      self.wait(&mut msg)
     }
   }
 
@@ -210,7 +215,7 @@ impl Window {
     msg.message != WindowsAndMessaging::WM_QUIT
   }
 
-  fn wait(msg: &mut MSG) -> bool {
+  fn wait(&self, msg: &mut MSG) -> bool {
     let keeping_going = unsafe { GetMessageW(msg, None, 0, 0) }.as_bool();
     if keeping_going {
       unsafe {
