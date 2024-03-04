@@ -8,7 +8,7 @@ use wgpu::PresentMode;
 
 fn main() -> WindowResult<()> {
   let settings = WindowSettings::default()
-    .with_visibility(Visibility::Hidden)
+    .with_visibility(Visibility::Hidden) // start hidden to prevent
     .with_flow(Flow::Poll)
     .with_title("Easy Window")
     .with_size((800, 600));
@@ -176,7 +176,7 @@ impl App {
 
 impl WindowProcedure for App {
   fn on_message(&mut self, window: &Arc<Window>, message: Message) {
-    if self.frame_count > 3 {
+    if self.frame_count > 1 {
       window.set_visibility(Visibility::Shown);
     } else {
       self.frame_count = self.frame_count.wrapping_add(1);
