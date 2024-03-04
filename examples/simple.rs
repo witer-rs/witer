@@ -1,15 +1,15 @@
 use ezwin::prelude::*;
 
 fn main() {
-  WindowSettings::default().build::<App>().unwrap().run();
+  let settings = WindowSettings::default();
+
+  let window = Window::new(settings).unwrap();
+
+  window.run_with_procedure(App);
 }
 
 struct App;
 
 impl WindowProcedure for App {
-  fn new(_window: &Arc<Window>) -> Self {
-    Self
-  }
-
-  fn procedure(&mut self, _window: &Arc<Window>, _message: Message) {}
+  fn on_message(&mut self, _window: &Arc<Window>, _message: Message) {}
 }

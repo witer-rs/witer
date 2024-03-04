@@ -6,7 +6,6 @@ use crate::{
   window::settings::{ColorMode, Flow, Visibility},
 };
 
-#[derive(Debug)]
 pub struct InternalState {
   pub title: HSTRING,
   pub subtitle: HSTRING,

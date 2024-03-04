@@ -63,26 +63,6 @@ pub mod stage;
 pub mod state;
 
 #[allow(unused)]
-pub struct Runner(Arc<Window>);
-
-impl Runner {
-  pub fn run(self) {
-    if self.0.state.get().stage == Stage::Ready {
-      // prevent re-entry
-      {
-        self.0.state.get_mut().stage = Stage::Looping;
-      }
-
-      while Window::message_pump(&self.0) {}
-
-      self.0.state.get_mut().stage = Stage::Destroyed;
-    } else {
-      panic!("Do not call run within callback")
-    }
-  }
-}
-
-#[allow(unused)]
 pub struct Window {
   hinstance: HINSTANCE,
   hwnd: HWND,
@@ -94,9 +74,7 @@ impl Window {
   pub const MSG_STAGE_EXIT_LOOP: u32 = WM_USER + 11;
   pub const WINDOW_SUBCLASS_ID: usize = 0;
 
-  pub fn build<WP: WindowProcedure + 'static>(
-    settings: WindowSettings,
-  ) -> Result<Runner, WindowError> {
+  pub fn new(settings: WindowSettings) -> Result<Arc<Self>, WindowError> {
     HWND::default();
     let hinstance: HINSTANCE = unsafe { GetModuleHandleW(None)? }.into();
     let hwnd = Self::create_hwnd(settings.clone())?.0;
@@ -119,26 +97,42 @@ impl Window {
       }),
     });
 
-    let window_data_ptr = Box::into_raw(Box::new(SubclassWindowData {
-      window: window.clone(),
-      callback: Box::new(WP::new(&window)),
-    }));
+    Ok(window)
+  }
 
-    unsafe {
-      SetWindowSubclass(
-        hwnd,
-        Some(procedure::subclass_proc),
-        Window::WINDOW_SUBCLASS_ID,
-        window_data_ptr as usize,
-      );
+  pub fn run_with_procedure(self: &Arc<Self>, wndproc: impl WindowProcedure + 'static) {
+    // prevent re-entry
+    if self.state.get().stage == Stage::Ready {
+      {
+        self.state.get_mut().stage = Stage::Looping;
+      }
+
+      let window_data_ptr = Box::into_raw(Box::new(SubclassWindowData {
+        window: self.clone(),
+        wndproc: Box::new(wndproc),
+      }));
+
+      unsafe {
+        SetWindowSubclass(
+          self.hwnd,
+          Some(procedure::subclass_proc),
+          Window::WINDOW_SUBCLASS_ID,
+          window_data_ptr as usize,
+        );
+      }
+
+      // delay this to try to mitigate "flash"
+      let color_mode = self.state.get().color_mode;
+      self.set_color_mode(color_mode);
+      let visibility = self.state.get().visibility;
+      self.set_visibility(visibility);
+
+      while Window::message_pump(self) {}
+
+      self.state.get_mut().stage = Stage::Destroyed;
+    } else {
+      panic!("Do not call run within callback")
     }
-
-    let color_mode = window.state.get().color_mode;
-    window.set_color_mode(color_mode);
-    let visibility = window.state.get().visibility;
-    window.set_visibility(visibility);
-
-    Ok(Runner(window))
   }
 
   fn create_hwnd(settings: WindowSettings) -> WindowResult<(HWND, WNDCLASSEXW)> {

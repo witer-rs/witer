@@ -1,6 +1,3 @@
-use super::{callback::WindowProcedure, Runner, Window};
-use crate::debug::error::WindowError;
-
 #[derive(Default, Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum Flow {
   #[default]
@@ -132,9 +129,5 @@ impl WindowSettings {
   pub fn with_close_on_x(mut self, close_on_x: bool) -> Self {
     self.close_on_x = close_on_x;
     self
-  }
-
-  pub fn build<Proc: WindowProcedure + 'static>(self) -> Result<Runner, WindowError> {
-    Window::build::<Proc>(self)
   }
 }
