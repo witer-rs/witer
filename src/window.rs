@@ -97,9 +97,8 @@ impl Window {
       hwnd,
       state,
     });
-
-    let color_mode = window.state.get().color_mode;
-    window.set_color_mode(color_mode);
+    
+    window.set_color_mode(settings.color_mode);
 
     Ok(window)
   }
