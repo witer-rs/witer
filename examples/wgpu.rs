@@ -8,6 +8,7 @@ use wgpu::PresentMode;
 
 fn main() -> WindowResult<()> {
   let settings = WindowSettings::default()
+    .with_visibility(Visibility::Hidden)
     .with_flow(Flow::Poll)
     .with_title("Easy Window")
     .with_size((800, 600));
@@ -28,6 +29,8 @@ struct App {
   queue: wgpu::Queue,
   config: wgpu::SurfaceConfiguration,
   size: Size,
+
+  frame_count: u32,
 }
 
 impl App {
@@ -92,6 +95,7 @@ impl App {
         queue,
         config,
         size,
+        frame_count: 0,
       }
     })
   }
@@ -165,11 +169,19 @@ impl App {
 
     self.queue.submit(std::iter::once(encoder.finish()));
     output.present();
+
+    self.frame_count = self.frame_count.wrapping_add(1);
   }
 }
 
 impl WindowProcedure for App {
   fn on_message(&mut self, window: &Arc<Window>, message: Message) {
+    if self.frame_count > 3 {
+      window.set_visibility(Visibility::Shown);
+    } else {
+      self.frame_count = self.frame_count.wrapping_add(1);
+    }
+
     if let Message::Window(WindowMessage::Resized(..)) = message {
       self.resize(window.inner_size());
     }
