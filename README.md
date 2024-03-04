@@ -21,7 +21,9 @@ struct App;
 
 // implement the window procedure on your application
 impl WindowProcedure for App {
-  fn on_message(&mut self, _window: &Arc<Window>, _message: Message) {}
+  fn on_message(&mut self, window: &Arc<Window>, message: Message) {
+    // do stuff...
+  }
 }
 ```
 
