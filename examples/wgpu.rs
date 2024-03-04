@@ -14,8 +14,9 @@ fn main() -> WindowResult<()> {
     .with_size((800, 600));
 
   let window = Window::new(settings).unwrap();
+  let app = App::new(&window);
 
-  window.run(App::new(&window));
+  window.run(app);
 
   Ok(())
 }
