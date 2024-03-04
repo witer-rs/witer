@@ -112,7 +112,7 @@ impl Window {
 
       self.set_subclass(wndproc);
 
-      // delay this to try to mitigate "flash"
+      // delay potentially revealing window to try to mitigate "white flash"
       let visibility = self.state.get().visibility;
       self.set_visibility(visibility);
 
