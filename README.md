@@ -3,31 +3,37 @@
 [![Static Badge](https://img.shields.io/badge/crates.io-ezwin?style=for-the-badge&color=E5AB37)](https://crates.io/crates/ezwin)
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/R6R8PGIU6)
 
-<!-- ```rust
+```rust
 use ezwin::prelude::*;
 
-fn main() {
-  // configure
-  let settings = WindowSettings::default();
+#[allow(unused)]
+struct App(i32);
 
-  // create
+// Implement
+impl WindowProcedure<i32> for App {
+  fn on_create(_: &Arc<Window>, x: i32) -> Option<Self> {
+    Some(Self(x))
+  }
+
+  fn on_message(&mut self, _: &Arc<Window>, _: Message) {}
+}
+
+fn main() {
+  let x = 69;
+
+  // Configure
+  let settings = WindowSettings::<App, _>::new(x)
+    .with_flow(Flow::Wait)
+    .with_size((1280, 720))
+    .with_title("Example");
+
+  // Build
   let window = Window::new(settings).unwrap();
 
-  // run
-  window.run(App);
+  // Run
+  while window.pump() {}
 }
-
-struct App;
-
-// implement a window procedure for your application
-impl WindowProcedure for App {
-  fn on_message(&mut self, window: &Arc<Window>, message: Message) {
-    // do stuff...
-  }
-}
-``` -->
-
-https://github.com/GTLugo/ezwin/blob/432c911dc0f13b85ea0a077c1db9f5745eeeae4b/examples/simple.rs#L1-L29
+```
 
 ## `ezwin` is an easy-to-use Win32 windowing library
 
