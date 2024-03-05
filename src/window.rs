@@ -74,16 +74,19 @@ impl Window {
   pub const MSG_STAGE_EXIT_LOOP: u32 = WM_USER + 11;
   pub const WINDOW_SUBCLASS_ID: usize = 0;
 
-  pub fn new(settings: WindowSettings) -> Result<Arc<Self>, WindowError> {
+  pub fn new<P: WindowProcedure<T> + 'static, T>(
+    settings: WindowSettings<P, T>,
+  ) -> Result<Arc<Self>, WindowError> {
     let input = Input::new();
     let state = Handle::new(InternalState {
+      subclass: None,
       title: settings.title.clone().into(),
       subtitle: HSTRING::new(),
       color_mode: settings.color_mode,
       visibility: settings.visibility,
       flow: settings.flow,
       close_on_x: settings.close_on_x,
-      stage: Stage::Ready,
+      stage: Stage::Looping,
       input,
       message: Some(Message::None),
     });
@@ -97,32 +100,26 @@ impl Window {
       hwnd,
       state,
     });
-    
+
     window.set_color_mode(settings.color_mode);
+
+    let Some(subclass) = P::on_create(&window, settings.additional_data) else {
+      return Err(WindowError::Error("on_create returned None".to_owned()));
+    };
+
+    window.set_subclass(subclass);
+    // delay potentially revealing window to try to mitigate "white flash"
+    let visibility = window.state.get().visibility;
+    window.set_visibility(visibility);
 
     Ok(window)
   }
 
-  pub fn run(self: &Arc<Self>, wndproc: impl WindowProcedure + 'static) {
-    // prevent re-entry
-    if self.state.get().stage == Stage::Ready {
-      {
-        self.state.get_mut().stage = Stage::Looping;
-      }
+  // pub fn run(self: &Arc<Self>) {
+  //   self.state.get_mut().stage = Stage::Looping;
 
-      self.set_subclass(wndproc);
-
-      // delay potentially revealing window to try to mitigate "white flash"
-      let visibility = self.state.get().visibility;
-      self.set_visibility(visibility);
-
-      while Window::message_pump(self) {}
-
-      self.state.get_mut().stage = Stage::Destroyed;
-    } else {
-      panic!("Do not call run within callback")
-    }
-  }
+  //   while self.pump() {}
+  // }
 
   fn create_hwnd(title: String, size: Size) -> WindowResult<(HWND, WNDCLASSEXW)> {
     let hinstance: HINSTANCE = unsafe { GetModuleHandleW(None)? }.into();
@@ -175,7 +172,7 @@ impl Window {
     }
   }
 
-  fn set_subclass(self: &Arc<Self>, wndproc: impl WindowProcedure + 'static) {
+  fn set_subclass<T>(self: &Arc<Self>, wndproc: impl WindowProcedure<T> + 'static) {
     let window_data_ptr = Box::into_raw(Box::new(SubclassWindowData {
       window: self.clone(),
       wndproc: Box::new(wndproc),
@@ -184,19 +181,20 @@ impl Window {
     unsafe {
       SetWindowSubclass(
         self.hwnd,
-        Some(procedure::subclass_proc),
+        Some(procedure::subclass_proc::<T>),
         Window::WINDOW_SUBCLASS_ID,
         window_data_ptr as usize,
       );
     }
+
+    self.state.get_mut().subclass = Some(Window::WINDOW_SUBCLASS_ID);
   }
 
-  fn message_pump(&self) -> bool {
+  pub fn pump(&self) -> bool {
     let mut msg = MSG::default();
-    if self.flow() == Flow::Poll {
-      self.poll(&mut msg)
-    } else {
-      self.wait(&mut msg)
+    match self.flow() {
+      Flow::Poll => self.poll(&mut msg),
+      Flow::Wait => self.wait(&mut msg),
     }
   }
 
@@ -212,7 +210,12 @@ impl Window {
       let _ = unsafe { PostMessageW(self.hwnd, Window::MSG_EMPTY, WPARAM(0), LPARAM(0)) };
     }
 
-    msg.message != WindowsAndMessaging::WM_QUIT
+    if msg.message == WindowsAndMessaging::WM_QUIT {
+      self.state.get_mut().stage = Stage::Destroyed;
+      false
+    } else {
+      true
+    }
   }
 
   fn wait(&self, msg: &mut MSG) -> bool {
@@ -223,7 +226,12 @@ impl Window {
         DispatchMessageW(msg);
       }
     }
-    keeping_going
+    if !keeping_going {
+      self.state.get_mut().stage = Stage::Destroyed;
+      false
+    } else {
+      true
+    }
   }
 
   pub fn visibility(&self) -> Visibility {
@@ -397,5 +405,57 @@ impl HasDisplayHandle for Window {
 unsafe impl HasRawDisplayHandle for Window {
   fn raw_display_handle(&self) -> RawDisplayHandle {
     RawDisplayHandle::Windows(WindowsDisplayHandle::empty())
+  }
+}
+
+impl Window {
+  pub fn iter(&self) -> MessageIterator {
+    MessageIterator { window: self }
+  }
+
+  pub fn iter_mut(&mut self) -> MessageIteratorMut {
+    MessageIteratorMut { window: self }
+  }
+}
+
+pub struct MessageIterator<'a> {
+  window: &'a Window,
+}
+
+impl<'a> Iterator for MessageIterator<'a> {
+  type Item = ();
+
+  fn next(&mut self) -> Option<Self::Item> {
+    self.window.pump().then_some(())
+  }
+}
+
+impl<'a> IntoIterator for &'a Window {
+  type IntoIter = MessageIterator<'a>;
+  type Item = ();
+
+  fn into_iter(self) -> Self::IntoIter {
+    self.iter()
+  }
+}
+
+pub struct MessageIteratorMut<'a> {
+  window: &'a mut Window,
+}
+
+impl<'a> Iterator for MessageIteratorMut<'a> {
+  type Item = ();
+
+  fn next(&mut self) -> Option<Self::Item> {
+    self.window.pump().then_some(())
+  }
+}
+
+impl<'a> IntoIterator for &'a mut Window {
+  type IntoIter = MessageIteratorMut<'a>;
+  type Item = ();
+
+  fn into_iter(self) -> Self::IntoIter {
+    self.iter_mut()
   }
 }

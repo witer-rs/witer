@@ -1,15 +1,29 @@
 use ezwin::prelude::*;
 
-fn main() {
-  let settings = WindowSettings::default();
+#[allow(unused)]
+struct App(i32);
 
-  let window = Window::new(settings).unwrap();
+// Implement
+impl WindowProcedure<i32> for App {
+  fn on_create(_: &Arc<Window>, x: i32) -> Option<Self> {
+    Some(Self(x))
+  }
 
-  window.run(App);
+  fn on_message(&mut self, _: &Arc<Window>, _: Message) {}
 }
 
-struct App;
+fn main() {
+  let x = 69;
 
-impl WindowProcedure for App {
-  fn on_message(&mut self, _window: &Arc<Window>, _message: Message) {}
+  // Configure
+  let settings = WindowSettings::<App, _>::new(x)
+    .with_flow(Flow::Wait)
+    .with_size((1280, 720))
+    .with_title("Example");
+
+  // Build
+  let window = Window::new(settings).unwrap();
+
+  // Run
+  while window.pump() {}
 }

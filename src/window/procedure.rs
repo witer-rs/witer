@@ -12,9 +12,9 @@ use windows::Win32::{
 use super::message::{Message, WindowMessage};
 use super::{Window, WindowProcedure};
 
-pub struct SubclassWindowData {
+pub struct SubclassWindowData<T> {
   pub window: Arc<Window>,
-  pub wndproc: Box<dyn WindowProcedure>,
+  pub wndproc: Box<dyn WindowProcedure<T>>,
 }
 
 pub extern "system" fn wnd_proc(
@@ -26,7 +26,7 @@ pub extern "system" fn wnd_proc(
   unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, w_param, l_param) }
 }
 
-pub extern "system" fn subclass_proc(
+pub extern "system" fn subclass_proc<T>(
   hwnd: HWND,
   msg: u32,
   w_param: WPARAM,
@@ -34,7 +34,7 @@ pub extern "system" fn subclass_proc(
   _u_id_subclass: usize,
   dw_ref_data: usize,
 ) -> LRESULT {
-  let SubclassWindowData { window, wndproc }: &mut SubclassWindowData =
+  let SubclassWindowData { window, wndproc }: &mut SubclassWindowData<T> =
     unsafe { std::mem::transmute(dw_ref_data) };
 
   let message = Message::new(hwnd, msg, w_param, l_param);
