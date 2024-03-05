@@ -7,13 +7,14 @@ use foxy_time::{Time, TimeSettings};
 use wgpu::PresentMode;
 
 fn main() -> WindowResult<()> {
-  let settings = WindowSettings::<App, _>::new(())
+  let settings = WindowSettings::default()
     .with_visibility(Visibility::Hidden) // start hidden to prevent first frame white flash
     .with_flow(Flow::Poll)
     .with_title("Easy Window")
     .with_size((800, 600));
+  let callback = CallbackSettings::<App, _>::new(());
 
-  let window = Window::new(settings).unwrap();
+  let window = Window::new(settings, callback).unwrap();
 
   while window.pump() {}
 
@@ -108,7 +109,7 @@ impl App {
   }
 }
 
-impl WindowProcedure<()> for App {
+impl WindowCallback<()> for App {
   fn on_create(window: &Arc<Window>, _: ()) -> Option<Self> {
     pollster::block_on(async {
       let last_time = Instant::now();

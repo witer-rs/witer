@@ -38,7 +38,7 @@ use windows::{
   },
 };
 
-use self::{callback::WindowProcedure, stage::Stage};
+use self::{callback::{CallbackSettings, WindowCallback}, stage::Stage};
 use crate::{
   debug::{error::WindowError, WindowResult},
   handle::Handle,
@@ -62,7 +62,8 @@ pub mod settings;
 pub mod stage;
 pub mod state;
 
-/// Uses internal mutability, so passing around as an Arc is the intended use case.
+/// Uses internal mutability, so passing around as an Arc is the intended use
+/// case.
 #[allow(unused)]
 pub struct Window {
   hinstance: HINSTANCE,
@@ -76,8 +77,9 @@ impl Window {
   pub const WINDOW_SUBCLASS_ID: usize = 0;
 
   /// Create a new window based on the settings provided.
-  pub fn new<P: WindowProcedure<T> + 'static, T>(
-    settings: WindowSettings<P, T>,
+  pub fn new<P: WindowCallback<T> + 'static, T>(
+    settings: WindowSettings,
+    callback: CallbackSettings<P, T>,
   ) -> Result<Arc<Self>, WindowError> {
     let input = Input::new();
     let state = Handle::new(InternalState {
@@ -105,7 +107,7 @@ impl Window {
 
     window.set_color_mode(settings.color_mode);
 
-    let Some(subclass) = P::on_create(&window, settings.additional_data) else {
+    let Some(subclass) = P::on_create(&window, callback.additional_data) else {
       return Err(WindowError::Error("on_create returned None".to_owned()));
     };
 
@@ -168,7 +170,7 @@ impl Window {
     }
   }
 
-  fn set_subclass<T>(self: &Arc<Self>, wndproc: impl WindowProcedure<T> + 'static) {
+  fn set_subclass<T>(self: &Arc<Self>, wndproc: impl WindowCallback<T> + 'static) {
     let window_data_ptr = Box::into_raw(Box::new(SubclassWindowData {
       window: self.clone(),
       wndproc: Box::new(wndproc),
@@ -186,7 +188,8 @@ impl Window {
     self.state.get_mut().subclass = Some(Window::WINDOW_SUBCLASS_ID);
   }
 
-  /// Pump messages to the window procedure based on window flow type (polling or waiting).
+  /// Pump messages to the window procedure based on window flow type (polling
+  /// or waiting).
   pub fn pump(&self) -> bool {
     let mut msg = MSG::default();
     match self.flow() {

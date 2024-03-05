@@ -1,7 +1,3 @@
-use std::marker::PhantomData;
-
-use super::callback::WindowProcedure;
-
 #[derive(Default, Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum Flow {
   #[default]
@@ -72,7 +68,7 @@ impl From<(i32, i32)> for Size {
 }
 
 /// Configures the window to be built.
-pub struct WindowSettings<P: WindowProcedure<T>, T> {
+pub struct WindowSettings {
   pub title: String,
   pub size: Size,
   pub flow: Flow,
@@ -80,12 +76,10 @@ pub struct WindowSettings<P: WindowProcedure<T>, T> {
   pub visibility: Visibility,
   pub close_on_x: bool,
   pub with_gl_context: bool,
-  _p: PhantomData<P>,
-  pub additional_data: T,
 }
 
-impl<P: WindowProcedure<T>, T> WindowSettings<P, T> {
-  pub fn new(additional_data: T) -> Self {
+impl Default for WindowSettings {
+  fn default() -> Self {
     let title: String = "Window".into();
     let size = Size::default();
     let flow = Flow::default();
@@ -102,13 +96,11 @@ impl<P: WindowProcedure<T>, T> WindowSettings<P, T> {
       visibility,
       close_on_x,
       with_gl_context,
-      _p: PhantomData,
-      additional_data,
     }
   }
 }
 
-impl<P: WindowProcedure<T>, T> WindowSettings<P, T> {
+impl WindowSettings {
   pub fn with_title(mut self, title: &'static str) -> Self {
     self.title = title.into();
     self

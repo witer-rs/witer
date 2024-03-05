@@ -9,22 +9,21 @@ use ezwin::prelude::*;
 struct App {}
 
 // Implement
-impl WindowProcedure<()> for App {
-  fn on_create(_: &Arc<Window>, _: ()) -> Option<Self> {
-    Some(Self {})
+impl WindowCallback<()> for App {
+  fn on_create(window: &Arc<Window>, data: ()) -> Option<Self> {
+    Some(Self)
   }
 
-  fn on_message(&mut self, _: &Arc<Window>, _: Message) {}
+  fn on_message(&mut self, window: &Arc<Window>, message: Message) {}
 }
 
 fn main() {
   // Configure
-  let settings = WindowSettings::<App, _>::new(())
-    .with_size((1280, 720))
-    .with_title("Example");
+  let settings = WindowSettings::default();
+  let callback = CallbackSettings::<App, _>::new(());
 
   // Build
-  let window = Window::new(settings).unwrap();
+  let window = Window::new(settings, callback).unwrap();
 
   // Run
   while window.pump() {}

@@ -10,11 +10,11 @@ use windows::Win32::{
 
 #[allow(unused)]
 use super::message::{Message, WindowMessage};
-use super::{Window, WindowProcedure};
+use super::{Window, WindowCallback};
 
 pub struct SubclassWindowData<T> {
   pub window: Arc<Window>,
-  pub wndproc: Box<dyn WindowProcedure<T>>,
+  pub wndproc: Box<dyn WindowCallback<T>>,
 }
 
 pub extern "system" fn wnd_proc(
