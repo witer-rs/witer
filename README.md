@@ -27,7 +27,7 @@ impl WindowProcedure for App {
 }
 ``` -->
 
-https://github.com/GTLugo/ezwin/blob/432c911dc0f13b85ea0a077c1db9f5745eeeae4b/examples/simple.rs
+https://github.com/GTLugo/ezwin/blob/432c911dc0f13b85ea0a077c1db9f5745eeeae4b/examples/simple.rs#L1-L29
 
 ## `ezwin` is an easy-to-use Win32 windowing library
 
