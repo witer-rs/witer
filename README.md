@@ -3,7 +3,7 @@
 [![Static Badge](https://img.shields.io/badge/crates.io-ezwin?style=for-the-badge&color=E5AB37)](https://crates.io/crates/ezwin)
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/R6R8PGIU6)
 
-```rust
+<!-- ```rust
 use ezwin::prelude::*;
 
 fn main() {
@@ -25,7 +25,9 @@ impl WindowProcedure for App {
     // do stuff...
   }
 }
-```
+``` -->
+
+github.com/GTLugo/ezwin/blob/master/examples/simple.rs?plain=1
 
 ## `ezwin` is an easy-to-use Win32 windowing library
 
