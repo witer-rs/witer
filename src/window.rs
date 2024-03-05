@@ -38,7 +38,7 @@ use windows::{
   },
 };
 
-use self::{callback::{CallbackSettings, WindowCallback}, stage::Stage};
+use self::{callback::WindowCallback, stage::Stage};
 use crate::{
   debug::{error::WindowError, WindowResult},
   handle::Handle,
@@ -51,8 +51,6 @@ use crate::{
     state::InternalState,
   },
 };
-
-pub mod builder;
 
 pub mod callback;
 pub mod input;
@@ -77,10 +75,7 @@ impl Window {
   pub const WINDOW_SUBCLASS_ID: usize = 0;
 
   /// Create a new window based on the settings provided.
-  pub fn new<P: WindowCallback<T> + 'static, T>(
-    settings: WindowSettings,
-    callback: CallbackSettings<P, T>,
-  ) -> Result<Arc<Self>, WindowError> {
+  pub fn new(settings: WindowSettings) -> Result<Arc<Self>, WindowError> {
     let input = Input::new();
     let state = Handle::new(InternalState {
       subclass: None,
@@ -106,15 +101,6 @@ impl Window {
     });
 
     window.set_color_mode(settings.color_mode);
-
-    let Some(subclass) = P::on_create(&window, callback.additional_data) else {
-      return Err(WindowError::Error("on_create returned None".to_owned()));
-    };
-
-    window.set_subclass(subclass);
-    // delay potentially revealing window to try to mitigate "white flash"
-    let visibility = window.state.get().visibility;
-    window.set_visibility(visibility);
 
     Ok(window)
   }
@@ -170,16 +156,16 @@ impl Window {
     }
   }
 
-  fn set_subclass<T>(self: &Arc<Self>, wndproc: impl WindowCallback<T> + 'static) {
+  fn set_callback(self: &Arc<Self>, callback: impl WindowCallback + 'static) {
     let window_data_ptr = Box::into_raw(Box::new(SubclassWindowData {
       window: self.clone(),
-      wndproc: Box::new(wndproc),
+      callback: Box::new(callback),
     }));
 
     unsafe {
       SetWindowSubclass(
         self.hwnd,
-        Some(procedure::subclass_proc::<T>),
+        Some(procedure::subclass_proc),
         Window::WINDOW_SUBCLASS_ID,
         window_data_ptr as usize,
       );
@@ -190,7 +176,18 @@ impl Window {
 
   /// Pump messages to the window procedure based on window flow type (polling
   /// or waiting).
-  pub fn pump(&self) -> bool {
+  pub fn run(self: &Arc<Self>, callback: impl WindowCallback + 'static) {
+    let is_new = self.state.get().subclass.is_none();
+    if is_new {
+      self.set_callback(callback);
+      // delay potentially revealing window to try to mitigate "white flash"
+      let visibility = self.state.get().visibility;
+      self.set_visibility(visibility);
+      while self.pump() {}
+    }
+  }
+
+  fn pump(&self) -> bool {
     let mut msg = MSG::default();
     match self.flow() {
       Flow::Poll => self.poll(&mut msg),

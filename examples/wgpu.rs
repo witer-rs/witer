@@ -12,11 +12,10 @@ fn main() -> WindowResult<()> {
     .with_flow(Flow::Poll)
     .with_title("Easy Window")
     .with_size((800, 600));
-  let callback = CallbackSettings::<App, _>::new(());
 
-  let window = Window::new(settings, callback).unwrap();
-
-  while window.pump() {}
+  let window = Window::new(settings)?;
+  
+  window.run(App::new(&window));
 
   Ok(())
 }
@@ -35,6 +34,72 @@ struct App {
 }
 
 impl App {
+  fn new(window: &Arc<Window>) -> Self {
+    pollster::block_on(async {
+      let last_time = Instant::now();
+      let time = TimeSettings::default().build();
+      let size = window.inner_size();
+
+      let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        backends: wgpu::Backends::all(),
+        ..Default::default()
+      });
+
+      let surface = instance.create_surface(window.clone()).unwrap();
+
+      let adapter = instance
+        .request_adapter(&wgpu::RequestAdapterOptions {
+          power_preference: wgpu::PowerPreference::HighPerformance,
+          compatible_surface: Some(&surface),
+          force_fallback_adapter: false,
+        })
+        .await
+        .unwrap();
+
+      let (device, queue) = adapter
+        .request_device(
+          &wgpu::DeviceDescriptor {
+            required_features: wgpu::Features::empty(),
+            required_limits: wgpu::Limits::default(),
+            label: None,
+          },
+          None,
+        )
+        .await
+        .unwrap();
+
+      let surface_caps = surface.get_capabilities(&adapter);
+      let surface_format = surface_caps
+        .formats
+        .iter()
+        .copied()
+        .find(|f| f.is_srgb())
+        .unwrap_or(surface_caps.formats[0]);
+      let config = wgpu::SurfaceConfiguration {
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+        format: surface_format,
+        width: size.width as u32,
+        height: size.height as u32,
+        present_mode: PresentMode::AutoNoVsync,
+        alpha_mode: surface_caps.alpha_modes[0],
+        view_formats: vec![],
+        desired_maximum_frame_latency: 2,
+      };
+      surface.configure(&device, &config);
+
+      Self {
+        last_time,
+        time,
+        surface,
+        device,
+        queue,
+        config,
+        size,
+        frame_count: 0,
+      }
+    })
+  }
+
   fn resize(&mut self, new_size: Size) {
     if new_size.width > 0 && new_size.height > 0 {
       self.size = new_size;
@@ -109,73 +174,7 @@ impl App {
   }
 }
 
-impl WindowCallback<()> for App {
-  fn on_create(window: &Arc<Window>, _: ()) -> Option<Self> {
-    pollster::block_on(async {
-      let last_time = Instant::now();
-      let time = TimeSettings::default().build();
-      let size = window.inner_size();
-
-      let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-        backends: wgpu::Backends::all(),
-        ..Default::default()
-      });
-
-      let surface = instance.create_surface(window.clone()).unwrap();
-
-      let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-          power_preference: wgpu::PowerPreference::HighPerformance,
-          compatible_surface: Some(&surface),
-          force_fallback_adapter: false,
-        })
-        .await
-        .unwrap();
-
-      let (device, queue) = adapter
-        .request_device(
-          &wgpu::DeviceDescriptor {
-            required_features: wgpu::Features::empty(),
-            required_limits: wgpu::Limits::default(),
-            label: None,
-          },
-          None,
-        )
-        .await
-        .unwrap();
-
-      let surface_caps = surface.get_capabilities(&adapter);
-      let surface_format = surface_caps
-        .formats
-        .iter()
-        .copied()
-        .find(|f| f.is_srgb())
-        .unwrap_or(surface_caps.formats[0]);
-      let config = wgpu::SurfaceConfiguration {
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-        format: surface_format,
-        width: size.width as u32,
-        height: size.height as u32,
-        present_mode: PresentMode::AutoNoVsync,
-        alpha_mode: surface_caps.alpha_modes[0],
-        view_formats: vec![],
-        desired_maximum_frame_latency: 2,
-      };
-      surface.configure(&device, &config);
-
-      Some(Self {
-        last_time,
-        time,
-        surface,
-        device,
-        queue,
-        config,
-        size,
-        frame_count: 0,
-      })
-    })
-  }
-
+impl WindowCallback for App {
   fn on_message(&mut self, window: &Arc<Window>, message: Message) {
     if self.frame_count > 1 {
       window.set_visibility(Visibility::Shown);

@@ -3,33 +3,6 @@
 [![Static Badge](https://img.shields.io/badge/crates.io-ezwin?style=for-the-badge&color=E5AB37)](https://crates.io/crates/ezwin)
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/R6R8PGIU6)
 
-```rust
-use ezwin::prelude::*;
-
-struct App {}
-
-// Implement
-impl WindowCallback<()> for App {
-  fn on_create(window: &Arc<Window>, data: ()) -> Option<Self> {
-    Some(Self)
-  }
-
-  fn on_message(&mut self, window: &Arc<Window>, message: Message) {}
-}
-
-fn main() {
-  // Configure
-  let settings = WindowSettings::default();
-  let callback = CallbackSettings::<App, _>::new(());
-
-  // Build
-  let window = Window::new(settings, callback).unwrap();
-
-  // Run
-  while window.pump() {}
-}
-```
-
 ## `ezwin` is an easy-to-use Win32 windowing library
 
 ⚠️ This project is still very much a WIP; I am only one student, after all. ⚠️
@@ -44,12 +17,6 @@ Cross-platform support is unlikely, but pull requests are welcomed if anyone els
 I would like to eventually transition from using `windows` to `windows-sys` to benefit from better compile times,
 as the wrappers included in the former are redundant for this crate.
 
-## Examples
-
-You can find examples in [the examples folder](examples). You can also see the vulkano branch of
-[foxy-rs/foxy](https://github.com/foxy-rs/foxy/tree/vulkano), which as of the time of writing is utilizing `ezwin`, but
-is subject to change.
-
 ## Why the rework?
 
 I have to agree that the original API for `ezwin` was much nicer to work with, but it had a number of issues related to
@@ -62,3 +29,44 @@ things working properly.
 ## Cargo Features
 
 * **`rwh_05` / `rwh_06`:** use the appropriate version of `raw-window-handle`. `rwh_06` is the default.
+
+## Examples
+
+You can find examples in [the examples folder](examples). You can also see the vulkano branch of
+[foxy-rs/foxy](https://github.com/foxy-rs/foxy/tree/vulkano), which as of the time of writing is utilizing `ezwin`, but
+is subject to change.
+
+```rust
+use ezwin::prelude::*;
+
+#[allow(unused)]
+struct App {
+  z: i32,
+}
+
+// Implement
+impl WindowCallback for App {
+  fn on_message(&mut self, window: &Arc<Window>, message: Message) {
+    if let Message::Window(WindowMessage::Key { key: Key::Escape, .. }) = message {
+      window.close();
+    }
+  }
+}
+
+fn main() {
+  let x = 69;
+  let y = 34;
+
+  // Configure
+  let settings = WindowSettings::default()
+    .with_flow(Flow::Wait)
+    .with_size((1280, 720))
+    .with_title("Example");
+
+  // Build
+  let window = Window::new(settings).unwrap();
+
+  // Run
+  window.run(App { z: x + y });
+}
+```

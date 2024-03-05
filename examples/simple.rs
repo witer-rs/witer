@@ -1,30 +1,35 @@
 use ezwin::prelude::*;
 
 #[allow(unused)]
-struct App(i32);
+struct App {
+  z: i32,
+}
 
 // Implement
-impl WindowCallback<i32> for App {
-  fn on_create(_: &Arc<Window>, x: i32) -> Option<Self> {
-    Some(Self(x))
+impl WindowCallback for App {
+  fn on_message(&mut self, window: &Arc<Window>, message: Message) {
+    if let Message::Window(WindowMessage::Key {
+      key: Key::Escape, ..
+    }) = message
+    {
+      window.close();
+    }
   }
-
-  fn on_message(&mut self, _: &Arc<Window>, _: Message) {}
 }
 
 fn main() {
   let x = 69;
+  let y = 34;
 
   // Configure
-  let callback = CallbackSettings::<App, _>::new(x);
   let settings = WindowSettings::default()
     .with_flow(Flow::Wait)
     .with_size((1280, 720))
     .with_title("Example");
 
   // Build
-  let window = Window::new(settings, callback).unwrap();
+  let window = Window::new(settings).unwrap();
 
   // Run
-  while window.pump() {}
+  window.run(App { z: x + y });
 }

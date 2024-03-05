@@ -4,7 +4,7 @@ pub use crate::{
   debug::WindowResult,
   window::{
     self,
-    callback::{CallbackSettings, WindowCallback},
+    callback::WindowCallback,
     input::{
       key::Key,
       mouse::Mouse,
