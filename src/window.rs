@@ -62,6 +62,7 @@ pub mod settings;
 pub mod stage;
 pub mod state;
 
+/// Uses internal mutability, so passing around as an Arc is the intended use case.
 #[allow(unused)]
 pub struct Window {
   hinstance: HINSTANCE,
@@ -74,6 +75,7 @@ impl Window {
   pub const MSG_STAGE_EXIT_LOOP: u32 = WM_USER + 11;
   pub const WINDOW_SUBCLASS_ID: usize = 0;
 
+  /// Create a new window based on the settings provided.
   pub fn new<P: WindowProcedure<T> + 'static, T>(
     settings: WindowSettings<P, T>,
   ) -> Result<Arc<Self>, WindowError> {
@@ -114,12 +116,6 @@ impl Window {
 
     Ok(window)
   }
-
-  // pub fn run(self: &Arc<Self>) {
-  //   self.state.get_mut().stage = Stage::Looping;
-
-  //   while self.pump() {}
-  // }
 
   fn create_hwnd(title: String, size: Size) -> WindowResult<(HWND, WNDCLASSEXW)> {
     let hinstance: HINSTANCE = unsafe { GetModuleHandleW(None)? }.into();
@@ -190,6 +186,7 @@ impl Window {
     self.state.get_mut().subclass = Some(Window::WINDOW_SUBCLASS_ID);
   }
 
+  /// Pump messages to the window procedure based on window flow type (polling or waiting).
   pub fn pump(&self) -> bool {
     let mut msg = MSG::default();
     match self.flow() {
@@ -285,6 +282,7 @@ impl Window {
     self.state.get().subtitle.to_string()
   }
 
+  /// Set the title of the window
   pub fn set_title(&self, title: impl AsRef<str>) {
     self.state.get_mut().title = title.as_ref().into();
     let title = HSTRING::from(format!("{}{}", title.as_ref(), self.state.get().subtitle));
@@ -293,6 +291,7 @@ impl Window {
     }
   }
 
+  /// Set text to appear after the title of the window
   pub fn set_subtitle(&self, subtitle: impl AsRef<str>) {
     self.state.get_mut().subtitle = subtitle.as_ref().into();
     let title = HSTRING::from(format!("{}{}", self.state.get().title, subtitle.as_ref()));

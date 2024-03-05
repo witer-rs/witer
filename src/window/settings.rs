@@ -71,6 +71,7 @@ impl From<(i32, i32)> for Size {
   }
 }
 
+/// Configures the window to be built.
 pub struct WindowSettings<P: WindowProcedure<T>, T> {
   pub title: String,
   pub size: Size,
