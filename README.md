@@ -6,24 +6,20 @@
 ```rust
 use ezwin::prelude::*;
 
-#[allow(unused)]
-struct App(i32);
+struct App {}
 
 // Implement
-impl WindowProcedure<i32> for App {
-  fn on_create(_: &Arc<Window>, x: i32) -> Option<Self> {
-    Some(Self(x))
+impl WindowProcedure<()> for App {
+  fn on_create(_: &Arc<Window>, _: ()) -> Option<Self> {
+    Some(Self {})
   }
 
   fn on_message(&mut self, _: &Arc<Window>, _: Message) {}
 }
 
 fn main() {
-  let x = 69;
-
   // Configure
-  let settings = WindowSettings::<App, _>::new(x)
-    .with_flow(Flow::Wait)
+  let settings = WindowSettings::<App, _>::new(())
     .with_size((1280, 720))
     .with_title("Example");
 
@@ -67,7 +63,3 @@ things working properly.
 ## Cargo Features
 
 * **`rwh_05` / `rwh_06`:** use the appropriate version of `raw-window-handle`. `rwh_06` is the default.
-
-## Examples
-
-Examples are a work-in-progress, but you can see a sample crate in the `examples` folder.
