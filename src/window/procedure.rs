@@ -34,10 +34,8 @@ pub extern "system" fn subclass_proc(
   _u_id_subclass: usize,
   dw_ref_data: usize,
 ) -> LRESULT {
-  let SubclassWindowData {
-    window,
-    callback,
-  }: &mut SubclassWindowData = unsafe { std::mem::transmute(dw_ref_data) };
+  let SubclassWindowData { window, callback }: &mut SubclassWindowData =
+    unsafe { std::mem::transmute(dw_ref_data) };
 
   let message = Message::new(hwnd, msg, w_param, l_param);
   if message != Message::Ignored {
