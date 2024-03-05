@@ -1,20 +1,21 @@
-use std::sync::Arc;
-
+use crossbeam::channel::{Receiver, Sender};
 use windows::Win32::{
   Foundation::*,
+  Graphics::Gdi::{self, RedrawWindow},
   UI::{
     Shell::DefSubclassProc,
-    WindowsAndMessaging::{self, PostQuitMessage},
+    WindowsAndMessaging::{self, DestroyWindow, PostQuitMessage, ShowWindow},
   },
 };
 
 #[allow(unused)]
 use super::message::{Message, WindowMessage};
-use super::{Window, WindowCallback};
+use super::sync::ThreadMessage;
+use crate::window::sync::Response;
 
 pub struct SubclassWindowData {
-  pub window: Arc<Window>,
-  pub callback: Box<dyn WindowCallback>,
+  pub message_sender: Sender<Message>,
+  pub response_receiver: Receiver<Response>,
 }
 
 pub extern "system" fn wnd_proc(
@@ -35,45 +36,36 @@ pub extern "system" fn subclass_proc(
   dw_ref_data: usize,
 ) -> LRESULT {
   let SubclassWindowData {
-    window,
-    callback,
+    message_sender,
+    response_receiver,
   }: &mut SubclassWindowData = unsafe { std::mem::transmute(dw_ref_data) };
 
-  let message = Message::new(hwnd, msg, w_param, l_param);
-  if message != Message::Ignored {
-    callback.on_message(window, handle_message(window, message));
+  if let Ok(thread_message) = ThreadMessage::try_from(msg) {
+    match thread_message {
+      ThreadMessage::CloseConfirmed => unsafe { DestroyWindow(hwnd) }.unwrap(),
+      ThreadMessage::ShowWindow => unsafe {
+        ShowWindow(hwnd, match w_param.0 {
+          0 => WindowsAndMessaging::SW_HIDE,
+          _ => WindowsAndMessaging::SW_SHOW,
+        });
+      },
+      ThreadMessage::RequestRedraw => unsafe {
+        RedrawWindow(hwnd, None, None, Gdi::RDW_INTERNALPAINT);
+      },
+      _ => (),
+    }
+  } else {
+    let message = Message::new(hwnd, msg, w_param, l_param);
+    message_sender.try_send(message).unwrap();
+    response_receiver.recv().unwrap();
   }
 
   match msg {
     WindowsAndMessaging::WM_CLOSE => LRESULT(0),
-    WindowsAndMessaging::WM_DESTROY => LRESULT(0),
+    WindowsAndMessaging::WM_DESTROY => {
+      unsafe { PostQuitMessage(0) };
+      LRESULT(0)
+    }
     _ => unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) },
   }
-}
-
-fn handle_message(window: &Arc<Window>, message: Message) -> Message {
-  if let Message::Window(window_message) = &message {
-    match window_message {
-      WindowMessage::CloseRequested => {
-        if window.state.get().close_on_x {
-          window.close();
-        }
-      }
-      WindowMessage::Closed => {
-        unsafe { PostQuitMessage(0) };
-      }
-      &WindowMessage::Key { key, state, .. } => {
-        window.state.get_mut().input.update_key_state(key, state);
-        window.state.get_mut().input.update_modifiers_state();
-      }
-      &WindowMessage::MouseButton { button, state, .. } => window
-        .state
-        .get_mut()
-        .input
-        .update_mouse_state(button, state),
-      _ => (),
-    }
-  }
-
-  message
 }

@@ -1,5 +1,5 @@
 use windows::Win32::{
-  Foundation::{HWND, LPARAM, WPARAM},
+  Foundation::{HINSTANCE, HWND, LPARAM, WPARAM},
   System::SystemServices::{
     MK_LBUTTON,
     MK_MBUTTON,
@@ -14,7 +14,7 @@ use windows::Win32::{
   },
 };
 
-use super::{input::mouse::Mouse, settings::Size, Window};
+use super::{input::mouse::Mouse, settings::Size};
 use crate::{
   hi_word,
   lo_byte,
@@ -31,6 +31,10 @@ use crate::{
 pub enum Message {
   #[default]
   None,
+  Ready {
+    hwnd: HWND,
+    hinstance: HINSTANCE,
+  },
   Window(WindowMessage),
   Unidentified {
     hwnd: isize,
@@ -38,18 +42,14 @@ pub enum Message {
     wparam: usize,
     lparam: isize,
   },
-  Ignored,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum WindowMessage {
-  Ready {
-    hwnd: isize,
-    hinstance: isize,
-  },
   CloseRequested,
   Closing,
   Closed,
+  Quit,
   Draw,
   Key {
     key: Key,
@@ -79,7 +79,6 @@ pub enum WindowMessage {
 impl Message {
   pub fn new(h_wnd: HWND, message: u32, w_param: WPARAM, l_param: LPARAM) -> Self {
     match message {
-      Window::MSG_EMPTY => Message::None,
       WindowsAndMessaging::WM_CLOSE => Message::Window(WindowMessage::CloseRequested),
       WindowsAndMessaging::WM_DESTROY => Message::Window(WindowMessage::Closing),
       WindowsAndMessaging::WM_NCDESTROY => Message::Window(WindowMessage::Closed),
@@ -125,10 +124,6 @@ impl Message {
           / WindowsAndMessaging::WHEEL_DELTA as f32;
         Message::Window(WindowMessage::Scroll { x: delta, y: 0.0 })
       }
-      WindowsAndMessaging::WM_SETTEXT
-      | WindowsAndMessaging::WM_SIZING
-      | WindowsAndMessaging::WM_MOVING
-      | WindowsAndMessaging::WM_MOVE => Message::Ignored,
       _ => Message::Unidentified {
         hwnd: h_wnd.0,
         message,

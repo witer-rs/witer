@@ -8,14 +8,18 @@ use wgpu::PresentMode;
 
 fn main() -> WindowResult<()> {
   let settings = WindowSettings::default()
-    .with_visibility(Visibility::Hidden) // start hidden to prevent first frame white flash
     .with_flow(Flow::Poll)
+    .with_visibility(Visibility::Hidden) // start hidden to prevent first frame white flash     .with_flow(Flow::Poll)
     .with_title("Easy Window")
     .with_size((800, 600));
 
   let window = Window::new(settings)?;
-  
-  window.run(App::new(&window));
+
+  let mut app = App::new(&window);
+
+  for message in window.as_ref() {
+    app.on_message(&window, message);
+  }
 
   Ok(())
 }
@@ -188,13 +192,18 @@ impl WindowCallback for App {
 
     match &message {
       Message::Window(window_message) => match window_message {
-        WindowMessage::Draw => self.draw(window),
+        WindowMessage::Draw => (),
         WindowMessage::Key { .. } | WindowMessage::MouseButton { .. } => {
           println!("{message:?}");
         }
         _ => (),
       },
-      _ => window.request_redraw(),
+      // _ => window.request_redraw(),
+      _ => (),
     }
+
+    self.draw(window);
   }
 }
+
+// fn main() {}
