@@ -1,4 +1,5 @@
-use crossbeam::channel::{Receiver, Sender};
+use std::sync::{Arc, Barrier, Condvar, Mutex};
+
 use windows::Win32::{
   Foundation::*,
   Graphics::Gdi::{self, RedrawWindow},
@@ -11,11 +12,11 @@ use windows::Win32::{
 #[allow(unused)]
 use super::message::{Message, WindowMessage};
 use super::sync::ThreadMessage;
-use crate::window::sync::Response;
 
 pub struct SubclassWindowData {
-  pub message_sender: Sender<Message>,
-  pub response_receiver: Receiver<Response>,
+  pub next_frame: Arc<(Mutex<bool>, Condvar)>,
+  pub next_message: Arc<Mutex<Message>>,
+  pub is_closing: bool,
 }
 
 pub extern "system" fn wnd_proc(
@@ -36,8 +37,9 @@ pub extern "system" fn subclass_proc(
   dw_ref_data: usize,
 ) -> LRESULT {
   let SubclassWindowData {
-    message_sender,
-    response_receiver,
+    next_frame,
+    next_message,
+    is_closing,
   }: &mut SubclassWindowData = unsafe { std::mem::transmute(dw_ref_data) };
 
   if let Ok(thread_message) = ThreadMessage::try_from(msg) {
@@ -56,16 +58,43 @@ pub extern "system" fn subclass_proc(
     }
   } else {
     let message = Message::new(hwnd, msg, w_param, l_param);
-    message_sender.try_send(message).unwrap();
-    response_receiver.recv().unwrap();
+    if let Message::Window(..) = message {
+      println!("PROC: {message:?}");
+    }
+    next_message.lock().unwrap().replace(message);
   }
 
-  match msg {
+  let result = match msg {
     WindowsAndMessaging::WM_CLOSE => LRESULT(0),
     WindowsAndMessaging::WM_DESTROY => {
+      *is_closing = true;
       unsafe { PostQuitMessage(0) };
       LRESULT(0)
     }
     _ => unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) },
-  }
+  };
+
+  // println!("approaching next_frame gate");
+
+  let (lock, cvar) = next_frame.as_ref();
+  let mut next = cvar
+    .wait_while(lock.lock().unwrap(), |next| !*next && !*is_closing)
+    .unwrap();
+  *next = false;
+
+  // println!("passed next_frame gate");
+
+  // if msg != WindowsAndMessaging::WM_QUIT {
+  //   println!("approaching next_frame gate");
+
+  //   let (lock, cvar) = next_frame.as_ref();
+  //   let mut next = cvar
+  //     .wait_while(lock.lock().unwrap(), |next| !*next)
+  //     .unwrap();
+  //   *next = false;
+
+  //   println!("passed next_frame gate");
+  // }
+
+  result
 }

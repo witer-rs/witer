@@ -1,6 +1,12 @@
-use std::thread::JoinHandle;
+use std::{
+  sync::{Arc, Barrier, Condvar, Mutex},
+  thread::JoinHandle,
+};
 
-use crossbeam::channel::{Receiver, Sender};
+use crossbeam::{
+  channel::{Receiver, Sender},
+  queue::{ArrayQueue, SegQueue},
+};
 use windows::core::HSTRING;
 
 use super::{message::Message, stage::Stage};
@@ -14,6 +20,7 @@ use crate::{
 };
 
 pub struct InternalState {
+  pub thread: Option<JoinHandle<WindowResult<()>>>,
   pub subclass: Option<usize>,
   pub title: HSTRING,
   pub subtitle: HSTRING,
@@ -23,9 +30,7 @@ pub struct InternalState {
   pub close_on_x: bool,
   pub stage: Stage,
   pub input: Input,
-  pub message: Option<Message>,
-  pub thread: Option<JoinHandle<WindowResult<()>>>,
-  pub message_receiver: Receiver<Message>,
-  pub response_sender: Sender<Response>,
   pub requested_redraw: bool,
+  pub next_frame: Arc<(Mutex<bool>, Condvar)>,
+  pub next_message: Arc<Mutex<Message>>,
 }

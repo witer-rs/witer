@@ -1,6 +1,12 @@
-use std::{sync::Arc, thread::JoinHandle};
+use std::{
+  sync::{Arc, Barrier, Condvar, Mutex},
+  thread::JoinHandle,
+};
 
-use crossbeam::channel::{Receiver, Sender, TryRecvError};
+use crossbeam::{
+  channel::{Receiver, Sender, TryRecvError},
+  queue::ArrayQueue,
+};
 #[cfg(all(feature = "rwh_05", not(feature = "rwh_06")))]
 use rwh_05::{
   HasRawDisplayHandle,
@@ -43,6 +49,7 @@ use windows::{
         PostMessageW,
         RegisterClassExW,
         SetWindowTextW,
+        ShowWindow,
         TranslateMessage,
         MSG,
         WINDOW_EX_STYLE,
@@ -91,56 +98,57 @@ impl Window {
 
   /// Create a new window based on the settings provided.
   pub fn new(settings: WindowSettings) -> Result<Arc<Self>, WindowError> {
-    let (message_sender, message_receiver) = crossbeam::channel::unbounded();
-    let (response_sender, response_receiver) = crossbeam::channel::unbounded();
-    let thread =
-      Some(Self::window_loop(settings.clone(), message_sender, response_receiver)?);
+    let (tx, rx) = crossbeam::channel::bounded(0);
+    let next_frame = Arc::new((Mutex::new(true), Condvar::new()));
+    let next_message = Arc::new(Mutex::new(Message::None));
+
+    let thread = Some(Self::window_loop(
+      settings.clone(),
+      tx,
+      next_frame.clone(),
+      next_message.clone(),
+    )?);
 
     // block until first message sent (which will be the window opening)
-    if let Message::Ready { hwnd, hinstance } = message_receiver
-      .recv()
-      .expect("failed to receive opened message")
-    {
-      // create state
-      let input = Input::new();
-      let state = Handle::new(InternalState {
-        subclass: None,
-        title: settings.title.clone().into(),
-        subtitle: HSTRING::new(),
-        color_mode: settings.color_mode,
-        visibility: settings.visibility,
-        flow: settings.flow,
-        close_on_x: settings.close_on_x,
-        stage: Stage::Looping,
-        input,
-        message: Some(Message::None),
-        thread,
-        message_receiver,
-        response_sender,
-        requested_redraw: false,
-      });
+    let (hwnd, hinstance) = rx.recv().expect("failed to receive opened message");
 
-      // create Self
-      let window = Arc::new(Window {
-        hinstance,
-        hwnd,
-        state,
-      });
+    // create state
+    let input = Input::new();
+    let state = Handle::new(InternalState {
+      thread,
+      subclass: None,
+      title: settings.title.clone().into(),
+      subtitle: HSTRING::new(),
+      color_mode: settings.color_mode,
+      visibility: settings.visibility,
+      flow: settings.flow,
+      close_on_x: settings.close_on_x,
+      stage: Stage::Looping,
+      input,
+      requested_redraw: false,
+      next_frame,
+      next_message,
+    });
 
-      // delay potentially revealing window to minimize "white flash" time
-      window.set_color_mode(settings.color_mode);
-      window.set_visibility(settings.visibility);
+    // create Self
+    let window = Arc::new(Window {
+      hinstance,
+      hwnd,
+      state,
+    });
 
-      Ok(window)
-    } else {
-      Err(window_error!("received incorrect first window message"))
-    }
+    // // delay potentially revealing window to minimize "white flash" time
+    // window.set_color_mode(settings.color_mode);
+    // window.set_visibility(settings.visibility);
+
+    Ok(window)
   }
 
   fn window_loop(
     settings: WindowSettings,
-    message_sender: Sender<Message>,
-    response_receiver: Receiver<Response>,
+    tx: Sender<(HWND, HINSTANCE)>,
+    next_frame: Arc<(Mutex<bool>, Condvar)>,
+    next_message: Arc<Mutex<Message>>,
   ) -> WindowResult<JoinHandle<WindowResult<()>>> {
     let thread_handle = std::thread::Builder::new().name("win32".to_owned()).spawn(
       move || -> WindowResult<()> {
@@ -162,8 +170,9 @@ impl Window {
 
         // create subclass ptr
         let window_data_ptr = Box::into_raw(Box::new(SubclassWindowData {
-          message_sender: message_sender.clone(),
-          response_receiver,
+          next_frame: next_frame.clone(),
+          next_message: next_message.clone(),
+          is_closing: false,
         }));
 
         // attach subclass ptr
@@ -178,9 +187,10 @@ impl Window {
         .as_bool());
 
         // Send opened message to main function
-        message_sender
-          .send(Message::Ready { hwnd, hinstance })
+        tx.send((hwnd, hinstance))
           .expect("failed to send opened message");
+
+        unsafe { ShowWindow(hwnd, WindowsAndMessaging::SW_SHOW) };
 
         while message_pump() {}
 
@@ -360,32 +370,53 @@ impl Window {
   //   }
   // }
 
+  fn signal_next_frame(&self) {
+    let next_frame = self.state.get().next_frame.clone();
+    let (lock, cvar) = next_frame.as_ref();
+    {
+      let mut next = lock.lock().unwrap();
+      *next = true;
+    }
+    cvar.notify_one();
+  }
+
   pub fn next_message(&self) -> Option<Message> {
     let flow = self.state.get().flow;
     let current_stage = self.state.get().stage;
-    let receiver = self.state.get().message_receiver.clone();
-    let sender = self.state.get().response_sender.clone();
-    sender.send(sync::Response::NextFrame).unwrap();
+
+    self.signal_next_frame();
+
+    let next_message = self.state.get().next_message.clone();
 
     let next = match current_stage {
       Stage::Looping | Stage::Closing => match flow {
-        Flow::Wait => match receiver.recv() {
-          Ok(message) => Some(self.handle_message(message)),
-          _ => {
-            error!("channel between main and window was closed!");
-            self.close();
-            None
-          }
-        },
-        Flow::Poll => match receiver.try_recv() {
-          Ok(message) => Some(self.handle_message(message)),
-          Err(TryRecvError::Disconnected) => {
-            error!("channel between main and window was closed!");
-            self.close();
-            None
-          }
-          _ => Some(Message::None),
-        },
+        // Flow::Wait => match receiver.recv() {
+        //   Ok(message) => Some(self.handle_message(message)),
+        //   _ => {
+        //     error!("channel between main and window was closed!");
+        //     self.close();
+        //     None
+        //   }
+        // },
+        // Flow::Poll => match receiver.try_recv() {
+        //   Ok(message) => Some(self.handle_message(message)),
+        //   Err(TryRecvError::Disconnected) => {
+        //     error!("channel between main and window was closed!");
+        //     self.close();
+        //     None
+        //   }
+        //   _ => Some(Message::None),
+        // },
+        _ => {
+          // println!("approaching next_message lock");
+
+          let message = next_message.lock().unwrap().take();
+
+          // println!("{message:?}");
+
+          // println!("passed next_message lock");
+          Some(self.handle_message(message))
+        }
       },
       // Stage::Closing => Some(Message::None),
       Stage::Destroyed => {

@@ -1,5 +1,5 @@
 use windows::Win32::{
-  Foundation::{HINSTANCE, HWND, LPARAM, WPARAM},
+  Foundation::{HWND, LPARAM, WPARAM},
   System::SystemServices::{
     MK_LBUTTON,
     MK_MBUTTON,
@@ -31,10 +31,6 @@ use crate::{
 pub enum Message {
   #[default]
   None,
-  Ready {
-    hwnd: HWND,
-    hinstance: HINSTANCE,
-  },
   Window(WindowMessage),
   Unidentified {
     hwnd: isize,
@@ -77,6 +73,14 @@ pub enum WindowMessage {
 }
 
 impl Message {
+  pub fn take(&mut self) -> Message {
+    std::mem::take(self)
+  }
+
+  pub fn replace(&mut self, message: Message) -> Message {
+    std::mem::replace(self, message)
+  }
+
   pub fn new(h_wnd: HWND, message: u32, w_param: WPARAM, l_param: LPARAM) -> Self {
     match message {
       WindowsAndMessaging::WM_CLOSE => Message::Window(WindowMessage::CloseRequested),
