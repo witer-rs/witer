@@ -1,6 +1,6 @@
 use windows::core::HSTRING;
 
-use super::{message::Message, stage::Stage};
+use super::stage::Stage;
 use crate::{
   prelude::Input,
   window::settings::{ColorMode, Flow, Visibility},
@@ -16,5 +16,4 @@ pub struct InternalState {
   pub close_on_x: bool,
   pub stage: Stage,
   pub input: Input,
-  pub message: Option<Message>,
 }

@@ -45,7 +45,6 @@ use crate::{
   prelude::{ButtonState, Key, KeyState, Mouse},
   window::{
     input::Input,
-    message::Message,
     procedure::SubclassWindowData,
     settings::{ColorMode, Flow, Size, Visibility, WindowSettings},
     state::InternalState,
@@ -87,7 +86,6 @@ impl Window {
       close_on_x: settings.close_on_x,
       stage: Stage::Looping,
       input,
-      message: Some(Message::None),
     });
 
     HWND::default();
@@ -231,22 +229,20 @@ impl Window {
     }
   }
 
-  pub fn visibility(&self) -> Visibility {
-    self.state.get().visibility
-  }
-
-  pub fn set_visibility(&self, visibility: Visibility) {
-    self.state.get_mut().visibility = visibility;
+  pub fn request_redraw(&self) {
     unsafe {
-      ShowWindow(self.hwnd, match visibility {
-        Visibility::Shown => SW_SHOW,
-        Visibility::Hidden => SW_HIDE,
-      });
+      RedrawWindow(self.hwnd, None, None, RDW_INTERNALPAINT);
     }
   }
 
-  pub fn color_mode(&self) -> ColorMode {
-    self.state.get().color_mode
+  pub fn is_closing(&self) -> bool {
+    matches!(self.state.get().stage, Stage::Closing | Stage::Destroyed)
+  }
+
+  pub fn close(&self) {
+    self.state.get_mut().stage = Stage::Closing;
+
+    unsafe { DestroyWindow(self.hwnd) }.expect("failed to destroy window");
   }
 
   pub fn set_color_mode(&self, color_mode: ColorMode) {
@@ -264,22 +260,14 @@ impl Window {
     };
   }
 
-  pub fn request_redraw(&self) {
+  pub fn set_visibility(&self, visibility: Visibility) {
+    self.state.get_mut().visibility = visibility;
     unsafe {
-      RedrawWindow(self.hwnd, None, None, RDW_INTERNALPAINT);
+      ShowWindow(self.hwnd, match visibility {
+        Visibility::Shown => SW_SHOW,
+        Visibility::Hidden => SW_HIDE,
+      });
     }
-  }
-
-  pub fn flow(&self) -> Flow {
-    self.state.get().flow
-  }
-
-  pub fn title(&self) -> String {
-    self.state.get().title.to_string()
-  }
-
-  pub fn subtitle(&self) -> String {
-    self.state.get().subtitle.to_string()
   }
 
   /// Set the title of the window
@@ -298,6 +286,26 @@ impl Window {
     unsafe {
       let _ = SetWindowTextW(self.hwnd, &title);
     }
+  }
+
+  pub fn visibility(&self) -> Visibility {
+    self.state.get().visibility
+  }
+
+  pub fn color_mode(&self) -> ColorMode {
+    self.state.get().color_mode
+  }
+
+  pub fn flow(&self) -> Flow {
+    self.state.get().flow
+  }
+
+  pub fn title(&self) -> String {
+    self.state.get().title.to_string()
+  }
+
+  pub fn subtitle(&self) -> String {
+    self.state.get().subtitle.to_string()
   }
 
   pub fn size(&self) -> Size {
@@ -346,16 +354,6 @@ impl Window {
 
   pub fn win(&self) -> ButtonState {
     self.state.get().input.win()
-  }
-
-  pub fn is_closing(&self) -> bool {
-    matches!(self.state.get().stage, Stage::Closing | Stage::Destroyed)
-  }
-
-  pub fn close(&self) {
-    self.state.get_mut().stage = Stage::Closing;
-
-    unsafe { DestroyWindow(self.hwnd) }.expect("failed to destroy window");
   }
 
   #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]

@@ -125,10 +125,7 @@ impl Message {
           / WindowsAndMessaging::WHEEL_DELTA as f32;
         Message::Window(WindowMessage::Scroll { x: delta, y: 0.0 })
       }
-      WindowsAndMessaging::WM_SETTEXT
-      | WindowsAndMessaging::WM_SIZING
-      | WindowsAndMessaging::WM_MOVING
-      | WindowsAndMessaging::WM_MOVE => Message::Ignored,
+      WindowsAndMessaging::WM_SETTEXT => Message::Ignored,
       _ => Message::Unidentified {
         hwnd: h_wnd.0,
         message,
