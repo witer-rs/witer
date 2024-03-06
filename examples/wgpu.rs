@@ -9,7 +9,7 @@ use wgpu::PresentMode;
 fn main() -> WindowResult<()> {
   let settings = WindowSettings::default()
     .with_flow(Flow::Poll)
-    .with_visibility(Visibility::Hidden) // start hidden to prevent first frame white flash     .with_flow(Flow::Poll)
+    // .with_visibility(Visibility::Hidden) // start hidden to prevent first frame white flash     .with_flow(Flow::Poll)
     .with_title("Easy Window")
     .with_size((800, 600));
 
@@ -123,8 +123,8 @@ impl App {
     let elapsed = now.duration_since(self.last_time);
     if elapsed >= Duration::from_secs_f64(0.20) {
       let title = format!(" | FPS: {:.1}", 1.0 / self.time.average_delta_secs());
-      window.set_subtitle(title);
-
+      // window.set_subtitle(title);
+      println!("{title}");
       self.last_time = now;
     }
 
@@ -174,17 +174,17 @@ impl App {
     self.queue.submit(std::iter::once(encoder.finish()));
     output.present();
 
-    self.frame_count = self.frame_count.wrapping_add(1);
+    // self.frame_count = self.frame_count.wrapping_add(1);
   }
 }
 
 impl WindowCallback for App {
   fn on_message(&mut self, window: &Arc<Window>, message: Message) {
-    if self.frame_count > 1 {
-      window.set_visibility(Visibility::Shown);
-    } else {
-      self.frame_count = self.frame_count.wrapping_add(1);
-    }
+    // if self.frame_count > 1 {
+    //   window.set_visibility(Visibility::Shown);
+    // } else {
+    //   self.frame_count = self.frame_count.wrapping_add(1);
+    // }
 
     if let Message::Window(WindowMessage::Resized(..)) = message {
       self.resize(window.inner_size());
