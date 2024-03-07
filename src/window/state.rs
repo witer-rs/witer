@@ -16,7 +16,6 @@ use crate::{
 
 pub struct InternalState {
   pub thread: Option<JoinHandle<WindowResult<()>>>,
-  pub subclass: Option<usize>,
   pub title: HSTRING,
   pub subtitle: HSTRING,
   pub color_mode: ColorMode,

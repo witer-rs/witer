@@ -70,7 +70,6 @@ pub extern "system" fn wnd_proc(
     let input = Input::new();
     let state = Handle::new(InternalState {
       thread: None,
-      subclass: None,
       title: Default::default(),
       subtitle: Default::default(),
       color_mode: Default::default(),
