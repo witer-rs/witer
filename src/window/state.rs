@@ -14,7 +14,6 @@ use crate::{
   debug::WindowResult,
   window::{
     settings::{ColorMode, Flow, Visibility},
-    sync::Response,
     Input,
   },
 };
@@ -31,6 +30,7 @@ pub struct InternalState {
   pub stage: Stage,
   pub input: Input,
   pub requested_redraw: bool,
+  pub new_message: Arc<(Mutex<bool>, Condvar)>,
   pub next_frame: Arc<(Mutex<bool>, Condvar)>,
   pub next_message: Arc<Mutex<Message>>,
 }

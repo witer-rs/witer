@@ -14,7 +14,7 @@ fn main() -> WindowResult<()> {
     .with_title("Easy Window")
     .with_size((800, 600));
 
-  let window = Window::new(settings)?;
+  let window = Arc::new(Window::new(settings)?);
 
   let mut app = App::new(&window);
 
@@ -124,8 +124,8 @@ impl App {
     let elapsed = now.duration_since(self.last_time);
     if elapsed >= Duration::from_secs_f64(0.20) {
       let title = format!(" | FPS: {:.1}", 1.0 / self.time.average_delta_secs());
-      // window.set_subtitle(title);
-      println!("{title}");
+      window.set_subtitle(title);
+      // println!("{title}");
       self.last_time = now;
     }
 
@@ -186,6 +186,9 @@ impl WindowCallback for App {
     // } else {
     //   self.frame_count = self.frame_count.wrapping_add(1);
     // }
+    if window.shift().is_pressed() && window.key(Key::Escape).is_pressed() {
+      window.close();
+    }
 
     if let Message::Window(WindowMessage::Resized(..)) = message {
       self.resize(window.inner_size());
@@ -193,17 +196,14 @@ impl WindowCallback for App {
 
     match &message {
       Message::Window(window_message) => match window_message {
-        WindowMessage::Draw => (),
+        WindowMessage::Draw => self.draw(window),
         WindowMessage::Key { .. } | WindowMessage::MouseButton { .. } => {
           println!("{message:?}");
         }
         _ => (),
       },
-      // _ => window.request_redraw(),
-      _ => (),
+      _ => window.request_redraw(),
     }
-
-    self.draw(window);
   }
 }
 

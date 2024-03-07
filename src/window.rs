@@ -5,7 +5,7 @@ use std::{
 
 use crossbeam::{
   channel::{Receiver, Sender, TryRecvError},
-  queue::ArrayQueue,
+  queue::{ArrayQueue, SegQueue},
 };
 #[cfg(all(feature = "rwh_05", not(feature = "rwh_06")))]
 use rwh_05::{
@@ -59,7 +59,7 @@ use windows::{
   },
 };
 
-use self::{message::WindowMessage, stage::Stage, sync::Response};
+use self::{command::Command, message::WindowMessage, stage::Stage};
 use crate::{
   debug::{error::WindowError, WindowResult},
   handle::Handle,
@@ -70,19 +70,18 @@ use crate::{
     procedure::SubclassWindowData,
     settings::{ColorMode, Flow, Size, Visibility, WindowSettings},
     state::InternalState,
-    sync::ThreadMessage,
   },
   window_error,
 };
 
 pub mod callback;
+mod command;
 pub mod input;
 pub mod message;
 pub mod procedure;
 pub mod settings;
 pub mod stage;
 pub mod state;
-mod sync;
 
 /// Uses internal mutability, so passing around as an Arc is the intended use
 /// case.
@@ -91,20 +90,25 @@ pub struct Window {
   hinstance: HINSTANCE,
   hwnd: HWND,
   state: Handle<InternalState>,
+  command_queue: Arc<SegQueue<Command>>,
 }
 
 impl Window {
   pub const WINDOW_SUBCLASS_ID: usize = 0;
 
   /// Create a new window based on the settings provided.
-  pub fn new(settings: WindowSettings) -> Result<Arc<Self>, WindowError> {
+  pub fn new(settings: WindowSettings) -> Result<Self, WindowError> {
     let (tx, rx) = crossbeam::channel::bounded(0);
-    let next_frame = Arc::new((Mutex::new(true), Condvar::new()));
+    let new_message = Arc::new((Mutex::new(false), Condvar::new()));
+    let next_frame = Arc::new((Mutex::new(false), Condvar::new()));
     let next_message = Arc::new(Mutex::new(Message::None));
+    let command_queue = Arc::new(SegQueue::new());
 
     let thread = Some(Self::window_loop(
       settings.clone(),
       tx,
+      command_queue.clone(),
+      new_message.clone(),
       next_frame.clone(),
       next_message.clone(),
     )?);
@@ -126,16 +130,18 @@ impl Window {
       stage: Stage::Looping,
       input,
       requested_redraw: false,
+      new_message,
       next_frame,
       next_message,
     });
 
     // create Self
-    let window = Arc::new(Window {
+    let window = Window {
       hinstance,
       hwnd,
       state,
-    });
+      command_queue,
+    };
 
     // // delay potentially revealing window to minimize "white flash" time
     // window.set_color_mode(settings.color_mode);
@@ -147,6 +153,8 @@ impl Window {
   fn window_loop(
     settings: WindowSettings,
     tx: Sender<(HWND, HINSTANCE)>,
+    command_queue: Arc<SegQueue<Command>>,
+    new_message: Arc<(Mutex<bool>, Condvar)>,
     next_frame: Arc<(Mutex<bool>, Condvar)>,
     next_message: Arc<Mutex<Message>>,
   ) -> WindowResult<JoinHandle<WindowResult<()>>> {
@@ -154,15 +162,15 @@ impl Window {
       move || -> WindowResult<()> {
         fn message_pump() -> bool {
           let mut msg = MSG::default();
-          if unsafe {
-            PeekMessageW(&mut msg, None, 0, 0, WindowsAndMessaging::PM_REMOVE).as_bool()
-          } {
+          if unsafe { GetMessageW(&mut msg, None, 0, 0).as_bool() } {
             unsafe {
               TranslateMessage(&msg);
               DispatchMessageW(&msg);
             }
+            true
+          } else {
+            false
           }
-          msg.message != WindowsAndMessaging::WM_QUIT
         }
 
         let hinstance: HINSTANCE = unsafe { GetModuleHandleW(None)? }.into();
@@ -170,13 +178,15 @@ impl Window {
 
         // create subclass ptr
         let window_data_ptr = Box::into_raw(Box::new(SubclassWindowData {
+          command_queue,
+          new_message: new_message.clone(),
           next_frame: next_frame.clone(),
           next_message: next_message.clone(),
           is_closing: false,
         }));
 
         // attach subclass ptr
-        debug_assert!(unsafe {
+        let result = unsafe {
           SetWindowSubclass(
             hwnd,
             Some(procedure::subclass_proc),
@@ -184,7 +194,9 @@ impl Window {
             window_data_ptr as usize,
           )
         }
-        .as_bool());
+        .as_bool();
+
+        debug_assert!(result);
 
         // Send opened message to main function
         tx.send((hwnd, hinstance))
@@ -407,14 +419,27 @@ impl Window {
         //   }
         //   _ => Some(Message::None),
         // },
-        _ => {
-          // println!("approaching next_message lock");
+        // _ => {
+        //   // println!("approaching next_message lock");
+
+        //   let message = next_message.lock().unwrap().take();
+
+        //   // println!("{message:?}");
+
+        //   // println!("passed next_message lock");
+        //   Some(self.handle_message(message))
+        // }
+        Flow::Wait => {
+          let new_message = self.state.get().new_message.clone();
+          let (lock, cvar) = new_message.as_ref();
+          let mut new = cvar.wait_while(lock.lock().unwrap(), |new| !*new).unwrap();
+          *new = false;
 
           let message = next_message.lock().unwrap().take();
-
-          // println!("{message:?}");
-
-          // println!("passed next_message lock");
+          Some(self.handle_message(message))
+        }
+        Flow::Poll => {
+          let message = next_message.lock().unwrap().take();
           Some(self.handle_message(message))
         }
       },
@@ -480,13 +505,7 @@ impl Window {
 
   pub fn set_visibility(&self, visibility: Visibility) {
     self.state.get_mut().visibility = visibility;
-    self.post_message(
-      ThreadMessage::ShowWindow,
-      Some(match visibility {
-        Visibility::Shown => 1,
-        Visibility::Hidden => 0,
-      }),
-    );
+    self.request(Command::SetVisibility(visibility));
   }
 
   pub fn color_mode(&self) -> ColorMode {
@@ -512,7 +531,7 @@ impl Window {
     let requested_redraw = self.state.get().requested_redraw;
     if !requested_redraw {
       self.state.get_mut().requested_redraw = true;
-      self.post_message(ThreadMessage::RequestRedraw, None);
+      self.request(Command::Redraw);
     }
   }
 
@@ -532,18 +551,14 @@ impl Window {
   pub fn set_title(&self, title: impl AsRef<str>) {
     self.state.get_mut().title = title.as_ref().into();
     let title = HSTRING::from(format!("{}{}", title.as_ref(), self.state.get().subtitle));
-    unsafe {
-      let _ = SetWindowTextW(self.hwnd, &title);
-    }
+    self.request(Command::SetWindowText(title));
   }
 
   /// Set text to appear after the title of the window
   pub fn set_subtitle(&self, subtitle: impl AsRef<str>) {
     self.state.get_mut().subtitle = subtitle.as_ref().into();
     let title = HSTRING::from(format!("{}{}", self.state.get().title, subtitle.as_ref()));
-    unsafe {
-      let _ = SetWindowTextW(self.hwnd, &title);
-    }
+    self.request(Command::SetWindowText(title));
   }
 
   pub fn size(&self) -> Size {
@@ -600,20 +615,13 @@ impl Window {
 
   pub fn close(&self) {
     self.state.get_mut().stage = Stage::Closing;
-    self.post_message(ThreadMessage::CloseConfirmed, None);
+    self.request(Command::Close);
   }
 
-  fn post_message(&self, message: ThreadMessage, param: Option<usize>) {
-    if let Err(error) = unsafe {
-      PostMessageW(
-        self.hwnd,
-        message as u32,
-        WPARAM(param.unwrap_or_default()),
-        LPARAM(0),
-      )
-    } {
-      eprintln!("{error}");
-    }
+  fn request(&self, command: Command) {
+    self.command_queue.push(command);
+    unsafe { PostMessageW(self.hwnd, WindowsAndMessaging::WM_APP, WPARAM(0), LPARAM(0)) }
+      .unwrap();
   }
 
   #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
