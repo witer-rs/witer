@@ -1,12 +1,8 @@
 use std::{
-  sync::{Arc, Barrier, Condvar, Mutex},
+  sync::{Arc, Condvar, Mutex},
   thread::JoinHandle,
 };
 
-use crossbeam::{
-  channel::{Receiver, Sender},
-  queue::{ArrayQueue, SegQueue},
-};
 use windows::core::HSTRING;
 
 use super::{message::Message, stage::Stage};
