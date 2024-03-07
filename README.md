@@ -58,4 +58,4 @@ If you are perfectly satisfied with what `winit` offers, then I recommend you st
 the crate. I regret publishing that version, and have since yanked each of them off of crates.io. In the future, I intend
 to be far more deliberate and considerate over what gets published rather than willy-nilly publishing the next big features.
 
-⚠️ This project is still very much a WIP; I am only one student, after all. ⚠️
+⚠️ This project is still hilariously incomplete. I am only one student, after all. ⚠️
