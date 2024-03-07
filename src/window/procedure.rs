@@ -116,8 +116,6 @@ pub extern "system" fn wnd_proc(
     }
     .as_bool();
     debug_assert!(result);
-
-    println!("WM_CREATE");
   }
 
   unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, w_param, l_param) }
