@@ -1,4 +1,5 @@
-#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+// #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem =
+// "windows")]
 
 use std::time::{Duration, Instant};
 
@@ -8,14 +9,42 @@ use wgpu::PresentMode;
 
 fn main() -> WindowResult<()> {
   let settings = WindowSettings::default()
-    .with_visibility(Visibility::Hidden) // start hidden to prevent first frame white flash
     .with_flow(Flow::Poll)
+    .with_visibility(Visibility::Hidden) // start hidden to prevent first frame white flash     .with_flow(Flow::Poll)
     .with_title("Easy Window")
     .with_size((800, 600));
 
   let window = Window::new(settings)?;
 
-  window.run(App::new(&window));
+  let mut app = App::new(&window);
+
+  for message in window.as_ref() {
+    if app.frame_count == 1 {
+      window.set_visibility(Visibility::Shown);
+      app.frame_count = app.frame_count.wrapping_add(1);
+    } else {
+      app.frame_count = app.frame_count.wrapping_add(1);
+    }
+
+    if window.shift().is_pressed() && window.key(Key::Escape).is_pressed() {
+      window.close();
+    }
+
+    if let Message::Window(WindowMessage::Resized(..)) = message {
+      app.resize(window.inner_size());
+    }
+
+    match &message {
+      Message::Window(window_message) => match window_message {
+        WindowMessage::Draw => app.draw(&window),
+        WindowMessage::Key { .. } | WindowMessage::MouseButton { .. } => {
+          println!("{message:?}");
+        }
+        _ => (),
+      },
+      _ => window.request_redraw(),
+    }
+  }
 
   Ok(())
 }
@@ -120,7 +149,7 @@ impl App {
     if elapsed >= Duration::from_secs_f64(0.20) {
       let title = format!(" | FPS: {:.1}", 1.0 / self.time.average_delta_secs());
       window.set_subtitle(title);
-
+      // println!("{title}");
       self.last_time = now;
     }
 
@@ -171,30 +200,5 @@ impl App {
     output.present();
 
     self.frame_count = self.frame_count.wrapping_add(1);
-  }
-}
-
-impl WindowCallback for App {
-  fn on_message(&mut self, window: &Arc<Window>, message: Message) {
-    if self.frame_count > 1 {
-      window.set_visibility(Visibility::Shown);
-    } else {
-      self.frame_count = self.frame_count.wrapping_add(1);
-    }
-
-    if let Message::Window(WindowMessage::Resized(..)) = message {
-      self.resize(window.inner_size());
-    }
-
-    match &message {
-      Message::Window(window_message) => match window_message {
-        WindowMessage::Draw => self.draw(window),
-        WindowMessage::Key { .. } | WindowMessage::MouseButton { .. } => {
-          println!("{message:?}");
-        }
-        _ => (),
-      },
-      _ => window.request_redraw(),
-    }
   }
 }

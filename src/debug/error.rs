@@ -15,9 +15,9 @@ pub enum WindowError {
 #[macro_export]
 macro_rules! window_error {
   () => {
-    $crate::core::WindowError::Error("window error".to_string())
+    $crate::debug::error::WindowError::Error("window error".to_string())
   };
   ($($arg:tt)*) => {{
-    $crate::core::WindowError::Error(format!($($arg)*))
+    $crate::debug::error::WindowError::Error(format!($($arg)*))
   }}
 }

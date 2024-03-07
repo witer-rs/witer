@@ -68,7 +68,7 @@ impl From<(i32, i32)> for Size {
 }
 
 /// Configures the window to be built.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct WindowSettings {
   pub title: String,
   pub size: Size,

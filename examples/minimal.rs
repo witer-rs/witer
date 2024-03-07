@@ -1,9 +1,11 @@
 use ezwin::prelude::*;
 
-struct App;
-
-impl WindowCallback for App {}
-
 fn main() {
-  Window::new(Default::default()).unwrap().run(App);
+  let window = Window::new(WindowSettings::default()).unwrap();
+
+  for message in window.as_ref() {
+    if let Message::Window(..) = message {
+      println!("{message:?}");
+    }
+  }
 }
