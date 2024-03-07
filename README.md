@@ -13,7 +13,7 @@ fn main() {
   let settings = WindowSettings::default();
 
   // Build
-  let window = Window::new().unwrap();
+  let window = Window::new(settings).unwrap();
 
   // Run
   for message in window.as_ref() {
