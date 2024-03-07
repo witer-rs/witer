@@ -23,8 +23,11 @@ fn main() {
   }
 }
 ```
+## Why not `winit`?
 
-⚠️ This project is still very much a WIP; I am only one student, after all. ⚠️
+While `winit` is the best choice for pretty much everyone, I found that multithreading the windows message pump
+could lead to performance gains. Additionally, I was simply not satisfied with the way the `winit` API looks and feels.
+If you are perfectly satisfied with what `winit` offers, then I recommend you stick with it.
 
 ## Goals
 
@@ -51,3 +54,5 @@ to be far more deliberate and considerate over what gets published rather than w
 You can find examples in [the examples folder](examples). You can also see the vulkano branch of
 [foxy-rs/foxy](https://github.com/foxy-rs/foxy/tree/vulkano), which as of the time of writing is utilizing `ezwin`, but
 is subject to change.
+
+⚠️ This project is still very much a WIP; I am only one student, after all. ⚠️
