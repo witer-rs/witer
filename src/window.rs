@@ -64,7 +64,6 @@ use crate::{
   },
 };
 
-pub mod callback;
 mod command;
 pub mod input;
 pub mod message;

@@ -19,7 +19,31 @@ fn main() -> WindowResult<()> {
   let mut app = App::new(&window);
 
   for message in window.as_ref() {
-    app.on_message(&window, message);
+    if app.frame_count == 1 {
+      window.set_visibility(Visibility::Shown);
+      app.frame_count = app.frame_count.wrapping_add(1);
+    } else {
+      app.frame_count = app.frame_count.wrapping_add(1);
+    }
+
+    if window.shift().is_pressed() && window.key(Key::Escape).is_pressed() {
+      window.close();
+    }
+
+    if let Message::Window(WindowMessage::Resized(..)) = message {
+      app.resize(window.inner_size());
+    }
+
+    match &message {
+      Message::Window(window_message) => match window_message {
+        WindowMessage::Draw => app.draw(&window),
+        WindowMessage::Key { .. } | WindowMessage::MouseButton { .. } => {
+          println!("{message:?}");
+        }
+        _ => (),
+      },
+      _ => window.request_redraw(),
+    }
   }
 
   Ok(())
@@ -178,35 +202,3 @@ impl App {
     self.frame_count = self.frame_count.wrapping_add(1);
   }
 }
-
-impl WindowCallback for App {
-  fn on_message(&mut self, window: &Arc<Window>, message: Message) {
-    if self.frame_count == 1 {
-      window.set_visibility(Visibility::Shown);
-      self.frame_count = self.frame_count.wrapping_add(1);
-    } else {
-      self.frame_count = self.frame_count.wrapping_add(1);
-    }
-
-    if window.shift().is_pressed() && window.key(Key::Escape).is_pressed() {
-      window.close();
-    }
-
-    if let Message::Window(WindowMessage::Resized(..)) = message {
-      self.resize(window.inner_size());
-    }
-
-    match &message {
-      Message::Window(window_message) => match window_message {
-        WindowMessage::Draw => self.draw(window),
-        WindowMessage::Key { .. } | WindowMessage::MouseButton { .. } => {
-          println!("{message:?}");
-        }
-        _ => (),
-      },
-      _ => window.request_redraw(),
-    }
-  }
-}
-
-// fn main() {}
