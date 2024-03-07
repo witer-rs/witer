@@ -11,7 +11,7 @@ fn main() -> WindowResult<()> {
   let settings = WindowSettings::default()
     .with_flow(Flow::Poll)
     .with_visibility(Visibility::Hidden) // start hidden to prevent first frame white flash     .with_flow(Flow::Poll)
-    .with_title("Easy Window")
+    .with_title("WGPU")
     .with_size((800, 600));
 
   let window = Window::new(settings)?;
