@@ -55,6 +55,7 @@ pub extern "system" fn wnd_proc(
   w_param: WPARAM,
   l_param: LPARAM,
 ) -> LRESULT {
+  // Might be used in the future
   let user_data_ptr =
     unsafe { GetWindowLongPtrW(hwnd, WindowsAndMessaging::GWLP_USERDATA) };
 
