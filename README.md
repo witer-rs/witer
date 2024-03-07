@@ -3,7 +3,6 @@
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/R6R8PGIU6)
 
 [![Crates.io Version](https://img.shields.io/crates/v/ezwin)](https://crates.io/crates/ezwin)
-[![Crates.io Downloads (latest version)](https://img.shields.io/crates/dv/ezwin)](https://crates.io/crates/ezwin)
 
 ```rust
 use ezwin::prelude::*;
