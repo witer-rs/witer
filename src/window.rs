@@ -167,38 +167,6 @@ impl Window {
     Ok(thread_handle)
   }
 
-  // fn handle_message(&self, message: Message) -> Message {
-  //   let stage = self.state.get().stage;
-
-  //   match stage {
-  //     Stage::Looping | Stage::Closing => {
-  //       if let Message::Window(window_message) = &message {
-  //         match window_message {
-  //           WindowMessage::CloseRequested => {
-  //             if self.state.get().close_on_x {
-  //               self.close();
-  //             }
-  //           }
-  //           &WindowMessage::Key { key, state, .. } => {
-  //             self.state.get_mut().input.update_key_state(key, state);
-  //             self.state.get_mut().input.update_modifiers_state();
-  //           }
-  //           &WindowMessage::MouseButton { button, state, .. } => {
-  //             self.state.get_mut().input.update_mouse_state(button, state)
-  //           }
-  //           WindowMessage::Draw => {
-  //             self.state.get_mut().requested_redraw = false;
-  //           }
-  //           _ => (),
-  //         }
-  //       }
-  //     }
-  //     Stage::Destroyed => (),
-  //   }
-
-  //   message
-  // }
-
   fn create_hwnd(
     settings: WindowSettings,
     command_queue: Arc<SegQueue<Command>>,
@@ -289,7 +257,6 @@ impl Window {
 
         Some(self.next_message.lock().unwrap().take())
       }
-      // Stage::Closing => Some(Message::None),
       Stage::Destroyed => {
         let thread = self.state.get_mut().thread.take();
         if let Some(thread) = thread {
