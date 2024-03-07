@@ -16,13 +16,14 @@ fn main() {
   let window = Window::new(settings).unwrap();
 
   // Run
-  for message in window.as_ref() {
+  for message in &window {
     if let Message::Window(..) = message {
       println!("{message:?}");
     }
   }
 }
 ```
+
 ## Goals
 
 The main goal of `ezwin` is to have a simple, easy-to-use API. The target audience is game developers looking to create
