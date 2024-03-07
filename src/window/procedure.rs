@@ -79,9 +79,6 @@ pub extern "system" fn wnd_proc(
       stage: Stage::Looping,
       input,
       requested_redraw: false,
-      new_message: new_message.clone(),
-      next_frame: next_frame.clone(),
-      next_message: next_message.clone(),
     });
 
     let window = Arc::new(Window {
@@ -89,6 +86,9 @@ pub extern "system" fn wnd_proc(
       hwnd,
       state,
       command_queue: command_queue.clone(),
+      new_message: new_message.clone(),
+      next_frame: next_frame.clone(),
+      next_message: next_message.clone(),
     });
 
     let subclass_data = SubclassWindowData {
@@ -181,25 +181,19 @@ pub extern "system" fn subclass_proc(
 
   let message = Message::new(hwnd, msg, w_param, l_param);
 
+  // Wait for message to be taken before overwriting
   let is_none = matches!(*next_message.lock().unwrap(), Message::None);
   if !is_none {
-    // most likely a re-entrant command, such as SetWindowText. Just wait.
-    let (lock, cvar) = next_frame.as_ref();
-    let mut next = cvar
-      .wait_while(lock.lock().unwrap(), |next| !*next && !window.is_destroyed())
-      .unwrap();
-    *next = false;
+    wait_on_frame(next_frame, window);
   }
 
   // pass message to main thread
-  next_message.lock().unwrap().replace(message);
+  next_message
+    .lock()
+    .unwrap()
+    .replace(handle_message(window, message));
   signal_new_message(new_message);
-
-  let (lock, cvar) = next_frame.as_ref();
-  let mut next = cvar
-    .wait_while(lock.lock().unwrap(), |next| !*next && !window.is_destroyed())
-    .unwrap();
-  *next = false;
+  wait_on_frame(next_frame, window);
 
   result
 }
@@ -211,4 +205,46 @@ fn signal_new_message(new_message: &mut Arc<(Mutex<bool>, Condvar)>) {
     *new = true;
   }
   cvar.notify_one();
+}
+
+fn wait_on_frame(next_frame: &mut Arc<(Mutex<bool>, Condvar)>, window: &Arc<Window>) {
+  let (lock, cvar) = next_frame.as_ref();
+  let mut next = cvar
+    .wait_while(lock.lock().unwrap(), |next| !*next && !window.is_destroyed())
+    .unwrap();
+  *next = false;
+}
+
+fn handle_message(window: &Arc<Window>, message: Message) -> Message {
+  let stage = window.state.get().stage;
+
+  match stage {
+    Stage::Looping | Stage::Closing => {
+      if let Message::Window(window_message) = &message {
+        match window_message {
+          WindowMessage::CloseRequested => {
+            if window.state.get().close_on_x {
+              window.close();
+            }
+          }
+          &WindowMessage::Key { key, state, .. } => {
+            window.state.get_mut().input.update_key_state(key, state);
+            window.state.get_mut().input.update_modifiers_state();
+          }
+          &WindowMessage::MouseButton { button, state, .. } => window
+            .state
+            .get_mut()
+            .input
+            .update_mouse_state(button, state),
+          WindowMessage::Draw => {
+            window.state.get_mut().requested_redraw = false;
+          }
+          _ => (),
+        }
+      }
+    }
+    Stage::Destroyed => (),
+  }
+
+  message
 }

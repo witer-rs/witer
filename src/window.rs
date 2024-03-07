@@ -50,7 +50,7 @@ use windows::{
   },
 };
 
-use self::{command::Command, message::WindowMessage, stage::Stage};
+use self::{command::Command, stage::Stage};
 use crate::{
   debug::{error::WindowError, WindowResult},
   handle::Handle,
@@ -80,6 +80,9 @@ pub struct Window {
   hwnd: HWND,
   state: Handle<InternalState>,
   command_queue: Arc<SegQueue<Command>>,
+  new_message: Arc<(Mutex<bool>, Condvar)>,
+  next_frame: Arc<(Mutex<bool>, Condvar)>,
+  next_message: Arc<Mutex<Message>>,
 }
 
 impl Window {
@@ -164,42 +167,37 @@ impl Window {
     Ok(thread_handle)
   }
 
-  fn handle_message(&self, message: Message) -> Message {
-    let stage = self.state.get().stage;
+  // fn handle_message(&self, message: Message) -> Message {
+  //   let stage = self.state.get().stage;
 
-    match stage {
-      Stage::Looping | Stage::Closing => {
-        if let Message::Window(window_message) = &message {
-          match window_message {
-            WindowMessage::CloseRequested => {
-              if self.state.get().close_on_x {
-                self.close();
-              }
-            }
-            &WindowMessage::Key { key, state, .. } => {
-              self.state.get_mut().input.update_key_state(key, state);
-              self.state.get_mut().input.update_modifiers_state();
-            }
-            &WindowMessage::MouseButton { button, state, .. } => {
-              self.state.get_mut().input.update_mouse_state(button, state)
-            }
-            WindowMessage::Draw => {
-              self.state.get_mut().requested_redraw = false;
-            }
-            _ => (),
-          }
-        }
-      }
-      // Stage::Closing => {
-      //   if let Message::Window(WindowMessage::Closed) = &message {
-      //     self.state.get_mut().stage = Stage::Destroyed;
-      //   }
-      // }
-      Stage::Destroyed => (),
-    }
+  //   match stage {
+  //     Stage::Looping | Stage::Closing => {
+  //       if let Message::Window(window_message) = &message {
+  //         match window_message {
+  //           WindowMessage::CloseRequested => {
+  //             if self.state.get().close_on_x {
+  //               self.close();
+  //             }
+  //           }
+  //           &WindowMessage::Key { key, state, .. } => {
+  //             self.state.get_mut().input.update_key_state(key, state);
+  //             self.state.get_mut().input.update_modifiers_state();
+  //           }
+  //           &WindowMessage::MouseButton { button, state, .. } => {
+  //             self.state.get_mut().input.update_mouse_state(button, state)
+  //           }
+  //           WindowMessage::Draw => {
+  //             self.state.get_mut().requested_redraw = false;
+  //           }
+  //           _ => (),
+  //         }
+  //       }
+  //     }
+  //     Stage::Destroyed => (),
+  //   }
 
-    message
-  }
+  //   message
+  // }
 
   fn create_hwnd(
     settings: WindowSettings,
@@ -269,39 +267,28 @@ impl Window {
   }
 
   fn signal_next_frame(&self) {
-    let next_frame = self.state.get().next_frame.clone();
-    let (lock, cvar) = next_frame.as_ref();
-    {
-      let mut next = lock.lock().unwrap();
-      *next = true;
-    }
+    let (lock, cvar) = self.next_frame.as_ref();
+    let mut next = lock.lock().unwrap();
+    *next = true;
     cvar.notify_one();
   }
 
   pub fn next_message(&self) -> Option<Message> {
-    let flow = self.state.get().flow;
     let current_stage = self.state.get().stage;
 
     self.signal_next_frame();
 
-    let next_message = self.state.get().next_message.clone();
-
     let next = match current_stage {
-      Stage::Looping | Stage::Closing => match flow {
-        Flow::Wait => {
-          let new_message = self.state.get().new_message.clone();
+      Stage::Looping | Stage::Closing => {
+        if let Flow::Wait = self.state.get().flow {
+          let new_message = self.new_message.clone();
           let (lock, cvar) = new_message.as_ref();
           let mut new = cvar.wait_while(lock.lock().unwrap(), |new| !*new).unwrap();
           *new = false;
+        }
 
-          let message = next_message.lock().unwrap().take();
-          Some(self.handle_message(message))
-        }
-        Flow::Poll => {
-          let message = next_message.lock().unwrap().take();
-          Some(self.handle_message(message))
-        }
-      },
+        Some(self.next_message.lock().unwrap().take())
+      }
       // Stage::Closing => Some(Message::None),
       Stage::Destroyed => {
         let thread = self.state.get_mut().thread.take();

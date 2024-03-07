@@ -1,11 +1,8 @@
-use std::{
-  sync::{Arc, Condvar, Mutex},
-  thread::JoinHandle,
-};
+use std::thread::JoinHandle;
 
 use windows::core::HSTRING;
 
-use super::{message::Message, stage::Stage};
+use super::stage::Stage;
 use crate::{
   debug::WindowResult,
   window::{
@@ -25,7 +22,4 @@ pub struct InternalState {
   pub stage: Stage,
   pub input: Input,
   pub requested_redraw: bool,
-  pub new_message: Arc<(Mutex<bool>, Condvar)>,
-  pub next_frame: Arc<(Mutex<bool>, Condvar)>,
-  pub next_message: Arc<Mutex<Message>>,
 }
