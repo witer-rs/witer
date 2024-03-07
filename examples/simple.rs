@@ -9,7 +9,7 @@ fn main() {
 
   let window = Window::new(settings).unwrap();
 
-  for message in window.as_ref() {
+  for message in &window {
     if let Message::Window(WindowMessage::Key {
       key: Key::Escape, ..
     }) = message

@@ -89,7 +89,7 @@ impl Window {
   pub const WINDOW_SUBCLASS_ID: usize = 0;
 
   /// Create a new window based on the settings provided.
-  pub fn new(settings: WindowSettings) -> Result<Arc<Self>, WindowError> {
+  pub fn new(settings: WindowSettings) -> Result<Self, WindowError> {
     let (tx, rx) = crossbeam::channel::bounded(0);
     let new_message = Arc::new((Mutex::new(false), Condvar::new()));
     let next_frame = Arc::new((Mutex::new(false), Condvar::new()));
@@ -110,7 +110,7 @@ impl Window {
     {
       let mut state = window.state.get_mut();
       state.thread = thread;
-      state.title = settings.title.into();
+      state.title = settings.title;
       state.color_mode = settings.color_mode;
       state.visibility = settings.visibility;
       state.flow = settings.flow;
@@ -126,7 +126,7 @@ impl Window {
 
   fn window_loop(
     settings: WindowSettings,
-    tx: Sender<Arc<Window>>,
+    tx: Sender<Self>,
     command_queue: Arc<SegQueue<Command>>,
     new_message: Arc<(Mutex<bool>, Condvar)>,
     next_frame: Arc<(Mutex<bool>, Condvar)>,
@@ -173,7 +173,7 @@ impl Window {
     new_message: Arc<(Mutex<bool>, Condvar)>,
     next_frame: Arc<(Mutex<bool>, Condvar)>,
     next_message: Arc<Mutex<Message>>,
-  ) -> WindowResult<Arc<Window>> {
+  ) -> WindowResult<Self> {
     let hinstance: HINSTANCE = unsafe { GetModuleHandleW(None)? }.into();
     debug_assert_ne!(hinstance.0, 0);
     let size = settings.size;
@@ -248,14 +248,15 @@ impl Window {
 
     let next = match current_stage {
       Stage::Looping | Stage::Closing => {
-        if let Flow::Wait = self.state.get().flow {
-          let new_message = self.new_message.clone();
-          let (lock, cvar) = new_message.as_ref();
+        let flow = self.state.get().flow;
+        if let Flow::Wait = flow {
+          let (lock, cvar) = self.new_message.as_ref();
           let mut new = cvar.wait_while(lock.lock().unwrap(), |new| !*new).unwrap();
           *new = false;
         }
 
-        Some(self.next_message.lock().unwrap().take())
+        let msg = self.next_message.lock().unwrap().take();
+        Some(msg)
       }
       Stage::Destroyed => {
         let thread = self.state.get_mut().thread.take();
@@ -380,11 +381,11 @@ impl Window {
   }
 
   pub fn is_closing(&self) -> bool {
-    matches!(self.state.get().stage, Stage::Closing | Stage::Destroyed)
+    self.state.get().is_closing()
   }
 
   pub fn is_destroyed(&self) -> bool {
-    self.state.get().stage == Stage::Destroyed
+    self.state.get().is_destroyed()
   }
 
   pub fn close(&self) {

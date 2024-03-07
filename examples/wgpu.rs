@@ -14,7 +14,7 @@ fn main() -> WindowResult<()> {
     .with_title("WGPU")
     .with_size((800, 600));
 
-  let window = Window::new(settings)?;
+  let window = Arc::new(Window::new(settings)?);
 
   let mut app = App::new(&window);
 
