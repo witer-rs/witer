@@ -161,9 +161,8 @@ pub extern "system" fn subclass_proc(
   while let Some(command) = command_queue.pop() {
     match command {
       Command::Close => {
-        window.state.get_mut().stage = Stage::Closing;
         unsafe { DestroyWindow(hwnd) }.unwrap();
-        break; // no other commands will be valid
+        break; // hwnd will be invalid
       }
       Command::SetVisibility(visibility) => unsafe {
         ShowWindow(hwnd, match visibility {
@@ -187,7 +186,7 @@ pub extern "system" fn subclass_proc(
     // most likely a re-entrant command, such as SetWindowText. Just wait.
     let (lock, cvar) = next_frame.as_ref();
     let mut next = cvar
-      .wait_while(lock.lock().unwrap(), |next| !*next && !window.is_closing())
+      .wait_while(lock.lock().unwrap(), |next| !*next && !window.is_destroyed())
       .unwrap();
     *next = false;
   }
@@ -198,7 +197,7 @@ pub extern "system" fn subclass_proc(
 
   let (lock, cvar) = next_frame.as_ref();
   let mut next = cvar
-    .wait_while(lock.lock().unwrap(), |next| !*next && !window.is_closing())
+    .wait_while(lock.lock().unwrap(), |next| !*next && !window.is_destroyed())
     .unwrap();
   *next = false;
 

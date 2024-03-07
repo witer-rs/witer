@@ -429,14 +429,24 @@ impl Window {
     matches!(self.state.get().stage, Stage::Closing | Stage::Destroyed)
   }
 
+  pub fn is_destroyed(&self) -> bool {
+    self.state.get().stage == Stage::Destroyed
+  }
+
   pub fn close(&self) {
+    if self.is_closing() {
+      return; // already closing
+    }
+
     self.request(Command::Close);
+    self.state.get_mut().stage = Stage::Closing;
   }
 
   fn request(&self, command: Command) {
-    if self.is_closing() {
-      return;
+    if self.is_destroyed() {
+      return; // hwnd will be invalid
     }
+
     let err_str = format!("failed to post command `{command:?}`");
 
     self.command_queue.push(command);
