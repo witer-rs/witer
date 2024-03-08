@@ -62,7 +62,7 @@ impl Default for WindowSettings {
 }
 
 impl WindowSettings {
-  pub fn with_title(mut self, title: &'static str) -> Self {
+  pub fn with_title(mut self, title: impl Into<String>) -> Self {
     self.title = title.into();
     self
   }
