@@ -47,7 +47,7 @@ fn main() -> WindowResult<()> {
         app.update(&window);
         app.draw(&window)
       }
-      Message::Waiting => window.request_redraw(),
+      Message::Wait => window.request_redraw(),
       _ => (),
     }
   }

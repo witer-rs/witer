@@ -140,7 +140,7 @@ impl Window {
     }
 
     // pass message to main thread
-    sync.next_message.lock().unwrap().replace(Message::Waiting);
+    sync.next_message.lock().unwrap().replace(Message::Wait);
     sync.signal_new_message();
     sync.wait_on_frame(|| state.get().stage == Stage::ExitLoop);
 

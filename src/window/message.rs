@@ -35,7 +35,7 @@ pub enum Message {
   #[default]
   None,
   Window(WindowMessage),
-  Waiting,
+  Wait,
   ExitLoop,
 }
 
