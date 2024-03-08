@@ -10,7 +10,6 @@ use windows::Win32::{
       self,
       DestroyWindow,
       GetWindowLongPtrW,
-      PostMessageW,
       PostQuitMessage,
       SetWindowTextW,
       ShowWindow,
@@ -164,8 +163,7 @@ fn on_message(
   // handle from wndproc
   let result = match msg {
     WindowsAndMessaging::WM_CLOSE => LRESULT(0),
-    WindowsAndMessaging::WM_DESTROY => {
-      data.state.get_mut().stage = Stage::Destroyed;
+    WindowsAndMessaging::WM_NCDESTROY => {
       unsafe { PostQuitMessage(0) };
       LRESULT(0)
     }
@@ -216,10 +214,8 @@ fn on_message(
 
 fn signal_new_message(new_message: &Arc<(Mutex<bool>, Condvar)>) {
   let (lock, cvar) = new_message.as_ref();
-  {
-    let mut new = lock.lock().unwrap();
-    *new = true;
-  }
+  let mut new = lock.lock().unwrap();
+  *new = true;
   cvar.notify_one();
 }
 
@@ -231,24 +227,15 @@ fn wait_on_frame(next_frame: &Arc<(Mutex<bool>, Condvar)>, data: &SubclassWindow
   *next = false;
 }
 
-fn handle_message(hwnd: HWND, data: &SubclassWindowData, message: Message) -> Message {
+fn handle_message(_hwnd: HWND, data: &SubclassWindowData, message: Message) -> Message {
   let stage = data.state.get().stage;
 
+  // handle messages unrelated to closing flow (these require the main window
+  // class for now)
   match stage {
     Stage::Looping | Stage::Closing => {
       if let Message::Window(window_message) = &message {
         match window_message {
-          WindowMessage::CloseRequested => {
-            let x = data.state.get().close_on_x;
-            if x {
-              data.command_queue.push(Command::Close);
-              data.state.get_mut().stage = Stage::Closing;
-              unsafe {
-                PostMessageW(hwnd, WindowsAndMessaging::WM_APP, WPARAM(0), LPARAM(0))
-              }
-              .unwrap();
-            }
-          }
           &WindowMessage::Key { key, state, .. } => {
             data.state.get_mut().input.update_key_state(key, state);
             data.state.get_mut().input.update_modifiers_state();
@@ -263,7 +250,7 @@ fn handle_message(hwnd: HWND, data: &SubclassWindowData, message: Message) -> Me
         }
       }
     }
-    Stage::Destroyed => (),
+    Stage::Destroyed | Stage::ExitLoop => (),
   }
 
   message

@@ -149,7 +149,6 @@ impl App {
     if elapsed >= Duration::from_secs_f64(0.20) {
       let title = format!(" | FPS: {:.1}", 1.0 / self.time.average_delta_secs());
       window.set_subtitle(title);
-      // println!("{title}");
       self.last_time = now;
     }
 

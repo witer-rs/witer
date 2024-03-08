@@ -50,7 +50,7 @@ use windows::{
   },
 };
 
-use self::{command::Command, stage::Stage};
+use self::{command::Command, message::WindowMessage, stage::Stage};
 use crate::{
   debug::{error::WindowError, WindowResult},
   handle::Handle,
@@ -150,15 +150,21 @@ impl Window {
         let window = Self::create_hwnd(
           settings,
           command_queue,
-          new_message,
+          new_message.clone(),
           next_frame,
-          next_message,
+          next_message.clone(),
         )?;
 
         // Send opened message to main function
         tx.send(window).expect("failed to send opened message");
 
         while message_pump() {}
+
+        next_message.lock().unwrap().replace(Message::ExitLoop);
+        let (lock, cvar) = new_message.as_ref();
+        let mut new = lock.lock().unwrap();
+        *new = true;
+        cvar.notify_one();
 
         Ok(())
       },
@@ -241,24 +247,49 @@ impl Window {
     cvar.notify_one();
   }
 
+  fn next_message_internal(&self) -> Option<Message> {
+    let flow = self.state.get().flow;
+    if let Flow::Wait = flow {
+      let (lock, cvar) = self.new_message.as_ref();
+      let mut new = cvar.wait_while(lock.lock().unwrap(), |new| !*new).unwrap();
+      *new = false;
+    }
+
+    let msg = self.next_message.lock().unwrap().take();
+    Some(msg)
+  }
+
   pub fn next_message(&self) -> Option<Message> {
     let current_stage = self.state.get().stage;
 
     self.signal_next_frame();
 
     let next = match current_stage {
-      Stage::Looping | Stage::Closing => {
-        let flow = self.state.get().flow;
-        if let Flow::Wait = flow {
-          let (lock, cvar) = self.new_message.as_ref();
-          let mut new = cvar.wait_while(lock.lock().unwrap(), |new| !*new).unwrap();
-          *new = false;
+      Stage::Looping => {
+        let message = self.next_message_internal();
+        if let Some(Message::Window(WindowMessage::CloseRequested)) = message {
+          let x = self.state.get().close_on_x;
+          if x {
+            self.close();
+          }
         }
-
-        let msg = self.next_message.lock().unwrap().take();
-        Some(msg)
+        message
+      }
+      Stage::Closing => {
+        let message = self.next_message_internal();
+        if let Some(Message::Window(WindowMessage::Closed)) = message {
+          self.state.get_mut().stage = Stage::Destroyed
+        }
+        message
       }
       Stage::Destroyed => {
+        let message = self.next_message_internal();
+        if let Some(Message::ExitLoop) = message {
+          self.state.get_mut().stage = Stage::ExitLoop
+        }
+        message
+      }
+      Stage::ExitLoop => {
         let thread = self.state.get_mut().thread.take();
         if let Some(thread) = thread {
           let _ = thread.join();

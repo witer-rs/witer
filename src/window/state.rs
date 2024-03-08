@@ -24,10 +24,10 @@ pub struct InternalState {
 
 impl InternalState {
   pub fn is_closing(&self) -> bool {
-    matches!(self.stage, Stage::Closing | Stage::Destroyed)
+    matches!(self.stage, Stage::Closing | Stage::Destroyed | Stage::ExitLoop)
   }
 
   pub fn is_destroyed(&self) -> bool {
-    self.stage == Stage::Destroyed
+    matches!(self.stage, Stage::Destroyed | Stage::ExitLoop)
   }
 }

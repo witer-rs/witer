@@ -38,6 +38,7 @@ pub enum Message {
     wparam: usize,
     lparam: isize,
   },
+  ExitLoop,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -45,7 +46,6 @@ pub enum WindowMessage {
   CloseRequested,
   Closing,
   Closed,
-  Quit,
   Draw,
   Key {
     key: Key,
