@@ -88,8 +88,6 @@ impl Window {
   pub fn new(settings: WindowSettings) -> Result<Self, WindowError> {
     crate::init_statics();
 
-    eprintln!("{:?}", crate::WIN10_BUILD_VERSION.get());
-
     let (tx, rx) = crossbeam::channel::bounded(0);
     let sync = SyncData {
       command_queue: Arc::new(SegQueue::new()),

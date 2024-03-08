@@ -139,9 +139,7 @@ pub(crate) fn init_statics() {
     let foreground = settings
       .GetColorValue(UIColorType::Foreground)
       .unwrap_or_default();
-    let is_dark_mode = is_color_light(&foreground);
-    println!("isDarkMode: {}", is_dark_mode);
-    is_dark_mode
+    is_color_light(&foreground)
   });
 }
 
