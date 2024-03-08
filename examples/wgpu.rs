@@ -18,6 +18,12 @@ fn main() -> WindowResult<()> {
   let mut app = App::new(&window);
 
   for message in window.as_ref() {
+    if !matches!(message, Message::Window(WindowMessage::Draw)) {
+      if let Message::Window(..) = message {
+        println!("{message:?}");
+      }
+    }
+
     match app.frame_count {
       0..=9 => app.frame_count = app.frame_count.wrapping_add(1),
       10 => {

@@ -69,7 +69,14 @@ pub enum WindowMessage {
     y: f32,
   },
   Resized(Size),
-  Moved,
+  Moved(),
+  Command,
+  SysCommand,
+  SetFocus,
+  KillFocus,
+  Cut,
+  Copy,
+  Paste,
 }
 
 impl Message {
@@ -93,7 +100,14 @@ impl Message {
 
         Message::Window(WindowMessage::Resized(Size { width, height }))
       }
-      WindowsAndMessaging::WM_WINDOWPOSCHANGED => Message::Window(WindowMessage::Moved),
+      WindowsAndMessaging::WM_WINDOWPOSCHANGED => Message::Window(WindowMessage::Moved()),
+      WindowsAndMessaging::WM_SETFOCUS => Message::Window(WindowMessage::SetFocus),
+      WindowsAndMessaging::WM_KILLFOCUS => Message::Window(WindowMessage::KillFocus),
+      WindowsAndMessaging::WM_CUT => Message::Window(WindowMessage::Cut),
+      WindowsAndMessaging::WM_COPY => Message::Window(WindowMessage::Copy),
+      WindowsAndMessaging::WM_PASTE => Message::Window(WindowMessage::Paste),
+      WindowsAndMessaging::WM_COMMAND => Message::Window(WindowMessage::Command),
+      WindowsAndMessaging::WM_SYSCOMMAND => Message::Window(WindowMessage::SysCommand),
       msg
         if (WindowsAndMessaging::WM_KEYFIRST..=WindowsAndMessaging::WM_KEYLAST)
           .contains(&msg) =>
