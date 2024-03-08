@@ -1,26 +1,4 @@
-use super::state::Size;
-
-#[derive(Default, Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub enum Flow {
-  #[default]
-  Wait,
-  Poll,
-}
-
-#[derive(Default, Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub enum Visibility {
-  #[default]
-  Shown,
-  Hidden,
-}
-
-#[derive(Default, Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub enum Theme {
-  #[default]
-  Auto,
-  Dark,
-  Light,
-}
+use super::state::{CursorMode, Flow, Fullscreen, Position, Size, Theme, Visibility};
 
 impl Default for Size {
   fn default() -> Self {
@@ -36,9 +14,12 @@ impl Default for Size {
 pub struct WindowSettings {
   pub title: String,
   pub size: Size,
+  pub position: Option<Position>,
   pub flow: Flow,
   pub theme: Theme,
   pub visibility: Visibility,
+  pub fullscreen: Option<Fullscreen>,
+  pub cursor_mode: CursorMode,
   pub close_on_x: bool,
 }
 
@@ -46,18 +27,24 @@ impl Default for WindowSettings {
   fn default() -> Self {
     let title: String = "Window".into();
     let size = Size::default();
+    let position = None;
     let flow = Flow::default();
-    let color_mode = Theme::default();
+    let theme = Theme::default();
+    let fullscreen = None;
+    let cursor_mode = CursorMode::default();
     let visibility = Visibility::default();
     let close_on_x = true;
 
     Self {
       title,
       size,
+      position,
       flow,
-      theme: color_mode,
+      theme,
       visibility,
       close_on_x,
+      fullscreen,
+      cursor_mode,
     }
   }
 }
@@ -73,6 +60,11 @@ impl WindowSettings {
     self
   }
 
+  pub fn with_position(mut self, position: Option<impl Into<Position>>) -> Self {
+    self.position = position.map(|p| p.into());
+    self
+  }
+
   pub fn with_flow(mut self, flow: Flow) -> Self {
     self.flow = flow;
     self
@@ -85,6 +77,16 @@ impl WindowSettings {
 
   pub fn with_visibility(mut self, visibility: Visibility) -> Self {
     self.visibility = visibility;
+    self
+  }
+
+  pub fn with_fullscreen(mut self, fullscreen: Option<Fullscreen>) -> Self {
+    self.fullscreen = fullscreen;
+    self
+  }
+
+  pub fn with_cursor_mode(mut self, cursor_mode: CursorMode) -> Self {
+    self.cursor_mode = cursor_mode;
     self
   }
 

@@ -1,13 +1,30 @@
 use std::thread::JoinHandle;
 
 use super::stage::Stage;
-use crate::{
-  debug::WindowResult,
-  window::{
-    settings::{Flow, Theme, Visibility},
-    Input,
-  },
-};
+use crate::{debug::WindowResult, window::Input};
+
+pub struct InternalState {
+  pub thread: Option<JoinHandle<WindowResult<()>>>,
+  pub title: String,
+  pub subtitle: String,
+  pub theme: Theme,
+  pub visibility: Visibility,
+  pub flow: Flow,
+  pub close_on_x: bool,
+  pub stage: Stage,
+  pub input: Input,
+  pub requested_redraw: bool,
+}
+
+impl InternalState {
+  pub fn is_closing(&self) -> bool {
+    matches!(self.stage, Stage::Closing | Stage::Destroyed | Stage::ExitLoop)
+  }
+
+  pub fn is_destroyed(&self) -> bool {
+    matches!(self.stage, Stage::Destroyed | Stage::ExitLoop)
+  }
+}
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct Position {
@@ -93,25 +110,38 @@ impl From<[i32; 2]> for Size {
   }
 }
 
-pub struct InternalState {
-  pub thread: Option<JoinHandle<WindowResult<()>>>,
-  pub title: String,
-  pub subtitle: String,
-  pub theme: Theme,
-  pub visibility: Visibility,
-  pub flow: Flow,
-  pub close_on_x: bool,
-  pub stage: Stage,
-  pub input: Input,
-  pub requested_redraw: bool,
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum Fullscreen {
+  Exclusive,
+  Borderless,
 }
 
-impl InternalState {
-  pub fn is_closing(&self) -> bool {
-    matches!(self.stage, Stage::Closing | Stage::Destroyed | Stage::ExitLoop)
-  }
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum CursorMode {
+  #[default]
+  Normal,
+  Confined,
+  Locked,
+}
 
-  pub fn is_destroyed(&self) -> bool {
-    matches!(self.stage, Stage::Destroyed | Stage::ExitLoop)
-  }
+#[derive(Default, Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum Flow {
+  #[default]
+  Wait,
+  Poll,
+}
+
+#[derive(Default, Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum Visibility {
+  #[default]
+  Shown,
+  Hidden,
+}
+
+#[derive(Default, Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum Theme {
+  #[default]
+  Auto,
+  Dark,
+  Light,
 }

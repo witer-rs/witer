@@ -18,12 +18,13 @@ fn main() -> WindowResult<()> {
   let mut app = App::new(&window);
 
   for message in window.as_ref() {
-    if !matches!(
+    if message.is_key(Key::Enter, KeyState::Pressed) {
+    } else if !matches!(
       message,
-      Message::Window(WindowMessage::Draw | WindowMessage::Cursor { .. })
+      Message::Window(WindowMessage::Paint | WindowMessage::Cursor { .. })
     ) {
       if let Message::Window(..) = message {
-        println!("{message:?}");
+        println!("WINDOW: {message:?}");
       }
     }
 
@@ -42,7 +43,7 @@ fn main() -> WindowResult<()> {
 
     match &message {
       Message::Window(WindowMessage::Resized(..)) => app.resize(window.inner_size()),
-      Message::Window(WindowMessage::Draw) => {
+      Message::Window(WindowMessage::Paint) => {
         app.update(&window);
         app.draw(&window)
       }

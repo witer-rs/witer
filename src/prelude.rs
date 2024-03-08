@@ -11,8 +11,8 @@ pub use crate::{
       Input,
     },
     message::{Message, WindowMessage},
-    settings::{Flow, Visibility, WindowSettings},
-    state::Size,
+    settings::WindowSettings,
+    state::{CursorMode, Flow, Fullscreen, Position, Size, Theme, Visibility},
     Window,
   },
 };

@@ -50,7 +50,13 @@ use windows::{
   },
 };
 
-use self::{command::Command, message::WindowMessage, procedure::SyncData, stage::Stage};
+use self::{
+  command::Command,
+  message::WindowMessage,
+  procedure::SyncData,
+  stage::Stage,
+  state::Position,
+};
 use crate::{
   debug::{error::WindowError, WindowResult},
   handle::Handle,
@@ -59,8 +65,8 @@ use crate::{
     input::Input,
     message::Message,
     procedure::CreateInfo,
-    settings::{Flow, Theme, Visibility, WindowSettings},
-    state::{InternalState, Size},
+    settings::WindowSettings,
+    state::{Flow, InternalState, Size, Theme, Visibility},
   },
 };
 
@@ -174,6 +180,10 @@ impl Window {
     let hinstance: HINSTANCE = unsafe { GetModuleHandleW(None)? }.into();
     debug_assert_ne!(hinstance.0, 0);
     let size = settings.size;
+    let position = settings.position.unwrap_or(Position {
+      x: WindowsAndMessaging::CW_USEDEFAULT,
+      y: WindowsAndMessaging::CW_USEDEFAULT,
+    });
     let title = HSTRING::from(settings.title.clone());
     let window_class = title.clone();
 
@@ -210,8 +220,8 @@ impl Window {
         WindowsAndMessaging::WS_OVERLAPPEDWINDOW
           | WindowsAndMessaging::WS_CLIPCHILDREN
           | WindowsAndMessaging::WS_CLIPSIBLINGS,
-        WindowsAndMessaging::CW_USEDEFAULT,
-        WindowsAndMessaging::CW_USEDEFAULT,
+        position.x,
+        position.y,
         size.width,
         size.height,
         None,
@@ -266,7 +276,7 @@ impl Window {
       }
       Stage::Closing => {
         let message = self.next_message_internal();
-        if let Some(Message::Window(WindowMessage::Closed)) = message {
+        if let Some(Message::Window(WindowMessage::Destroyed)) = message {
           self.state.get_mut().stage = Stage::Destroyed
         }
         message
@@ -312,7 +322,7 @@ impl Window {
     self.state.get().subtitle.to_string()
   }
 
-  pub fn size(&self) -> Size {
+  pub fn outer_size(&self) -> Size {
     let mut window_rect = RECT::default();
     let _ = unsafe { GetWindowRect(self.hwnd, std::ptr::addr_of_mut!(window_rect)) };
     Size {
@@ -327,6 +337,15 @@ impl Window {
     Size {
       width: client_rect.right - client_rect.left,
       height: client_rect.bottom - client_rect.top,
+    }
+  }
+
+  pub fn position(&self) -> Position {
+    let mut window_rect = RECT::default();
+    let _ = unsafe { GetWindowRect(self.hwnd, std::ptr::addr_of_mut!(window_rect)) };
+    Position {
+      x: window_rect.left,
+      y: window_rect.top,
     }
   }
 

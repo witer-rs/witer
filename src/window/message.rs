@@ -1,5 +1,5 @@
 use windows::Win32::{
-  Foundation::{HWND, LPARAM, WPARAM},
+  Foundation::{HINSTANCE, HWND, LPARAM, WPARAM},
   System::SystemServices::{
     MK_LBUTTON,
     MK_MBUTTON,
@@ -35,22 +35,20 @@ pub enum Message {
   #[default]
   None,
   Window(WindowMessage),
-  Unidentified {
-    hwnd: isize,
-    message: u32,
-    wparam: usize,
-    lparam: isize,
-  },
   Waiting,
   ExitLoop,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum WindowMessage {
+  Created {
+    hwnd: HWND,
+    hinstance: HINSTANCE,
+  },
   CloseRequested,
-  Closing,
-  Closed,
-  Draw,
+  Destroying,
+  Destroyed,
+  Paint,
   Key {
     key: Key,
     state: KeyState,
@@ -75,9 +73,8 @@ pub enum WindowMessage {
   Resized(Size),
   Moved(Position),
   Command,
-  SysCommand,
-  SetFocus,
-  KillFocus,
+  SystemCommand,
+  Focus(bool),
 }
 
 impl Message {
@@ -89,12 +86,17 @@ impl Message {
     std::mem::replace(self, message)
   }
 
-  pub fn new(h_wnd: HWND, message: u32, w_param: WPARAM, l_param: LPARAM) -> Self {
-    match message {
+  pub fn new(
+    _hwnd: HWND,
+    message: u32,
+    w_param: WPARAM,
+    l_param: LPARAM,
+  ) -> Option<Self> {
+    Some(match message {
       WindowsAndMessaging::WM_CLOSE => Message::Window(WindowMessage::CloseRequested),
-      WindowsAndMessaging::WM_DESTROY => Message::Window(WindowMessage::Closing),
-      WindowsAndMessaging::WM_NCDESTROY => Message::Window(WindowMessage::Closed),
-      WindowsAndMessaging::WM_PAINT => Message::Window(WindowMessage::Draw),
+      WindowsAndMessaging::WM_DESTROY => Message::Window(WindowMessage::Destroying),
+      WindowsAndMessaging::WM_NCDESTROY => Message::Window(WindowMessage::Destroyed),
+      WindowsAndMessaging::WM_PAINT => Message::Window(WindowMessage::Paint),
       WindowsAndMessaging::WM_SIZE => {
         let width = lo_word(l_param.0 as u32) as i32;
         let height = hi_word(l_param.0 as u32) as i32;
@@ -109,16 +111,14 @@ impl Message {
           y: window_pos.y,
         }))
       }
-      WindowsAndMessaging::WM_SETFOCUS => Message::Window(WindowMessage::SetFocus),
-      WindowsAndMessaging::WM_KILLFOCUS => Message::Window(WindowMessage::KillFocus),
+      WindowsAndMessaging::WM_SETFOCUS => Message::Window(WindowMessage::Focus(true)),
+      WindowsAndMessaging::WM_KILLFOCUS => Message::Window(WindowMessage::Focus(false)),
       WindowsAndMessaging::WM_COMMAND => Message::Window(WindowMessage::Command),
-      WindowsAndMessaging::WM_SYSCOMMAND => Message::Window(WindowMessage::SysCommand),
-      msg
-        if (WindowsAndMessaging::WM_KEYFIRST..=WindowsAndMessaging::WM_KEYLAST)
-          .contains(&msg) =>
-      {
-        Self::new_keyboard_message(l_param)
-      }
+      WindowsAndMessaging::WM_SYSCOMMAND => Message::Window(WindowMessage::SystemCommand),
+      WindowsAndMessaging::WM_KEYDOWN
+      | WindowsAndMessaging::WM_SYSKEYDOWN
+      | WindowsAndMessaging::WM_KEYUP
+      | WindowsAndMessaging::WM_SYSKEYUP => Self::new_keyboard_message(l_param),
       WindowsAndMessaging::WM_MOUSEMOVE => {
         let (x, y) = (signed_lo_word(l_param.0 as i32), signed_hi_word(l_param.0 as i32));
         Message::Window(WindowMessage::Cursor { x, y })
@@ -140,13 +140,8 @@ impl Message {
         // mouse move / wheels will match earlier
         Self::new_mouse_button_message(message, w_param, l_param)
       }
-      _ => Message::Unidentified {
-        hwnd: h_wnd.0,
-        message,
-        wparam: w_param.0,
-        lparam: l_param.0,
-      },
-    }
+      _ => return None,
+    })
   }
 
   fn new_keyboard_message(l_param: LPARAM) -> Message {
@@ -177,9 +172,10 @@ impl Message {
     };
 
     let state = {
+      let repeat_count = lo_word(l_param.0 as u32);
+
       let was_key_down = (flags & WindowsAndMessaging::KF_REPEAT as u16)
         == WindowsAndMessaging::KF_REPEAT as u16;
-      let repeat_count = lo_word(l_param.0 as u32);
       let is_key_up =
         (flags & WindowsAndMessaging::KF_UP as u16) == WindowsAndMessaging::KF_UP as u16;
 
@@ -284,5 +280,13 @@ impl Message {
       y,
       is_double_click,
     })
+  }
+
+  pub fn is_key(&self, key: Key, state: KeyState) -> bool {
+    matches!(self, Message::Window(WindowMessage::Key { key: k, state: s, .. }) if *k == key && *s == state)
+  }
+
+  pub fn is_mouse_button(&self, button: Mouse, state: ButtonState) -> bool {
+    matches!(self, Message::Window(WindowMessage::MouseButton { button: b, state: s, .. }) if *b == button && *s == state)
   }
 }

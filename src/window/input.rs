@@ -52,15 +52,15 @@ impl Input {
     }
   }
 
-  pub fn update_key_state(&mut self, keycode: Key, state: KeyState) {
-    if let Some(key_state) = self.keys.get_mut(&keycode) {
-      *key_state = state;
+  pub fn update_key_state(&mut self, keycode: Key, new_state: KeyState) {
+    if let Some(old_state) = self.keys.get_mut(&keycode) {
+      *old_state = new_state;
     }
   }
 
-  pub fn update_mouse_state(&mut self, button: Mouse, state: ButtonState) {
-    if let Some(mouse_state) = self.mouse_buttons.get_mut(&button) {
-      *mouse_state = state;
+  pub fn update_mouse_state(&mut self, button: Mouse, new_state: ButtonState) {
+    if let Some(old_state) = self.mouse_buttons.get_mut(&button) {
+      *old_state = new_state;
     }
   }
 
@@ -73,25 +73,27 @@ impl Input {
         .unwrap_or(KeyState::Released)
     };
 
-    self.shift = if key(Key::LeftShift).is_held() || key(Key::RightShift).is_held() {
+    self.shift = if key(Key::LeftShift).is_pressed() || key(Key::RightShift).is_pressed()
+    {
       ButtonState::Pressed
     } else {
       ButtonState::Released
     };
 
-    self.ctrl = if key(Key::LeftControl).is_held() || key(Key::RightControl).is_held() {
+    self.ctrl =
+      if key(Key::LeftControl).is_pressed() || key(Key::RightControl).is_pressed() {
+        ButtonState::Pressed
+      } else {
+        ButtonState::Released
+      };
+
+    self.alt = if key(Key::LeftAlt).is_pressed() || key(Key::RightAlt).is_pressed() {
       ButtonState::Pressed
     } else {
       ButtonState::Released
     };
 
-    self.alt = if key(Key::LeftAlt).is_held() || key(Key::RightAlt).is_held() {
-      ButtonState::Pressed
-    } else {
-      ButtonState::Released
-    };
-
-    self.win = if key(Key::LeftSuper).is_held() || key(Key::RightSuper).is_held() {
+    self.win = if key(Key::LeftSuper).is_pressed() || key(Key::RightSuper).is_pressed() {
       ButtonState::Pressed
     } else {
       ButtonState::Released

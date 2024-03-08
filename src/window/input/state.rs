@@ -21,10 +21,6 @@ pub enum KeyState {
 
 impl KeyState {
   pub fn is_pressed(self) -> bool {
-    self == KeyState::Pressed
-  }
-
-  pub fn is_held(self) -> bool {
     // this covers the first moments of the keypress as well
     self != KeyState::Released
   }

@@ -20,11 +20,7 @@ use windows::Win32::{
 
 #[allow(unused)]
 use super::message::{Message, WindowMessage};
-use super::{
-  command::Command,
-  settings::{Visibility, WindowSettings},
-  Window,
-};
+use super::{command::Command, settings::WindowSettings, state::Visibility, Window};
 use crate::{
   handle::Handle,
   prelude::Input,
@@ -108,6 +104,16 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
     requested_redraw: false,
   });
 
+  sync
+    .next_message
+    .lock()
+    .unwrap()
+    .replace(Message::Window(WindowMessage::Created {
+      hwnd,
+      hinstance: create_struct.hInstance,
+    }));
+  sync.signal_new_message();
+
   let window = Window {
     hinstance: create_struct.hInstance,
     hwnd,
@@ -187,18 +193,21 @@ fn on_message(
         unsafe { DestroyWindow(hwnd) }.unwrap();
         break; // hwnd will be invalid
       }
+      Command::Redraw => unsafe {
+        RedrawWindow(hwnd, None, None, Gdi::RDW_INTERNALPAINT);
+      },
       Command::SetVisibility(visibility) => unsafe {
         ShowWindow(hwnd, match visibility {
           Visibility::Hidden => WindowsAndMessaging::SW_HIDE,
           Visibility::Shown => WindowsAndMessaging::SW_SHOW,
         });
       },
-      Command::Redraw => unsafe {
-        RedrawWindow(hwnd, None, None, Gdi::RDW_INTERNALPAINT);
-      },
       Command::SetWindowText(text) => unsafe {
         SetWindowTextW(hwnd, &text).unwrap();
       },
+      Command::SetSize(_size) => todo!(),
+      Command::SetPosition(_position) => todo!(),
+      Command::SetFullscreen(_fullscreen) => todo!(),
     }
   }
 
@@ -211,10 +220,12 @@ fn on_message(
   }
 
   // pass message to main thread
-  update_state(data, &message);
-  data.sync.next_message.lock().unwrap().replace(message);
-  data.sync.signal_new_message();
-  data.sync.wait_on_frame(|| data.state.get().is_destroyed());
+  if let Some(message) = message {
+    update_state(data, &message);
+    data.sync.next_message.lock().unwrap().replace(message);
+    data.sync.signal_new_message();
+    data.sync.wait_on_frame(|| data.state.get().is_destroyed());
+  }
 
   result
 }
@@ -229,7 +240,7 @@ fn update_state(data: &SubclassWindowData, message: &Message) {
       &WindowMessage::MouseButton { button, state, .. } => {
         data.state.get_mut().input.update_mouse_state(button, state)
       }
-      WindowMessage::Draw => {
+      WindowMessage::Paint => {
         data.state.get_mut().requested_redraw = false;
       }
       _ => (),
