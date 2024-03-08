@@ -1,14 +1,5 @@
 use super::state::{CursorMode, Flow, Fullscreen, Position, Size, Theme, Visibility};
 
-impl Default for Size {
-  fn default() -> Self {
-    Self {
-      width: 800,
-      height: 600,
-    }
-  }
-}
-
 /// Configures the window to be built.
 #[derive(Clone)]
 pub struct WindowSettings {
@@ -26,7 +17,7 @@ pub struct WindowSettings {
 impl Default for WindowSettings {
   fn default() -> Self {
     let title: String = "Window".into();
-    let size = Size::default();
+    let size = (800, 600).into();
     let position = None;
     let flow = Flow::default();
     let theme = Theme::default();

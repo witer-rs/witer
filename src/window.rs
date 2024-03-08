@@ -37,6 +37,7 @@ use windows::{
       CreateWindowExW,
       DispatchMessageW,
       GetClientRect,
+      GetCursorPos,
       GetMessageW,
       GetWindowRect,
       LoadCursorW,
@@ -336,9 +337,18 @@ impl Window {
     }
   }
 
-  pub fn position(&self) -> Position {
+  pub fn outer_position(&self) -> Position {
     let mut window_rect = RECT::default();
     let _ = unsafe { GetWindowRect(self.hwnd, std::ptr::addr_of_mut!(window_rect)) };
+    Position {
+      x: window_rect.left,
+      y: window_rect.top,
+    }
+  }
+
+  pub fn inner_position(&self) -> Position {
+    let mut window_rect = RECT::default();
+    let _ = unsafe { GetClientRect(self.hwnd, std::ptr::addr_of_mut!(window_rect)) };
     Position {
       x: window_rect.left,
       y: window_rect.top,
@@ -351,6 +361,12 @@ impl Window {
 
   pub fn mouse(&self, button: Mouse) -> ButtonState {
     self.state.get().input.mouse(button)
+  }
+
+  pub fn cursor_screen_position(&self) -> Position {
+    let mut pt = POINT::default();
+    let _ = unsafe { GetCursorPos(std::ptr::addr_of_mut!(pt)) };
+    Position { x: pt.x, y: pt.y }
   }
 
   pub fn shift(&self) -> ButtonState {

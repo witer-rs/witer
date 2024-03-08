@@ -60,10 +60,7 @@ pub enum WindowMessage {
     y: i16,
     is_double_click: bool,
   },
-  Cursor {
-    x: i16,
-    y: i16,
-  },
+  Cursor(Position),
   Scroll {
     x: f32,
     y: f32,
@@ -116,8 +113,11 @@ impl Message {
       | WindowsAndMessaging::WM_KEYUP
       | WindowsAndMessaging::WM_SYSKEYUP => Self::new_keyboard_message(l_param),
       WindowsAndMessaging::WM_MOUSEMOVE => {
-        let (x, y) = (signed_lo_word(l_param.0 as i32), signed_hi_word(l_param.0 as i32));
-        Message::Window(WindowMessage::Cursor { x, y })
+        let position = Position {
+          x: signed_lo_word(l_param.0 as i32) as i32,
+          y: signed_hi_word(l_param.0 as i32) as i32,
+        };
+        Message::Window(WindowMessage::Cursor(position))
       }
       WindowsAndMessaging::WM_MOUSEWHEEL => {
         let delta = signed_hi_word(w_param.0 as i32) as f32

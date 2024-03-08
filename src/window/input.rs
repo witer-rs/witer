@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use strum::IntoEnumIterator;
 
 use self::state::KeyState;
+use super::state::Position;
 use crate::window::input::{key::Key, mouse::Mouse, state::ButtonState};
 
 pub mod key;
@@ -58,7 +59,7 @@ impl Input {
     }
   }
 
-  pub fn update_mouse_state(&mut self, button: Mouse, new_state: ButtonState) {
+  pub fn update_mouse_button_state(&mut self, button: Mouse, new_state: ButtonState) {
     if let Some(old_state) = self.mouse_buttons.get_mut(&button) {
       *old_state = new_state;
     }

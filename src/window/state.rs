@@ -22,7 +22,7 @@ impl InternalState {
   }
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct Position {
   pub x: i32,
   pub y: i32,
@@ -58,7 +58,7 @@ impl From<[i32; 2]> for Position {
   }
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct Size {
   pub width: i32,
   pub height: i32,

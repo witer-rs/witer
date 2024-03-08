@@ -236,9 +236,11 @@ fn update_state(data: &SubclassWindowData, message: &Message) {
         data.state.get_mut().input.update_key_state(key, state);
         data.state.get_mut().input.update_modifiers_state();
       }
-      &WindowMessage::MouseButton { button, state, .. } => {
-        data.state.get_mut().input.update_mouse_state(button, state)
-      }
+      &WindowMessage::MouseButton { button, state, .. } => data
+        .state
+        .get_mut()
+        .input
+        .update_mouse_button_state(button, state),
       WindowMessage::Paint => {
         data.state.get_mut().requested_redraw = false;
       }
