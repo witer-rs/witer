@@ -4,6 +4,5 @@ use strum::Display;
 pub enum Stage {
   Looping,
   Closing,
-  Destroyed,
   ExitLoop,
 }

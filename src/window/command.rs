@@ -5,7 +5,7 @@ use super::state::{Fullscreen, Position, Size, Visibility};
 #[repr(u32)]
 #[derive(Debug)]
 pub enum Command {
-  Close,
+  Destroy,
   Redraw,
   SetVisibility(Visibility),
   SetWindowText(HSTRING),

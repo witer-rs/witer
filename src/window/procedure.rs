@@ -166,32 +166,29 @@ fn on_message(
   l_param: LPARAM,
   data: &SubclassWindowData,
 ) -> LRESULT {
-  // ignore certain messages
-  match msg {
+  let message = Message::new(hwnd, msg, w_param, l_param);
+  // handle from wndproc
+  let result = match msg {
     WindowsAndMessaging::WM_SIZING
     | WindowsAndMessaging::WM_MOVING
     | WindowsAndMessaging::WM_MOVE => {
-      return unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) }
+      // ignore certain messages
+      return unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) };
     }
-    _ => (),
-  }
-
-  // handle from wndproc
-  let result = match msg {
-    WindowsAndMessaging::WM_CLOSE => LRESULT(0),
-    WindowsAndMessaging::WM_NCDESTROY => {
+    WindowsAndMessaging::WM_DESTROY => {
       unsafe { PostQuitMessage(0) };
-      LRESULT(0)
+      return unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) };
     }
+    WindowsAndMessaging::WM_CLOSE => LRESULT(0),
     _ => unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) },
   };
 
   // handle command requests
   while let Some(command) = data.sync.command_queue.pop() {
     match command {
-      Command::Close => {
+      Command::Destroy => {
         unsafe { DestroyWindow(hwnd) }.unwrap();
-        break; // hwnd will be invalid
+        return unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) }; // hwnd will be invalid
       }
       Command::Redraw => unsafe {
         RedrawWindow(hwnd, None, None, Gdi::RDW_INTERNALPAINT);
@@ -211,12 +208,12 @@ fn on_message(
     }
   }
 
-  let message = Message::new(hwnd, msg, w_param, l_param);
-
   // Wait for message to be taken before overwriting
   let is_none = matches!(*data.sync.next_message.lock().unwrap(), Message::None);
   if !is_none {
-    data.sync.wait_on_frame(|| data.state.get().is_destroyed());
+    data
+      .sync
+      .wait_on_frame(|| data.state.get().stage == Stage::ExitLoop);
   }
 
   // pass message to main thread
@@ -224,7 +221,9 @@ fn on_message(
     update_state(data, &message);
     data.sync.next_message.lock().unwrap().replace(message);
     data.sync.signal_new_message();
-    data.sync.wait_on_frame(|| data.state.get().is_destroyed());
+    data
+      .sync
+      .wait_on_frame(|| data.state.get().stage == Stage::ExitLoop);
   }
 
   result

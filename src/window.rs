@@ -30,7 +30,7 @@ use windows::{
   core::{HSTRING, PCWSTR},
   Win32::{
     Foundation::*,
-    Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_USE_IMMERSIVE_DARK_MODE},
+    Graphics::Dwm::{self, DwmSetWindowAttribute},
     System::LibraryLoader::GetModuleHandleW,
     UI::WindowsAndMessaging::{
       self,
@@ -87,6 +87,16 @@ pub struct Window {
   sync: SyncData,
 }
 
+impl Drop for Window {
+  fn drop(&mut self) {
+    self.request(Command::Destroy);
+    let thread = self.state.get_mut().thread.take();
+    if let Some(thread) = thread {
+      let _ = thread.join();
+    }
+  }
+}
+
 impl Window {
   pub const WINDOW_SUBCLASS_ID: usize = 0;
 
@@ -126,13 +136,13 @@ impl Window {
   fn message_pump(sync: &SyncData, state: &Handle<InternalState>) -> bool {
     let is_none = matches!(*sync.next_message.lock().unwrap(), Message::None);
     if !is_none {
-      sync.wait_on_frame(|| state.get().is_destroyed());
+      sync.wait_on_frame(|| state.get().stage == Stage::ExitLoop);
     }
 
     // pass message to main thread
     sync.next_message.lock().unwrap().replace(Message::Waiting);
     sync.signal_new_message();
-    sync.wait_on_frame(|| state.get().is_destroyed());
+    sync.wait_on_frame(|| state.get().stage == Stage::ExitLoop);
 
     let mut msg = MSG::default();
     if unsafe { GetMessageW(&mut msg, None, 0, 0).as_bool() } {
@@ -160,11 +170,11 @@ impl Window {
 
         while Self::message_pump(&sync, &state) {}
 
-        sync.next_message.lock().unwrap().replace(Message::ExitLoop);
-        let (lock, cvar) = sync.new_message.as_ref();
-        let mut new = lock.lock().unwrap();
-        *new = true;
-        cvar.notify_one();
+        // sync.next_message.lock().unwrap().replace(Message::ExitLoop);
+        // let (lock, cvar) = sync.new_message.as_ref();
+        // let mut new = lock.lock().unwrap();
+        // *new = true;
+        // cvar.notify_one();
 
         Ok(())
       },
@@ -275,26 +285,11 @@ impl Window {
         message
       }
       Stage::Closing => {
-        let message = self.next_message_internal();
-        if let Some(Message::Window(WindowMessage::Destroyed)) = message {
-          self.state.get_mut().stage = Stage::Destroyed
-        }
-        message
+        let _ = self.next_message_internal();
+        self.state.get_mut().stage = Stage::ExitLoop;
+        Some(Message::ExitLoop)
       }
-      Stage::Destroyed => {
-        let message = self.next_message_internal();
-        if let Some(Message::ExitLoop) = message {
-          self.state.get_mut().stage = Stage::ExitLoop
-        }
-        message
-      }
-      Stage::ExitLoop => {
-        let thread = self.state.get_mut().thread.take();
-        if let Some(thread) = thread {
-          let _ = thread.join();
-        }
-        None
-      }
+      Stage::ExitLoop => None,
     };
 
     next
@@ -377,10 +372,6 @@ impl Window {
     self.state.get().is_closing()
   }
 
-  pub fn is_destroyed(&self) -> bool {
-    self.state.get().is_destroyed()
-  }
-
   // SETTERS
 
   pub fn set_visibility(&self, visibility: Visibility) {
@@ -412,7 +403,7 @@ impl Window {
     if let Err(error) = unsafe {
       DwmSetWindowAttribute(
         self.hwnd,
-        DWMWA_USE_IMMERSIVE_DARK_MODE,
+        Dwm::DWMWA_USE_IMMERSIVE_DARK_MODE,
         std::ptr::addr_of!(dark_mode) as *const std::ffi::c_void,
         std::mem::size_of::<BOOL>() as u32,
       )
@@ -436,10 +427,6 @@ impl Window {
   }
 
   fn request(&self, command: Command) {
-    if self.is_destroyed() {
-      return; // hwnd will be invalid
-    }
-
     let err_str = format!("failed to post command `{command:?}`");
 
     self.sync.command_queue.push(command);
@@ -462,8 +449,6 @@ impl Window {
     if self.is_closing() {
       return; // already closing
     }
-
-    self.request(Command::Close);
     self.state.get_mut().stage = Stage::Closing;
   }
 

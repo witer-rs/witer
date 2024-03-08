@@ -46,8 +46,6 @@ pub enum WindowMessage {
     hinstance: HINSTANCE,
   },
   CloseRequested,
-  Destroying,
-  Destroyed,
   Paint,
   Key {
     key: Key,
@@ -94,8 +92,6 @@ impl Message {
   ) -> Option<Self> {
     Some(match message {
       WindowsAndMessaging::WM_CLOSE => Message::Window(WindowMessage::CloseRequested),
-      WindowsAndMessaging::WM_DESTROY => Message::Window(WindowMessage::Destroying),
-      WindowsAndMessaging::WM_NCDESTROY => Message::Window(WindowMessage::Destroyed),
       WindowsAndMessaging::WM_PAINT => Message::Window(WindowMessage::Paint),
       WindowsAndMessaging::WM_SIZE => {
         let width = lo_word(l_param.0 as u32) as i32;
