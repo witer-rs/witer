@@ -1,3 +1,5 @@
+use super::state::Size;
+
 #[derive(Default, Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum Flow {
   #[default]
@@ -19,50 +21,11 @@ pub enum ColorMode {
   Light,
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub struct Size {
-  pub width: i32,
-  pub height: i32,
-}
-
-impl From<Size> for (u32, u32) {
-  fn from(val: Size) -> Self {
-    (val.width as u32, val.height as u32)
-  }
-}
-
-impl From<Size> for (i32, i32) {
-  fn from(val: Size) -> Self {
-    (val.width, val.height)
-  }
-}
-
-impl From<Size> for [u32; 2] {
-  fn from(val: Size) -> Self {
-    [val.width as u32, val.height as u32]
-  }
-}
-
-impl From<Size> for [i32; 2] {
-  fn from(val: Size) -> Self {
-    [val.width, val.height]
-  }
-}
-
 impl Default for Size {
   fn default() -> Self {
     Self {
       width: 800,
       height: 600,
-    }
-  }
-}
-
-impl From<(i32, i32)> for Size {
-  fn from(value: (i32, i32)) -> Self {
-    Self {
-      width: value.0,
-      height: value.1,
     }
   }
 }

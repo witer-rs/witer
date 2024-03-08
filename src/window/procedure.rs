@@ -33,19 +33,38 @@ use crate::{
 
 pub struct CreateInfo {
   pub settings: WindowSettings,
-  pub command_queue: Option<Arc<SegQueue<Command>>>,
-  pub new_message: Option<Arc<(Mutex<bool>, Condvar)>>,
-  pub next_frame: Option<Arc<(Mutex<bool>, Condvar)>>,
-  pub next_message: Option<Arc<Mutex<Message>>>,
   pub window: Option<Window>,
+  pub sync: Option<SyncData>,
 }
 
-pub struct SubclassWindowData {
-  pub state: Handle<InternalState>,
+#[derive(Clone)]
+pub struct SyncData {
   pub command_queue: Arc<SegQueue<Command>>,
   pub new_message: Arc<(Mutex<bool>, Condvar)>,
   pub next_frame: Arc<(Mutex<bool>, Condvar)>,
   pub next_message: Arc<Mutex<Message>>,
+}
+
+pub struct SubclassWindowData {
+  pub state: Handle<InternalState>,
+  pub sync: SyncData,
+}
+
+impl SubclassWindowData {
+  fn signal_new_message(&self) {
+    let (lock, cvar) = self.sync.new_message.as_ref();
+    let mut new = lock.lock().unwrap();
+    *new = true;
+    cvar.notify_one();
+  }
+
+  fn wait_on_frame(&self) {
+    let (lock, cvar) = self.sync.next_frame.as_ref();
+    let mut next = cvar
+      .wait_while(lock.lock().unwrap(), |next| !*next && !self.state.get().is_destroyed())
+      .unwrap();
+    *next = false;
+  }
 }
 
 pub extern "system" fn wnd_proc(
@@ -72,10 +91,7 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
       .unwrap()
   };
 
-  let command_queue = create_info.command_queue.take().unwrap();
-  let new_message = create_info.new_message.take().unwrap();
-  let next_frame = create_info.next_frame.take().unwrap();
-  let next_message = create_info.next_message.take().unwrap();
+  let sync = create_info.sync.take().unwrap();
 
   // create state
   let input = Input::new();
@@ -96,19 +112,10 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
     hinstance: create_struct.hInstance,
     hwnd,
     state: state.clone(),
-    command_queue: command_queue.clone(),
-    new_message: new_message.clone(),
-    next_frame: next_frame.clone(),
-    next_message: next_message.clone(),
+    sync: sync.clone(),
   };
 
-  let subclass_data = SubclassWindowData {
-    state,
-    command_queue,
-    new_message,
-    next_frame,
-    next_message,
-  };
+  let subclass_data = SubclassWindowData { state, sync };
 
   create_info.window = Some(window);
 
@@ -171,7 +178,7 @@ fn on_message(
   };
 
   // handle command requests
-  while let Some(command) = data.command_queue.pop() {
+  while let Some(command) = data.sync.command_queue.pop() {
     match command {
       Command::Close => {
         unsafe { DestroyWindow(hwnd) }.unwrap();
@@ -195,63 +202,34 @@ fn on_message(
   let message = Message::new(hwnd, msg, w_param, l_param);
 
   // Wait for message to be taken before overwriting
-  let is_none = matches!(*data.next_message.lock().unwrap(), Message::None);
+  let is_none = matches!(*data.sync.next_message.lock().unwrap(), Message::None);
   if !is_none {
-    wait_on_frame(&data.next_frame, data);
+    data.wait_on_frame();
   }
 
   // pass message to main thread
-  data
-    .next_message
-    .lock()
-    .unwrap()
-    .replace(handle_message(hwnd, data, message));
-  signal_new_message(&data.new_message);
-  wait_on_frame(&data.next_frame, data);
+  update_state(data, &message);
+  data.sync.next_message.lock().unwrap().replace(message);
+  data.signal_new_message();
+  data.wait_on_frame();
 
   result
 }
 
-fn signal_new_message(new_message: &Arc<(Mutex<bool>, Condvar)>) {
-  let (lock, cvar) = new_message.as_ref();
-  let mut new = lock.lock().unwrap();
-  *new = true;
-  cvar.notify_one();
-}
-
-fn wait_on_frame(next_frame: &Arc<(Mutex<bool>, Condvar)>, data: &SubclassWindowData) {
-  let (lock, cvar) = next_frame.as_ref();
-  let mut next = cvar
-    .wait_while(lock.lock().unwrap(), |next| !*next && !data.state.get().is_destroyed())
-    .unwrap();
-  *next = false;
-}
-
-fn handle_message(_hwnd: HWND, data: &SubclassWindowData, message: Message) -> Message {
-  let stage = data.state.get().stage;
-
-  // handle messages unrelated to closing flow (these require the main window
-  // class for now)
-  match stage {
-    Stage::Looping | Stage::Closing => {
-      if let Message::Window(window_message) = &message {
-        match window_message {
-          &WindowMessage::Key { key, state, .. } => {
-            data.state.get_mut().input.update_key_state(key, state);
-            data.state.get_mut().input.update_modifiers_state();
-          }
-          &WindowMessage::MouseButton { button, state, .. } => {
-            data.state.get_mut().input.update_mouse_state(button, state)
-          }
-          WindowMessage::Draw => {
-            data.state.get_mut().requested_redraw = false;
-          }
-          _ => (),
-        }
+fn update_state(data: &SubclassWindowData, message: &Message) {
+  if let Message::Window(window_message) = &message {
+    match window_message {
+      &WindowMessage::Key { key, state, .. } => {
+        data.state.get_mut().input.update_key_state(key, state);
+        data.state.get_mut().input.update_modifiers_state();
       }
+      &WindowMessage::MouseButton { button, state, .. } => {
+        data.state.get_mut().input.update_mouse_state(button, state)
+      }
+      WindowMessage::Draw => {
+        data.state.get_mut().requested_redraw = false;
+      }
+      _ => (),
     }
-    Stage::Destroyed | Stage::ExitLoop => (),
   }
-
-  message
 }

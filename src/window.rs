@@ -50,7 +50,7 @@ use windows::{
   },
 };
 
-use self::{command::Command, message::WindowMessage, stage::Stage};
+use self::{command::Command, message::WindowMessage, procedure::SyncData, stage::Stage};
 use crate::{
   debug::{error::WindowError, WindowResult},
   handle::Handle,
@@ -59,8 +59,8 @@ use crate::{
     input::Input,
     message::Message,
     procedure::CreateInfo,
-    settings::{ColorMode, Flow, Size, Visibility, WindowSettings},
-    state::InternalState,
+    settings::{ColorMode, Flow, Visibility, WindowSettings},
+    state::{InternalState, Size},
   },
 };
 
@@ -72,17 +72,13 @@ pub mod settings;
 pub mod stage;
 pub mod state;
 
-/// Uses internal mutability, so passing around as an Arc is the intended use
-/// case.
+/// Uses internal mutability.
 #[allow(unused)]
 pub struct Window {
   hinstance: HINSTANCE,
   hwnd: HWND,
   state: Handle<InternalState>,
-  command_queue: Arc<SegQueue<Command>>,
-  new_message: Arc<(Mutex<bool>, Condvar)>,
-  next_frame: Arc<(Mutex<bool>, Condvar)>,
-  next_message: Arc<Mutex<Message>>,
+  sync: SyncData,
 }
 
 impl Window {
@@ -91,19 +87,14 @@ impl Window {
   /// Create a new window based on the settings provided.
   pub fn new(settings: WindowSettings) -> Result<Self, WindowError> {
     let (tx, rx) = crossbeam::channel::bounded(0);
-    let new_message = Arc::new((Mutex::new(false), Condvar::new()));
-    let next_frame = Arc::new((Mutex::new(false), Condvar::new()));
-    let next_message = Arc::new(Mutex::new(Message::None));
-    let command_queue = Arc::new(SegQueue::new());
+    let sync = SyncData {
+      command_queue: Arc::new(SegQueue::new()),
+      new_message: Arc::new((Mutex::new(false), Condvar::new())),
+      next_frame: Arc::new((Mutex::new(false), Condvar::new())),
+      next_message: Arc::new(Mutex::new(Message::None)),
+    };
 
-    let thread = Some(Self::window_loop(
-      settings.clone(),
-      tx,
-      command_queue.clone(),
-      new_message.clone(),
-      next_frame.clone(),
-      next_message.clone(),
-    )?);
+    let thread = Some(Self::window_loop(settings.clone(), tx, sync)?);
 
     // block until first message sent (which will be the window opening)
     let window = rx.recv().expect("failed to receive opened message");
@@ -124,44 +115,35 @@ impl Window {
     Ok(window)
   }
 
+  fn message_pump(sync: &SyncData) -> bool {
+    let mut msg = MSG::default();
+    if unsafe { GetMessageW(&mut msg, None, 0, 0).as_bool() } {
+      unsafe {
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
+      }
+      true
+    } else {
+      false
+    }
+  }
+
   fn window_loop(
     settings: WindowSettings,
     tx: Sender<Self>,
-    command_queue: Arc<SegQueue<Command>>,
-    new_message: Arc<(Mutex<bool>, Condvar)>,
-    next_frame: Arc<(Mutex<bool>, Condvar)>,
-    next_message: Arc<Mutex<Message>>,
+    sync: SyncData,
   ) -> WindowResult<JoinHandle<WindowResult<()>>> {
     let thread_handle = std::thread::Builder::new().name("win32".to_owned()).spawn(
       move || -> WindowResult<()> {
-        fn message_pump() -> bool {
-          let mut msg = MSG::default();
-          if unsafe { GetMessageW(&mut msg, None, 0, 0).as_bool() } {
-            unsafe {
-              TranslateMessage(&msg);
-              DispatchMessageW(&msg);
-            }
-            true
-          } else {
-            false
-          }
-        }
-
-        let window = Self::create_hwnd(
-          settings,
-          command_queue,
-          new_message.clone(),
-          next_frame,
-          next_message.clone(),
-        )?;
+        let window = Self::create_hwnd(settings, sync.clone())?;
 
         // Send opened message to main function
         tx.send(window).expect("failed to send opened message");
 
-        while message_pump() {}
+        while Self::message_pump(&sync) {}
 
-        next_message.lock().unwrap().replace(Message::ExitLoop);
-        let (lock, cvar) = new_message.as_ref();
+        sync.next_message.lock().unwrap().replace(Message::ExitLoop);
+        let (lock, cvar) = sync.new_message.as_ref();
         let mut new = lock.lock().unwrap();
         *new = true;
         cvar.notify_one();
@@ -173,13 +155,7 @@ impl Window {
     Ok(thread_handle)
   }
 
-  fn create_hwnd(
-    settings: WindowSettings,
-    command_queue: Arc<SegQueue<Command>>,
-    new_message: Arc<(Mutex<bool>, Condvar)>,
-    next_frame: Arc<(Mutex<bool>, Condvar)>,
-    next_message: Arc<Mutex<Message>>,
-  ) -> WindowResult<Self> {
+  fn create_hwnd(settings: WindowSettings, sync: SyncData) -> WindowResult<Self> {
     let hinstance: HINSTANCE = unsafe { GetModuleHandleW(None)? }.into();
     debug_assert_ne!(hinstance.0, 0);
     let size = settings.size;
@@ -207,11 +183,8 @@ impl Window {
 
     let mut create_info = CreateInfo {
       settings,
-      command_queue: Some(command_queue),
-      new_message: Some(new_message),
-      next_frame: Some(next_frame),
-      next_message: Some(next_message),
       window: None,
+      sync: Some(sync),
     };
 
     let hwnd = unsafe {
@@ -241,7 +214,7 @@ impl Window {
   }
 
   fn signal_next_frame(&self) {
-    let (lock, cvar) = self.next_frame.as_ref();
+    let (lock, cvar) = self.sync.next_frame.as_ref();
     let mut next = lock.lock().unwrap();
     *next = true;
     cvar.notify_one();
@@ -250,12 +223,12 @@ impl Window {
   fn next_message_internal(&self) -> Option<Message> {
     let flow = self.state.get().flow;
     if let Flow::Wait = flow {
-      let (lock, cvar) = self.new_message.as_ref();
+      let (lock, cvar) = self.sync.new_message.as_ref();
       let mut new = cvar.wait_while(lock.lock().unwrap(), |new| !*new).unwrap();
       *new = false;
     }
 
-    let msg = self.next_message.lock().unwrap().take();
+    let msg = self.sync.next_message.lock().unwrap().take();
     Some(msg)
   }
 
@@ -435,7 +408,7 @@ impl Window {
 
     let err_str = format!("failed to post command `{command:?}`");
 
-    self.command_queue.push(command);
+    self.sync.command_queue.push(command);
 
     unsafe { PostMessageW(self.hwnd, WindowsAndMessaging::WM_APP, WPARAM(0), LPARAM(0)) }
       .unwrap_or_else(|_| panic!("{}", err_str));

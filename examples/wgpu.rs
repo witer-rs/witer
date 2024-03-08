@@ -18,7 +18,10 @@ fn main() -> WindowResult<()> {
   let mut app = App::new(&window);
 
   for message in window.as_ref() {
-    if !matches!(message, Message::Window(WindowMessage::Draw)) {
+    if !matches!(
+      message,
+      Message::Window(WindowMessage::Draw | WindowMessage::Cursor { .. })
+    ) {
       if let Message::Window(..) = message {
         println!("{message:?}");
       }
@@ -42,13 +45,7 @@ fn main() -> WindowResult<()> {
     }
 
     match &message {
-      Message::Window(window_message) => match window_message {
-        WindowMessage::Draw => app.update(&window),
-        WindowMessage::Key { .. } | WindowMessage::MouseButton { .. } => {
-          println!("{message:?}");
-        }
-        _ => (),
-      },
+      Message::Window(WindowMessage::Draw) => app.update(&window),
       _ => window.request_redraw(),
     }
   }

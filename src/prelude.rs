@@ -11,7 +11,8 @@ pub use crate::{
       Input,
     },
     message::{Message, WindowMessage},
-    settings::{Flow, Size, Visibility, WindowSettings},
+    settings::{Flow, Visibility, WindowSettings},
+    state::Size,
     Window,
   },
 };

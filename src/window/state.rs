@@ -9,6 +9,90 @@ use crate::{
   },
 };
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub struct Position {
+  pub x: i32,
+  pub y: i32,
+}
+
+impl From<Position> for (i32, i32) {
+  fn from(val: Position) -> Self {
+    (val.x, val.y)
+  }
+}
+
+impl From<Position> for [i32; 2] {
+  fn from(val: Position) -> Self {
+    [val.x, val.y]
+  }
+}
+
+impl From<(i32, i32)> for Position {
+  fn from(value: (i32, i32)) -> Self {
+    Self {
+      x: value.0,
+      y: value.1,
+    }
+  }
+}
+
+impl From<[i32; 2]> for Position {
+  fn from(value: [i32; 2]) -> Self {
+    Self {
+      x: value[0],
+      y: value[1],
+    }
+  }
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub struct Size {
+  pub width: i32,
+  pub height: i32,
+}
+
+impl From<Size> for (u32, u32) {
+  fn from(val: Size) -> Self {
+    (val.width as u32, val.height as u32)
+  }
+}
+
+impl From<Size> for (i32, i32) {
+  fn from(val: Size) -> Self {
+    (val.width, val.height)
+  }
+}
+
+impl From<Size> for [u32; 2] {
+  fn from(val: Size) -> Self {
+    [val.width as u32, val.height as u32]
+  }
+}
+
+impl From<Size> for [i32; 2] {
+  fn from(val: Size) -> Self {
+    [val.width, val.height]
+  }
+}
+
+impl From<(i32, i32)> for Size {
+  fn from(value: (i32, i32)) -> Self {
+    Self {
+      width: value.0,
+      height: value.1,
+    }
+  }
+}
+
+impl From<[i32; 2]> for Size {
+  fn from(value: [i32; 2]) -> Self {
+    Self {
+      width: value[0],
+      height: value[1],
+    }
+  }
+}
+
 pub struct InternalState {
   pub thread: Option<JoinHandle<WindowResult<()>>>,
   pub title: String,

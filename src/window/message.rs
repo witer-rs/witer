@@ -10,11 +10,14 @@ use windows::Win32::{
   },
   UI::{
     Input::KeyboardAndMouse::{MapVirtualKeyW, MAPVK_VSC_TO_VK_EX, VIRTUAL_KEY},
-    WindowsAndMessaging,
+    WindowsAndMessaging::{self, WINDOWPOS},
   },
 };
 
-use super::{input::mouse::Mouse, settings::Size};
+use super::{
+  input::mouse::Mouse,
+  state::{Position, Size},
+};
 use crate::{
   hi_word,
   lo_byte,
@@ -38,6 +41,7 @@ pub enum Message {
     wparam: usize,
     lparam: isize,
   },
+  Waiting,
   ExitLoop,
 }
 
@@ -69,7 +73,7 @@ pub enum WindowMessage {
     y: f32,
   },
   Resized(Size),
-  Moved(),
+  Moved(Position),
   Command,
   SysCommand,
   SetFocus,
@@ -100,7 +104,14 @@ impl Message {
 
         Message::Window(WindowMessage::Resized(Size { width, height }))
       }
-      WindowsAndMessaging::WM_WINDOWPOSCHANGED => Message::Window(WindowMessage::Moved()),
+      WindowsAndMessaging::WM_WINDOWPOSCHANGED => {
+        let window_pos = unsafe { &*(l_param.0 as *const WINDOWPOS) };
+
+        Message::Window(WindowMessage::Moved(Position {
+          x: window_pos.x,
+          y: window_pos.y,
+        }))
+      }
       WindowsAndMessaging::WM_SETFOCUS => Message::Window(WindowMessage::SetFocus),
       WindowsAndMessaging::WM_KILLFOCUS => Message::Window(WindowMessage::KillFocus),
       WindowsAndMessaging::WM_CUT => Message::Window(WindowMessage::Cut),
@@ -113,20 +124,6 @@ impl Message {
           .contains(&msg) =>
       {
         Self::new_keyboard_message(l_param)
-      }
-      WindowsAndMessaging::WM_LBUTTONDBLCLK
-      | WindowsAndMessaging::WM_RBUTTONDBLCLK
-      | WindowsAndMessaging::WM_MBUTTONDBLCLK
-      | WindowsAndMessaging::WM_XBUTTONDBLCLK
-      | WindowsAndMessaging::WM_LBUTTONDOWN
-      | WindowsAndMessaging::WM_RBUTTONDOWN
-      | WindowsAndMessaging::WM_MBUTTONDOWN
-      | WindowsAndMessaging::WM_XBUTTONDOWN
-      | WindowsAndMessaging::WM_LBUTTONUP
-      | WindowsAndMessaging::WM_RBUTTONUP
-      | WindowsAndMessaging::WM_MBUTTONUP
-      | WindowsAndMessaging::WM_XBUTTONUP => {
-        Self::new_mouse_button_message(message, w_param, l_param)
       }
       WindowsAndMessaging::WM_MOUSEMOVE => {
         let (x, y) = (signed_lo_word(l_param.0 as i32), signed_hi_word(l_param.0 as i32));
@@ -141,6 +138,13 @@ impl Message {
         let delta = signed_hi_word(w_param.0 as i32) as f32
           / WindowsAndMessaging::WHEEL_DELTA as f32;
         Message::Window(WindowMessage::Scroll { x: delta, y: 0.0 })
+      }
+      msg
+        if (WindowsAndMessaging::WM_MOUSEFIRST..=WindowsAndMessaging::WM_MOUSELAST)
+          .contains(&msg) =>
+      {
+        // mouse move / wheels will match earlier
+        Self::new_mouse_button_message(message, w_param, l_param)
       }
       _ => Message::Unidentified {
         hwnd: h_wnd.0,
