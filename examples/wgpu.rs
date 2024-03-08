@@ -1,5 +1,4 @@
-// #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem =
-// "windows")]
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 use std::time::{Duration, Instant};
 
@@ -19,11 +18,13 @@ fn main() -> WindowResult<()> {
   let mut app = App::new(&window);
 
   for message in window.as_ref() {
-    if app.frame_count == 1 {
-      window.set_visibility(Visibility::Shown);
-      app.frame_count = app.frame_count.wrapping_add(1);
-    } else {
-      app.frame_count = app.frame_count.wrapping_add(1);
+    match app.frame_count {
+      0..=9 => app.frame_count = app.frame_count.wrapping_add(1),
+      10 => {
+        window.set_visibility(Visibility::Shown);
+        app.frame_count = app.frame_count.wrapping_add(1);
+      }
+      _ => (),
     }
 
     if window.shift().is_pressed() && window.key(Key::Escape).is_pressed() {
@@ -36,7 +37,7 @@ fn main() -> WindowResult<()> {
 
     match &message {
       Message::Window(window_message) => match window_message {
-        WindowMessage::Draw => app.draw(&window),
+        WindowMessage::Draw => app.update(&window),
         WindowMessage::Key { .. } | WindowMessage::MouseButton { .. } => {
           println!("{message:?}");
         }
@@ -138,10 +139,19 @@ impl App {
     }
   }
 
-  fn draw(&mut self, window: &Arc<Window>) {
+  fn update(&mut self, window: &Window) {
     self.time.update();
     while self.time.should_do_tick_unchecked() {
       self.time.tick();
+    }
+
+    self.draw(window);
+  }
+
+  fn draw(&mut self, window: &Window) {
+    let size = window.inner_size();
+    if size.width <= 1 || size.height <= 1 {
+      return;
     }
 
     let now = Instant::now();
