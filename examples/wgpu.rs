@@ -18,9 +18,7 @@ fn main() -> WindowResult<()> {
   let mut app = App::new(&window);
 
   for message in window.as_ref() {
-    if message.is_key(Key::Enter, KeyState::Pressed) {
-      println!("{:?}", window.cursor_screen_position())
-    } else if !matches!(
+    if !matches!(
       message,
       Message::Window(WindowMessage::Paint | WindowMessage::Cursor { .. })
     ) {
