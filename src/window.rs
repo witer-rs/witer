@@ -78,7 +78,7 @@ pub mod settings;
 pub mod stage;
 pub mod state;
 
-/// Main window class. Uses internal mutability.
+/// Main window class. Uses internal mutability. Window is destroyed on drop.
 #[allow(unused)]
 pub struct Window {
   hinstance: HINSTANCE,
@@ -87,6 +87,7 @@ pub struct Window {
   sync: SyncData,
 }
 
+/// Window is destroyed on drop.
 impl Drop for Window {
   fn drop(&mut self) {
     self.request(Command::Destroy);
