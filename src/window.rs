@@ -59,7 +59,7 @@ use crate::{
     input::Input,
     message::Message,
     procedure::CreateInfo,
-    settings::{ColorMode, Flow, Visibility, WindowSettings},
+    settings::{Flow, Theme, Visibility, WindowSettings},
     state::{InternalState, Size},
   },
 };
@@ -102,20 +102,30 @@ impl Window {
       let mut state = window.state.get_mut();
       state.thread = thread;
       state.title = settings.title;
-      state.color_mode = settings.color_mode;
+      state.theme = settings.theme;
       state.visibility = settings.visibility;
       state.flow = settings.flow;
       state.close_on_x = settings.close_on_x;
     }
 
     // // delay potentially revealing window to minimize "white flash" time
-    window.set_color_mode(settings.color_mode);
+    window.set_theme(settings.theme);
     window.set_visibility(settings.visibility);
 
     Ok(window)
   }
 
-  fn message_pump(sync: &SyncData) -> bool {
+  fn message_pump(sync: &SyncData, state: &Handle<InternalState>) -> bool {
+    let is_none = matches!(*sync.next_message.lock().unwrap(), Message::None);
+    if !is_none {
+      sync.wait_on_frame(|| state.get().is_destroyed());
+    }
+
+    // pass message to main thread
+    sync.next_message.lock().unwrap().replace(Message::Waiting);
+    sync.signal_new_message();
+    sync.wait_on_frame(|| state.get().is_destroyed());
+
     let mut msg = MSG::default();
     if unsafe { GetMessageW(&mut msg, None, 0, 0).as_bool() } {
       unsafe {
@@ -135,12 +145,12 @@ impl Window {
   ) -> WindowResult<JoinHandle<WindowResult<()>>> {
     let thread_handle = std::thread::Builder::new().name("win32".to_owned()).spawn(
       move || -> WindowResult<()> {
-        let window = Self::create_hwnd(settings, sync.clone())?;
+        let (window, state) = Self::create_hwnd(settings, sync.clone())?;
 
         // Send opened message to main function
         tx.send(window).expect("failed to send opened message");
 
-        while Self::message_pump(&sync) {}
+        while Self::message_pump(&sync, &state) {}
 
         sync.next_message.lock().unwrap().replace(Message::ExitLoop);
         let (lock, cvar) = sync.new_message.as_ref();
@@ -155,7 +165,10 @@ impl Window {
     Ok(thread_handle)
   }
 
-  fn create_hwnd(settings: WindowSettings, sync: SyncData) -> WindowResult<Self> {
+  fn create_hwnd(
+    settings: WindowSettings,
+    sync: SyncData,
+  ) -> WindowResult<(Self, Handle<InternalState>)> {
     let hinstance: HINSTANCE = unsafe { GetModuleHandleW(None)? }.into();
     debug_assert_ne!(hinstance.0, 0);
     let size = settings.size;
@@ -209,7 +222,8 @@ impl Window {
     if hwnd.0 == 0 {
       Err(WindowError::Win32Error(windows::core::Error::from_win32()))
     } else {
-      Ok(create_info.window.take().unwrap())
+      let (window, state) = create_info.window.take().unwrap();
+      Ok((window, state))
     }
   }
 
@@ -274,40 +288,14 @@ impl Window {
     next
   }
 
+  // GETTERS
+
   pub fn visibility(&self) -> Visibility {
     self.state.get().visibility
   }
 
-  pub fn set_visibility(&self, visibility: Visibility) {
-    self.state.get_mut().visibility = visibility;
-    self.request(Command::SetVisibility(visibility));
-  }
-
-  pub fn color_mode(&self) -> ColorMode {
-    self.state.get().color_mode
-  }
-
-  pub fn set_color_mode(&self, color_mode: ColorMode) {
-    self.state.get_mut().color_mode = color_mode;
-    let dark_mode = BOOL::from(color_mode == ColorMode::Dark);
-    if let Err(error) = unsafe {
-      DwmSetWindowAttribute(
-        self.hwnd,
-        DWMWA_USE_IMMERSIVE_DARK_MODE,
-        std::ptr::addr_of!(dark_mode) as *const std::ffi::c_void,
-        std::mem::size_of::<BOOL>() as u32,
-      )
-    } {
-      error!("{error}");
-    };
-  }
-
-  pub fn request_redraw(&self) {
-    let requested_redraw = self.state.get().requested_redraw;
-    if !requested_redraw {
-      self.state.get_mut().requested_redraw = true;
-      self.request(Command::Redraw);
-    }
+  pub fn theme(&self) -> Theme {
+    self.state.get().theme
   }
 
   pub fn flow(&self) -> Flow {
@@ -320,20 +308,6 @@ impl Window {
 
   pub fn subtitle(&self) -> String {
     self.state.get().subtitle.to_string()
-  }
-
-  /// Set the title of the window
-  pub fn set_title(&self, title: impl AsRef<str>) {
-    self.state.get_mut().title = title.as_ref().into();
-    let title = HSTRING::from(format!("{}{}", title.as_ref(), self.state.get().subtitle));
-    self.request(Command::SetWindowText(title));
-  }
-
-  /// Set text to appear after the title of the window
-  pub fn set_subtitle(&self, subtitle: impl AsRef<str>) {
-    self.state.get_mut().subtitle = subtitle.as_ref().into();
-    let title = HSTRING::from(format!("{}{}", self.state.get().title, subtitle.as_ref()));
-    self.request(Command::SetWindowText(title));
   }
 
   pub fn size(&self) -> Size {
@@ -354,19 +328,13 @@ impl Window {
     }
   }
 
-  // KEYBOARD
-
   pub fn key(&self, keycode: Key) -> KeyState {
     self.state.get().input.key(keycode)
   }
 
-  // MOUSE
-
   pub fn mouse(&self, button: Mouse) -> ButtonState {
     self.state.get().input.mouse(button)
   }
-
-  // MODS
 
   pub fn shift(&self) -> ButtonState {
     self.state.get().input.shift()
@@ -392,13 +360,40 @@ impl Window {
     self.state.get().is_destroyed()
   }
 
-  pub fn close(&self) {
-    if self.is_closing() {
-      return; // already closing
-    }
+  // SETTERS
 
-    self.request(Command::Close);
-    self.state.get_mut().stage = Stage::Closing;
+  pub fn set_visibility(&self, visibility: Visibility) {
+    self.state.get_mut().visibility = visibility;
+    self.request(Command::SetVisibility(visibility));
+  }
+
+  pub fn set_theme(&self, theme: Theme) {
+    self.state.get_mut().theme = theme;
+    let dark_mode = BOOL::from(theme == Theme::Dark);
+    if let Err(error) = unsafe {
+      DwmSetWindowAttribute(
+        self.hwnd,
+        DWMWA_USE_IMMERSIVE_DARK_MODE,
+        std::ptr::addr_of!(dark_mode) as *const std::ffi::c_void,
+        std::mem::size_of::<BOOL>() as u32,
+      )
+    } {
+      error!("{error}");
+    };
+  }
+
+  /// Set the title of the window
+  pub fn set_title(&self, title: impl AsRef<str>) {
+    self.state.get_mut().title = title.as_ref().into();
+    let title = HSTRING::from(format!("{}{}", title.as_ref(), self.state.get().subtitle));
+    self.request(Command::SetWindowText(title));
+  }
+
+  /// Set text to appear after the title of the window
+  pub fn set_subtitle(&self, subtitle: impl AsRef<str>) {
+    self.state.get_mut().subtitle = subtitle.as_ref().into();
+    let title = HSTRING::from(format!("{}{}", self.state.get().title, subtitle.as_ref()));
+    self.request(Command::SetWindowText(title));
   }
 
   fn request(&self, command: Command) {
@@ -412,6 +407,25 @@ impl Window {
 
     unsafe { PostMessageW(self.hwnd, WindowsAndMessaging::WM_APP, WPARAM(0), LPARAM(0)) }
       .unwrap_or_else(|_| panic!("{}", err_str));
+  }
+
+  /// Request a new Draw event
+  pub fn request_redraw(&self) {
+    let requested_redraw = self.state.get().requested_redraw;
+    if !requested_redraw {
+      self.state.get_mut().requested_redraw = true;
+      self.request(Command::Redraw);
+    }
+  }
+
+  /// Request the window be closed
+  pub fn close(&self) {
+    if self.is_closing() {
+      return; // already closing
+    }
+
+    self.request(Command::Close);
+    self.state.get_mut().stage = Stage::Closing;
   }
 
   #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]

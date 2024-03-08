@@ -40,13 +40,14 @@ fn main() -> WindowResult<()> {
       window.close();
     }
 
-    if let Message::Window(WindowMessage::Resized(..)) = message {
-      app.resize(window.inner_size());
-    }
-
     match &message {
-      Message::Window(WindowMessage::Draw) => app.update(&window),
-      _ => window.request_redraw(),
+      Message::Window(WindowMessage::Resized(..)) => app.resize(window.inner_size()),
+      Message::Window(WindowMessage::Draw) => {
+        app.update(&window);
+        app.draw(&window)
+      }
+      Message::Waiting => window.request_redraw(),
+      _ => (),
     }
   }
 
@@ -55,7 +56,8 @@ fn main() -> WindowResult<()> {
 
 struct App {
   last_time: Instant,
-  time: Time,
+  update_time: Time,
+  render_time: Time,
 
   surface: wgpu::Surface<'static>,
   device: wgpu::Device,
@@ -70,7 +72,8 @@ impl App {
   fn new(window: &Arc<Window>) -> Self {
     pollster::block_on(async {
       let last_time = Instant::now();
-      let time = TimeSettings::default().build();
+      let update_time = TimeSettings::default().build();
+      let render_time = TimeSettings::default().build();
       let size = window.inner_size();
 
       let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
@@ -122,7 +125,8 @@ impl App {
 
       Self {
         last_time,
-        time,
+        update_time,
+        render_time,
         surface,
         device,
         queue,
@@ -142,16 +146,19 @@ impl App {
     }
   }
 
-  fn update(&mut self, window: &Window) {
-    self.time.update();
-    while self.time.should_do_tick_unchecked() {
-      self.time.tick();
+  fn update(&mut self, _window: &Window) {
+    self.update_time.update();
+    while self.update_time.should_do_tick_unchecked() {
+      self.update_time.tick();
     }
-
-    self.draw(window);
   }
 
   fn draw(&mut self, window: &Window) {
+    self.render_time.update();
+    while self.render_time.should_do_tick_unchecked() {
+      self.render_time.tick();
+    }
+
     let size = window.inner_size();
     if size.width <= 1 || size.height <= 1 {
       return;
@@ -160,7 +167,11 @@ impl App {
     let now = Instant::now();
     let elapsed = now.duration_since(self.last_time);
     if elapsed >= Duration::from_secs_f64(0.20) {
-      let title = format!(" | FPS: {:.1}", 1.0 / self.time.average_delta_secs());
+      let title = format!(
+        " | U: {:.1}, R: {:.1}",
+        1.0 / self.update_time.average_delta_secs(),
+        1.0 / self.render_time.average_delta_secs()
+      );
       window.set_subtitle(title);
       self.last_time = now;
     }

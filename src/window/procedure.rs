@@ -33,7 +33,7 @@ use crate::{
 
 pub struct CreateInfo {
   pub settings: WindowSettings,
-  pub window: Option<Window>,
+  pub window: Option<(Window, Handle<InternalState>)>,
   pub sync: Option<SyncData>,
 }
 
@@ -45,26 +45,26 @@ pub struct SyncData {
   pub next_message: Arc<Mutex<Message>>,
 }
 
-pub struct SubclassWindowData {
-  pub state: Handle<InternalState>,
-  pub sync: SyncData,
-}
-
-impl SubclassWindowData {
-  fn signal_new_message(&self) {
-    let (lock, cvar) = self.sync.new_message.as_ref();
+impl SyncData {
+  pub fn signal_new_message(&self) {
+    let (lock, cvar) = self.new_message.as_ref();
     let mut new = lock.lock().unwrap();
     *new = true;
     cvar.notify_one();
   }
 
-  fn wait_on_frame(&self) {
-    let (lock, cvar) = self.sync.next_frame.as_ref();
+  pub fn wait_on_frame(&self, interrupt: impl Fn() -> bool) {
+    let (lock, cvar) = self.next_frame.as_ref();
     let mut next = cvar
-      .wait_while(lock.lock().unwrap(), |next| !*next && !self.state.get().is_destroyed())
+      .wait_while(lock.lock().unwrap(), |next| !*next && !interrupt())
       .unwrap();
     *next = false;
   }
+}
+
+pub struct SubclassWindowData {
+  pub state: Handle<InternalState>,
+  pub sync: SyncData,
 }
 
 pub extern "system" fn wnd_proc(
@@ -99,7 +99,7 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
     thread: None,
     title: Default::default(),
     subtitle: Default::default(),
-    color_mode: Default::default(),
+    theme: Default::default(),
     visibility: Default::default(),
     flow: Default::default(),
     close_on_x: Default::default(),
@@ -115,9 +115,12 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
     sync: sync.clone(),
   };
 
-  let subclass_data = SubclassWindowData { state, sync };
+  let subclass_data = SubclassWindowData {
+    state: state.clone(),
+    sync,
+  };
 
-  create_info.window = Some(window);
+  create_info.window = Some((window, state));
 
   // create subclass ptr
   let window_data_ptr = Box::into_raw(Box::new(subclass_data));
@@ -204,14 +207,14 @@ fn on_message(
   // Wait for message to be taken before overwriting
   let is_none = matches!(*data.sync.next_message.lock().unwrap(), Message::None);
   if !is_none {
-    data.wait_on_frame();
+    data.sync.wait_on_frame(|| data.state.get().is_destroyed());
   }
 
   // pass message to main thread
   update_state(data, &message);
   data.sync.next_message.lock().unwrap().replace(message);
-  data.signal_new_message();
-  data.wait_on_frame();
+  data.sync.signal_new_message();
+  data.sync.wait_on_frame(|| data.state.get().is_destroyed());
 
   result
 }

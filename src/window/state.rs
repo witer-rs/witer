@@ -4,7 +4,7 @@ use super::stage::Stage;
 use crate::{
   debug::WindowResult,
   window::{
-    settings::{ColorMode, Flow, Visibility},
+    settings::{Flow, Theme, Visibility},
     Input,
   },
 };
@@ -97,7 +97,7 @@ pub struct InternalState {
   pub thread: Option<JoinHandle<WindowResult<()>>>,
   pub title: String,
   pub subtitle: String,
-  pub color_mode: ColorMode,
+  pub theme: Theme,
   pub visibility: Visibility,
   pub flow: Flow,
   pub close_on_x: bool,

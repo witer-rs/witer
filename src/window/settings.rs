@@ -15,7 +15,7 @@ pub enum Visibility {
 }
 
 #[derive(Default, Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub enum ColorMode {
+pub enum Theme {
   #[default]
   Dark,
   Light,
@@ -36,7 +36,7 @@ pub struct WindowSettings {
   pub title: String,
   pub size: Size,
   pub flow: Flow,
-  pub color_mode: ColorMode,
+  pub theme: Theme,
   pub visibility: Visibility,
   pub close_on_x: bool,
 }
@@ -46,7 +46,7 @@ impl Default for WindowSettings {
     let title: String = "Window".into();
     let size = Size::default();
     let flow = Flow::default();
-    let color_mode = ColorMode::default();
+    let color_mode = Theme::default();
     let visibility = Visibility::default();
     let close_on_x = true;
 
@@ -54,7 +54,7 @@ impl Default for WindowSettings {
       title,
       size,
       flow,
-      color_mode,
+      theme: color_mode,
       visibility,
       close_on_x,
     }
@@ -77,8 +77,8 @@ impl WindowSettings {
     self
   }
 
-  pub fn with_color_mode(mut self, color_mode: ColorMode) -> Self {
-    self.color_mode = color_mode;
+  pub fn with_theme(mut self, theme: Theme) -> Self {
+    self.theme = theme;
     self
   }
 
