@@ -86,6 +86,10 @@ impl Window {
 
   /// Create a new window based on the settings provided.
   pub fn new(settings: WindowSettings) -> Result<Self, WindowError> {
+    crate::init_statics();
+
+    eprintln!("{:?}", crate::WIN10_BUILD_VERSION.get());
+
     let (tx, rx) = crossbeam::channel::bounded(0);
     let sync = SyncData {
       command_queue: Arc::new(SegQueue::new()),
@@ -368,6 +372,24 @@ impl Window {
   }
 
   pub fn set_theme(&self, theme: Theme) {
+    let theme = match theme {
+      Theme::Auto => {
+        if *crate::IS_SYSTEM_DARK_MODE.get().unwrap() {
+          Theme::Dark
+        } else {
+          Theme::Light
+        }
+      }
+      Theme::Dark => {
+        if *crate::DARK_MODE_SUPPORTED.get().unwrap() {
+          Theme::Dark
+        } else {
+          Theme::Light
+        }
+      }
+      Theme::Light => Theme::Light,
+    };
+
     self.state.get_mut().theme = theme;
     let dark_mode = BOOL::from(theme == Theme::Dark);
     if let Err(error) = unsafe {

@@ -17,6 +17,7 @@ pub enum Visibility {
 #[derive(Default, Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum Theme {
   #[default]
+  Auto,
   Dark,
   Light,
 }

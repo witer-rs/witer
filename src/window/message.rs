@@ -78,9 +78,6 @@ pub enum WindowMessage {
   SysCommand,
   SetFocus,
   KillFocus,
-  Cut,
-  Copy,
-  Paste,
 }
 
 impl Message {
@@ -114,9 +111,6 @@ impl Message {
       }
       WindowsAndMessaging::WM_SETFOCUS => Message::Window(WindowMessage::SetFocus),
       WindowsAndMessaging::WM_KILLFOCUS => Message::Window(WindowMessage::KillFocus),
-      WindowsAndMessaging::WM_CUT => Message::Window(WindowMessage::Cut),
-      WindowsAndMessaging::WM_COPY => Message::Window(WindowMessage::Copy),
-      WindowsAndMessaging::WM_PASTE => Message::Window(WindowMessage::Paste),
       WindowsAndMessaging::WM_COMMAND => Message::Window(WindowMessage::Command),
       WindowsAndMessaging::WM_SYSCOMMAND => Message::Window(WindowMessage::SysCommand),
       msg
