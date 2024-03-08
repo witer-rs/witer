@@ -72,7 +72,7 @@ pub mod settings;
 pub mod stage;
 pub mod state;
 
-/// Uses internal mutability.
+/// Main window class. Uses internal mutability.
 #[allow(unused)]
 pub struct Window {
   hinstance: HINSTANCE,
