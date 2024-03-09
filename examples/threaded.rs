@@ -259,11 +259,8 @@ fn app_loop(
             app.draw(&window);
           }
           Some(Message::Wait) => window.request_redraw(),
+          Some(Message::ExitLoop) => break,
           _ => (),
-        }
-
-        if let Some(Message::ExitLoop) = message {
-          break;
         }
       }
     })
