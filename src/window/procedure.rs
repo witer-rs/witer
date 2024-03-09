@@ -141,7 +141,7 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
     error!("{e}");
     return LRESULT(-1);
   }
-  
+
   create_info.sync.signal_new_message();
 
   let window = Window {

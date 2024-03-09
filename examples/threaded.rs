@@ -15,7 +15,6 @@ fn main() -> WindowResult<()> {
 
   let settings = WindowSettings::default()
     .with_flow(Flow::Poll)
-    .with_visibility(Visibility::Hidden) // start hidden to prevent first frame white flash
     .with_title("WGPU")
     .with_size((800, 600));
 
@@ -39,15 +38,6 @@ fn main() -> WindowResult<()> {
         Some(Fullscreen::Borderless) => window.set_fullscreen(None),
         None => window.set_fullscreen(Some(Fullscreen::Borderless)),
       }
-    }
-
-    match app.frame_count {
-      0..=9 => app.frame_count = app.frame_count.wrapping_add(1),
-      10 => {
-        window.set_visibility(Visibility::Shown);
-        // app.frame_count = app.frame_count.wrapping_add(1);
-      }
-      _ => (),
     }
 
     if window.shift().is_pressed() && window.key(Key::Escape).is_pressed() {
@@ -77,8 +67,6 @@ struct App {
   queue: wgpu::Queue,
   config: wgpu::SurfaceConfiguration,
   size: Size,
-
-  frame_count: u32,
 }
 
 impl App {
@@ -143,7 +131,6 @@ impl App {
         queue,
         config,
         size,
-        frame_count: 0,
       }
     })
   }
@@ -223,8 +210,6 @@ impl App {
 
     self.queue.submit(std::iter::once(encoder.finish()));
     output.present();
-
-    self.frame_count = self.frame_count.wrapping_add(1);
   }
 
   // fn app_loop(mrx: Receiver<Message>) -> () {
