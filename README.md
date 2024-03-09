@@ -1,4 +1,4 @@
-# ezwin-rs
+# ezwin: Minimal native Win32 window library
 
 [![Crates.io Version](https://img.shields.io/crates/v/ezwin)](https://crates.io/crates/ezwin)
 [![Discord](https://img.shields.io/discord/1215348294105169940?logo=discord&label=discord&color=5865F2)](https://discord.gg/KEtfte9xWZ)
@@ -24,13 +24,22 @@ fn main() {
 
 ## Goals
 
-The main goal of `ezwin` is to have a simple, easy-to-use API. The target audience is game developers looking to create
-a window quickly and easily. I aim to have feature-parity with `winit` eventually as a secondary goal.
+The main goal of `ezwin` is to have a simple, easy-to-use API. The target audience is developers looking to create
+a window quickly, easily, and idiomatically. I aim to have feature-parity with `winit` eventually as a secondary goal.
 
-Cross-platform support is unlikely, but pull requests are welcomed if anyone else wants to tackle it.
+Cross-platform support is highly unlikely, but pull requests are welcomed if anyone else wants to tackle it.
 
 I would like to eventually transition from using `windows` to `windows-sys` to benefit from better compile times,
 as the wrappers included in the former are redundant for this crate.
+
+## Documentation
+
+Documentation is a work-in-progress as the crate evolves. Don't expect much here yet, so if you have any
+questions, either:
+
+* Submit an issue on GitHub
+* Send a message over Discord
+* Dive into the codebase yourself
 
 ## Cargo Features
 
@@ -41,6 +50,10 @@ as the wrappers included in the former are redundant for this crate.
 You can find examples in [the examples folder](examples). You can also see the vulkano branch of
 [foxy-rs/foxy](https://github.com/foxy-rs/foxy/tree/vulkano), which as of the time of writing is utilizing `ezwin`, but
 is subject to change.
+
+## Contact Me
+
+You can get in contact through the discord linked at the top, or post an issue on GitHub.
 
 ## FAQ
 
