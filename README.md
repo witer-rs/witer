@@ -47,7 +47,7 @@ is subject to change.
 **Q:** Why not `winit`?
 
 **A:** While `winit` is the best choice for pretty much everyone, I found that multithreading the windows message pump
-could lead to performance gains (unsubstantiated). Additionally, I was simply not satisfied with the way the `winit` API 
+could lead to performance gains (unsubstantiated). Additionally, I was simply not satisfied with the way the `winit` API
 looks and feels. If you are perfectly satisfied with what `winit` offers, then I recommend you stick with it.
 
 **Q:** What happened to the 3.0 version?
