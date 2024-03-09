@@ -488,11 +488,12 @@ impl Window {
 
   /// Request a new Draw event
   pub fn request_redraw(&self) {
-    let requested_redraw = self.state.get().requested_redraw;
-    if !requested_redraw {
-      self.state.get_mut().requested_redraw = true;
-      self.request(Command::Redraw);
+    if self.state.get().requested_redraw {
+      return;
     }
+    
+    self.state.get_mut().requested_redraw = true;
+    self.request(Command::Redraw);
   }
 
   /// Request the window be closed
