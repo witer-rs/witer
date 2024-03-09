@@ -8,7 +8,7 @@ license     = "MIT OR Apache-2.0"
 readme      = "README.md"
 keywords    = ["win32", "windows", "windowing"]
 categories  = ["game-development", "rendering", "gui"]
-repository  = "https://github.com/GTLugo/ezwin"
+repository  = "https://github.com/ezwin-rs/ezwin"
 
 [profile.dev]
 opt-level = 0
@@ -36,6 +36,6 @@ features = ["UI_ViewManagement", "Win32_Foundation", "Win32_Security", "Win32_Sy
 
 [dev-dependencies]
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-foxy_time = { version = "1", path = "../foxy_time" }
-wgpu      = "0.19"
-pollster  = "0.3"
+foxy_time          = { version = "1", path = "../foxy_time" }
+wgpu               = "0.19"
+pollster           = "0.3"
