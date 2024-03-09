@@ -415,6 +415,10 @@ impl Window {
   }
 
   pub fn set_theme(&self, theme: Theme) {
+    if theme == self.state.get().theme {
+      return;
+    }
+
     let theme = match theme {
       Theme::Auto => {
         if *crate::IS_SYSTEM_DARK_MODE.get().unwrap() {
@@ -491,7 +495,7 @@ impl Window {
     if self.state.get().requested_redraw {
       return;
     }
-    
+
     self.state.get_mut().requested_redraw = true;
     self.request(Command::Redraw);
   }
