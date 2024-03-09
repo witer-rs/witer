@@ -3,7 +3,7 @@ use std::{
   thread::JoinHandle,
 };
 
-use crossbeam::{channel::Sender, queue::SegQueue};
+use crossbeam::channel::{Receiver, Sender, TryRecvError};
 #[cfg(all(feature = "rwh_05", not(feature = "rwh_06")))]
 use rwh_05::{
   HasRawDisplayHandle,
@@ -85,6 +85,8 @@ pub struct Window {
   hwnd: HWND,
   state: Handle<InternalState>,
   sync: SyncData,
+  command_sender: Sender<Command>,
+  message_receiver: Receiver<Message>,
 }
 
 /// Window is destroyed on drop.
@@ -105,15 +107,28 @@ impl Window {
   pub fn new(settings: WindowSettings) -> Result<Self, WindowError> {
     crate::init_statics();
 
+    let (message_sender, message_receiver) = crossbeam::channel::unbounded();
+    let (command_sender, command_receiver) = crossbeam::channel::unbounded();
+
     let (tx, rx) = crossbeam::channel::bounded(0);
+
     let sync = SyncData {
-      command_queue: Arc::new(SegQueue::new()),
+      // command_queue: Arc::new(SegQueue::new()),
       new_message: Arc::new((Mutex::new(false), Condvar::new())),
       next_frame: Arc::new((Mutex::new(false), Condvar::new())),
-      next_message: Arc::new(Mutex::new(Message::None)),
     };
 
-    let thread = Some(Self::window_loop(settings.clone(), tx, sync)?);
+    let create_info = CreateInfo {
+      settings: settings.clone(),
+      window: None,
+      sync,
+      command_sender,
+      command_receiver,
+      message_sender,
+      message_receiver,
+    };
+
+    let thread = Some(Self::window_loop(tx, create_info)?);
 
     // block until first message sent (which will be the window opening)
     let window = rx.recv().expect("failed to receive opened message");
@@ -136,18 +151,19 @@ impl Window {
   }
 
   fn window_loop(
-    settings: WindowSettings,
     tx: Sender<Self>,
-    sync: SyncData,
+    create_info: CreateInfo,
   ) -> WindowResult<JoinHandle<WindowResult<()>>> {
     let thread_handle = std::thread::Builder::new().name("win32".to_owned()).spawn(
       move || -> WindowResult<()> {
-        let (window, state) = Self::create_hwnd(settings, sync.clone())?;
+        let sync = create_info.sync.clone();
+        let message_sender = create_info.message_sender.clone();
+        let (window, state) = Self::create_hwnd(create_info)?;
 
         // Send opened message to main function
         tx.send(window).expect("failed to send opened message");
 
-        while Self::message_pump(&sync, &state) {}
+        while Self::message_pump(&sync, &message_sender, &state) {}
 
         Ok(())
       },
@@ -157,17 +173,16 @@ impl Window {
   }
 
   fn create_hwnd(
-    settings: WindowSettings,
-    sync: SyncData,
+    mut create_info: CreateInfo,
   ) -> WindowResult<(Self, Handle<InternalState>)> {
     let hinstance: HINSTANCE = unsafe { GetModuleHandleW(None)? }.into();
     debug_assert_ne!(hinstance.0, 0);
-    let size = settings.size;
-    let position = settings.position.unwrap_or(Position {
+    let size = create_info.settings.size;
+    let position = create_info.settings.position.unwrap_or(Position {
       x: WindowsAndMessaging::CW_USEDEFAULT,
       y: WindowsAndMessaging::CW_USEDEFAULT,
     });
-    let title = HSTRING::from(settings.title.clone());
+    let title = HSTRING::from(create_info.settings.title.clone());
     let window_class = title.clone();
 
     let wc = WNDCLASSEXW {
@@ -188,12 +203,6 @@ impl Window {
       let atom = unsafe { RegisterClassExW(&wc) };
       debug_assert_ne!(atom, 0);
     }
-
-    let mut create_info = CreateInfo {
-      settings,
-      window: None,
-      sync: Some(sync),
-    };
 
     let hwnd = unsafe {
       CreateWindowExW(
@@ -220,14 +229,25 @@ impl Window {
     }
   }
 
-  fn message_pump(sync: &SyncData, state: &Handle<InternalState>) -> bool {
-    let is_none = matches!(*sync.next_message.lock().unwrap(), Message::None);
-    if !is_none {
+  fn message_pump(
+    sync: &SyncData,
+    message_sender: &Sender<Message>,
+    state: &Handle<InternalState>,
+  ) -> bool {
+    // let is_none = matches!(*sync.next_message.lock().unwrap(), Message::None);
+    // if !is_none {
+    //   sync.wait_on_frame(|| state.get().stage == Stage::ExitLoop);
+    // }
+    if !message_sender.is_empty() {
       sync.wait_on_frame(|| state.get().stage == Stage::ExitLoop);
     }
 
     // pass message to main thread
-    sync.next_message.lock().unwrap().replace(Message::Wait);
+    // sync.next_message.lock().unwrap().replace(Message::Wait);
+    if let Err(e) = message_sender.try_send(Message::Wait) {
+      error!("{e}");
+      state.get_mut().stage = Stage::ExitLoop;
+    }
     sync.signal_new_message();
     sync.wait_on_frame(|| state.get().stage == Stage::ExitLoop);
 
@@ -258,8 +278,14 @@ impl Window {
       *new = false;
     }
 
-    let msg = self.sync.next_message.lock().unwrap().take();
-    Some(msg)
+    // let msg = self.sync.next_message.lock().unwrap().take();
+    self.message_receiver.try_recv().map_or_else(
+      |e| match e {
+        TryRecvError::Empty => Some(Message::None),
+        TryRecvError::Disconnected => None,
+      },
+      Some,
+    )
   }
 
   pub fn next_message(&self) -> Option<Message> {
@@ -511,10 +537,13 @@ impl Window {
   fn request(&self, command: Command) {
     let err_str = format!("failed to post command `{command:?}`");
 
-    self.sync.command_queue.push(command);
+    self
+      .command_sender
+      .try_send(command)
+      .unwrap_or_else(|e| panic!("{}", e));
 
     unsafe { PostMessageW(self.hwnd, WindowsAndMessaging::WM_APP, WPARAM(0), LPARAM(0)) }
-      .unwrap_or_else(|_| panic!("{}", err_str));
+      .unwrap_or_else(|e| panic!("{}: {e}", err_str));
   }
 
   #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]

@@ -3,7 +3,8 @@ use std::{
   sync::{Arc, Condvar, Mutex},
 };
 
-use crossbeam::queue::SegQueue;
+use crossbeam::channel::{Receiver, Sender};
+use tracing::error;
 use windows::Win32::{
   Foundation::*,
   Graphics::Gdi::{
@@ -49,15 +50,17 @@ use crate::{
 pub struct CreateInfo {
   pub settings: WindowSettings,
   pub window: Option<(Window, Handle<InternalState>)>,
-  pub sync: Option<SyncData>,
+  pub sync: SyncData,
+  pub command_sender: Sender<Command>,
+  pub command_receiver: Receiver<Command>,
+  pub message_sender: Sender<Message>,
+  pub message_receiver: Receiver<Message>,
 }
 
 #[derive(Clone)]
 pub struct SyncData {
-  pub command_queue: Arc<SegQueue<Command>>,
   pub new_message: Arc<(Mutex<bool>, Condvar)>,
   pub next_frame: Arc<(Mutex<bool>, Condvar)>,
-  pub next_message: Arc<Mutex<Message>>,
 }
 
 impl SyncData {
@@ -80,6 +83,8 @@ impl SyncData {
 pub struct SubclassWindowData {
   pub state: Handle<InternalState>,
   pub sync: SyncData,
+  pub command_receiver: Receiver<Command>,
+  pub message_sender: Sender<Message>,
 }
 
 pub extern "system" fn wnd_proc(
@@ -106,8 +111,6 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
       .unwrap()
   };
 
-  let sync = create_info.sync.take().unwrap();
-
   // create state
   let input = Input::new();
   let state = Handle::new(InternalState {
@@ -127,26 +130,34 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
     requested_redraw: false,
   });
 
-  sync
-    .next_message
-    .lock()
-    .unwrap()
-    .replace(Message::Window(WindowMessage::Created {
-      hwnd,
-      hinstance: create_struct.hInstance,
-    }));
-  sync.signal_new_message();
+  if let Err(e) =
+    create_info
+      .message_sender
+      .try_send(Message::Window(WindowMessage::Created {
+        hwnd,
+        hinstance: create_struct.hInstance,
+      }))
+  {
+    error!("{e}");
+    return LRESULT(-1);
+  }
+  
+  create_info.sync.signal_new_message();
 
   let window = Window {
     hinstance: create_struct.hInstance,
     hwnd,
     state: state.clone(),
-    sync: sync.clone(),
+    sync: create_info.sync.clone(),
+    command_sender: create_info.command_sender.clone(),
+    message_receiver: create_info.message_receiver.clone(),
   };
 
   let subclass_data = SubclassWindowData {
     state: state.clone(),
-    sync,
+    sync: create_info.sync.clone(),
+    command_receiver: create_info.command_receiver.clone(),
+    message_sender: create_info.message_sender.clone(),
   };
 
   create_info.window = Some((window, state));
@@ -207,11 +218,70 @@ fn on_message(
   };
 
   // handle command requests
-  while let Some(command) = data.sync.command_queue.pop() {
+  if process_commands(hwnd, data) {
+    // process commands returns true to interrupt
+    return unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) };
+  }
+
+  // Wait for previous message to be handled
+  if !data.message_sender.is_empty() {
+    data
+      .sync
+      .wait_on_frame(|| data.state.get().stage == Stage::ExitLoop);
+  }
+
+  // pass message to main thread
+  if let Some(message) = message {
+    update_state(data, &message);
+    data.message_sender.try_send(message).unwrap();
+    // data.sync.next_message.lock().unwrap().replace(message);
+    data.sync.signal_new_message();
+    data
+      .sync
+      .wait_on_frame(|| data.state.get().stage == Stage::ExitLoop);
+  }
+
+  result
+}
+
+fn update_state(data: &SubclassWindowData, message: &Message) {
+  if let Message::Window(window_message) = &message {
+    match window_message {
+      &WindowMessage::Resized(size) => {
+        let is_windowed = data.state.get().fullscreen.is_none();
+        if is_windowed {
+          data.state.get_mut().windowed_size = size;
+        }
+      }
+      &WindowMessage::Moved(position) => {
+        let is_windowed = data.state.get().fullscreen.is_none();
+        if is_windowed {
+          data.state.get_mut().windowed_position = position;
+        }
+      }
+      &WindowMessage::Key { key, state, .. } => {
+        data.state.get_mut().input.update_key_state(key, state);
+        data.state.get_mut().input.update_modifiers_state();
+      }
+      &WindowMessage::MouseButton { button, state, .. } => data
+        .state
+        .get_mut()
+        .input
+        .update_mouse_button_state(button, state),
+      WindowMessage::Paint => {
+        data.state.get_mut().requested_redraw = false;
+      }
+      _ => (),
+    }
+  }
+}
+
+fn process_commands(hwnd: HWND, data: &SubclassWindowData) -> bool {
+  while let Ok(command) = data.command_receiver.try_recv() {
     match command {
       Command::Destroy => {
         unsafe { DestroyWindow(hwnd) }.unwrap();
-        return unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) }; // hwnd will be invalid
+        return true; // hwnd will be invalid
       }
       Command::Redraw => unsafe {
         RedrawWindow(hwnd, None, None, Gdi::RDW_INTERNALPAINT);
@@ -291,55 +361,5 @@ fn on_message(
     }
   }
 
-  // Wait for message to be taken before overwriting
-  let is_none = matches!(*data.sync.next_message.lock().unwrap(), Message::None);
-  if !is_none {
-    data
-      .sync
-      .wait_on_frame(|| data.state.get().stage == Stage::ExitLoop);
-  }
-
-  // pass message to main thread
-  if let Some(message) = message {
-    update_state(data, &message);
-    data.sync.next_message.lock().unwrap().replace(message);
-    data.sync.signal_new_message();
-    data
-      .sync
-      .wait_on_frame(|| data.state.get().stage == Stage::ExitLoop);
-  }
-
-  result
-}
-
-fn update_state(data: &SubclassWindowData, message: &Message) {
-  if let Message::Window(window_message) = &message {
-    match window_message {
-      &WindowMessage::Resized(size) => {
-        let is_windowed = data.state.get().fullscreen.is_none();
-        if is_windowed {
-          data.state.get_mut().windowed_size = size;
-        }
-      }
-      &WindowMessage::Moved(position) => {
-        let is_windowed = data.state.get().fullscreen.is_none();
-        if is_windowed {
-          data.state.get_mut().windowed_position = position;
-        }
-      }
-      &WindowMessage::Key { key, state, .. } => {
-        data.state.get_mut().input.update_key_state(key, state);
-        data.state.get_mut().input.update_modifiers_state();
-      }
-      &WindowMessage::MouseButton { button, state, .. } => data
-        .state
-        .get_mut()
-        .input
-        .update_mouse_button_state(button, state),
-      WindowMessage::Paint => {
-        data.state.get_mut().requested_redraw = false;
-      }
-      _ => (),
-    }
-  }
+  false
 }
