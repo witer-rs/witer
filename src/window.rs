@@ -406,6 +406,10 @@ impl Window {
   // SETTERS
 
   pub fn set_visibility(&self, visibility: Visibility) {
+    if visibility == self.state.get().visibility {
+      return;
+    }
+
     self.state.get_mut().visibility = visibility;
     self.request(Command::SetVisibility(visibility));
   }
@@ -444,12 +448,8 @@ impl Window {
   }
 
   pub fn set_fullscreen(&self, fullscreen: Option<Fullscreen>) {
-    {
-      let state = self.state.get();
-      let current_fullscreen = state.fullscreen;
-      if current_fullscreen == fullscreen {
-        return;
-      }
+    if fullscreen == self.state.get().fullscreen {
+      return;
     }
 
     self.request(Command::SetFullscreen(fullscreen));
@@ -457,6 +457,10 @@ impl Window {
 
   /// Set the title of the window
   pub fn set_title(&self, title: impl AsRef<str>) {
+    if title.as_ref() == self.state.get().title {
+      return;
+    }
+
     self.state.get_mut().title = title.as_ref().into();
     let title = HSTRING::from(format!("{}{}", title.as_ref(), self.state.get().subtitle));
     self.request(Command::SetWindowText(title));
@@ -464,6 +468,10 @@ impl Window {
 
   /// Set text to appear after the title of the window
   pub fn set_subtitle(&self, subtitle: impl AsRef<str>) {
+    if subtitle.as_ref() == self.state.get().subtitle {
+      return;
+    }
+
     self.state.get_mut().subtitle = subtitle.as_ref().into();
     let title = HSTRING::from(format!("{}{}", self.state.get().title, subtitle.as_ref()));
     self.request(Command::SetWindowText(title));
