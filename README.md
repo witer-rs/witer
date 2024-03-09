@@ -22,6 +22,8 @@ fn main() {
 }
 ```
 
+---
+
 ## Goals
 
 The main goal of `ezwin` is to have a simple, easy-to-use API. The target audience is game developers looking to create
@@ -32,15 +34,21 @@ Cross-platform support is unlikely, but pull requests are welcomed if anyone els
 I would like to eventually transition from using `windows` to `windows-sys` to benefit from better compile times,
 as the wrappers included in the former are redundant for this crate.
 
+---
+
 ## Cargo Features
 
 * **`rwh_05` / `rwh_06`:** use the appropriate version of `raw-window-handle`. `rwh_06` is the default.
+
+---
 
 ## Examples
 
 You can find examples in [the examples folder](examples). You can also see the vulkano branch of
 [foxy-rs/foxy](https://github.com/foxy-rs/foxy/tree/vulkano), which as of the time of writing is utilizing `ezwin`, but
 is subject to change.
+
+---
 
 ## FAQ
 
@@ -56,8 +64,12 @@ looks and feels. If you are perfectly satisfied with what `winit` offers, then I
 the crate. I regret publishing that version, and have since yanked each of them off of crates.io. In the future, I intend
 to be far more deliberate and considerate over what gets published rather than willy-nilly publishing the next big features.
 
+---
+
 ## ⚠️ Warning ⚠️
 
 This project is still hilariously incomplete. I am only one student, after all.
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/R6R8PGIU6)
+
+---
