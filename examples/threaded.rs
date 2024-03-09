@@ -1,6 +1,7 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 use std::{
+  sync::Barrier,
   thread::JoinHandle,
   time::{Duration, Instant},
 };
@@ -8,7 +9,7 @@ use std::{
 use crossbeam::channel::Receiver;
 use ezwin::prelude::*;
 use foxy_time::{Time, TimeSettings};
-use tracing::{info, Level};
+use tracing::{error, info, Level};
 use wgpu::PresentMode;
 
 fn main() -> WindowResult<()> {
@@ -25,18 +26,10 @@ fn main() -> WindowResult<()> {
   let window = Arc::new(Window::new(settings)?);
 
   let (message_sender, message_receiver) = crossbeam::channel::unbounded();
-  let handle = app_loop(window.clone(), message_receiver);
+  let sync_barrier = Arc::new(Barrier::new(2));
+  let handle = app_loop(window.clone(), message_receiver, sync_barrier.clone());
 
   for message in window.as_ref() {
-    // if !matches!(
-    //   message,
-    //   Message::Window(WindowMessage::Paint | WindowMessage::Cursor { .. })
-    // ) {
-    //   if let Message::Window(..) = message {
-    //     info!("WINDOW: {message:?}");
-    //   }
-    // }
-
     if message.is_key(Key::F11, KeyState::Pressed) {
       let fullscreen = window.fullscreen();
       match fullscreen {
@@ -45,19 +38,15 @@ fn main() -> WindowResult<()> {
       }
     }
 
+    let should_sync = matches!(message, Message::Window(WindowMessage::Resized(..)));
+
     if message.is_some() {
       message_sender.try_send(message).unwrap();
     }
-    // match &message {
-    //   Message::Window(WindowMessage::Resized(..)) =>
-    // app.resize(window.inner_size()),
-    //   Message::Window(WindowMessage::Paint) => {
-    //     app.update(&window);
-    //     app.draw(&window);
-    //   }
-    //   Message::Wait => window.request_redraw(),
-    //   _ => (),
-    // }
+
+    if should_sync {
+      sync_barrier.wait();
+    }
   }
 
   handle.join().unwrap();
@@ -156,20 +145,20 @@ impl App {
     while self.time.should_do_tick_unchecked() {
       self.time.tick();
     }
+
+    let now = Instant::now();
+    let elapsed = now.duration_since(self.last_time);
+    if elapsed >= Duration::from_secs_f64(0.20) {
+      let title = format!(" | U: {:.1}", 1.0 / self.time.average_delta_secs(),);
+      info!("{title}");
+      self.last_time = now;
+    }
   }
 
   fn draw(&mut self, window: &Window) {
     let size = window.inner_size();
     if size.width <= 1 || size.height <= 1 {
       return;
-    }
-
-    let now = Instant::now();
-    let elapsed = now.duration_since(self.last_time);
-    if elapsed >= Duration::from_secs_f64(0.20) {
-      let title = format!(" | U: {:.1}", 1.0 / self.time.average_delta_secs(),);
-      window.set_subtitle(title);
-      self.last_time = now;
     }
 
     let output = match self.surface.get_current_texture() {
@@ -179,7 +168,7 @@ impl App {
         return;
       }
       Err(error) => {
-        eprintln!("{error}");
+        error!("{error}");
         return;
       }
     };
@@ -220,7 +209,11 @@ impl App {
   }
 }
 
-fn app_loop(window: Arc<Window>, message_receiver: Receiver<Message>) -> JoinHandle<()> {
+fn app_loop(
+  window: Arc<Window>,
+  message_receiver: Receiver<Message>,
+  sync_barrier: Arc<Barrier>,
+) -> JoinHandle<()> {
   std::thread::Builder::new()
     .name("app".to_owned())
     .spawn(move || {
@@ -238,12 +231,14 @@ fn app_loop(window: Arc<Window>, message_receiver: Receiver<Message>) -> JoinHan
           }
         }
 
+        app.update(&window);
+
         match &message {
           Some(Message::Window(WindowMessage::Resized(..))) => {
-            app.resize(window.inner_size())
+            app.resize(window.inner_size());
+            sync_barrier.wait();
           }
           Some(Message::Window(WindowMessage::Paint)) => {
-            app.update(&window);
             app.draw(&window);
           }
           Some(Message::Wait) => window.request_redraw(),
