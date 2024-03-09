@@ -20,6 +20,7 @@ fn main() -> WindowResult<()> {
 
   let settings = WindowSettings::default()
     .with_flow(Flow::Poll)
+    .with_visibility(Visibility::Hidden)
     .with_title("Threaded Example")
     .with_size((800, 600));
 
@@ -59,6 +60,7 @@ struct App {
   last_render_time: Instant,
   time: Time,
   render_time: Time,
+  frame_count: u32,
 
   surface: wgpu::Surface<'static>,
   device: wgpu::Device,
@@ -128,6 +130,7 @@ impl App {
         last_render_time,
         time,
         render_time,
+        frame_count: 0,
         surface,
         device,
         queue,
@@ -178,6 +181,11 @@ impl App {
       let fps = format!(" | Avg FPS: {:.0}", 1.0 / self.render_time.average_delta_secs());
       window.set_subtitle(fps);
       self.last_render_time = now;
+    }
+
+    self.frame_count = self.frame_count.wrapping_add(1);
+    if self.frame_count == 10 {
+      window.set_visibility(Visibility::Shown);
     }
 
     let output = match self.surface.get_current_texture() {
@@ -248,20 +256,17 @@ fn app_loop(
           info!("{message:?}");
         }
 
-        app.update(&window);
-
         match &message {
           Some(Message::Window(WindowMessage::Resized(..))) => {
             app.resize(window.inner_size());
             sync_barrier.wait();
           }
-          Some(Message::Window(WindowMessage::Paint)) => {
-            app.draw(&window);
-          }
-          Some(Message::Wait) => window.request_redraw(),
           Some(Message::ExitLoop) => break,
           _ => (),
         }
+
+        app.update(&window);
+        app.draw(&window);
       }
     })
     .unwrap()
