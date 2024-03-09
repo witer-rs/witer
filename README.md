@@ -37,7 +37,7 @@ as the wrappers included in the former are redundant for this crate.
 Documentation is a work-in-progress as the crate evolves. Don't expect much here yet, so if you have any
 questions, either:
 
-* Submit an issue on GitHub
+* Make a post in the Discussions tab on GitHub
 * Send a message over Discord
 * Dive into the codebase yourself
 
@@ -53,7 +53,7 @@ is subject to change.
 
 ## Contact Me
 
-You can get in contact through the discord linked at the top, or post an issue on GitHub.
+You can get in contact through the discord linked at the top, or post in the Discussions tab on GitHub.
 
 ## FAQ
 
