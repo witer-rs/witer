@@ -55,8 +55,10 @@ fn main() -> WindowResult<()> {
 }
 
 struct App {
-  last_time: Instant,
+  last_update_time: Instant,
+  last_render_time: Instant,
   time: Time,
+  render_time: Time,
 
   surface: wgpu::Surface<'static>,
   device: wgpu::Device,
@@ -68,8 +70,10 @@ struct App {
 impl App {
   fn new(window: &Arc<Window>) -> Self {
     pollster::block_on(async {
-      let last_time = Instant::now();
+      let last_update_time = Instant::now();
+      let last_render_time = Instant::now();
       let time = TimeSettings::default().build();
+      let render_time = TimeSettings::default().build();
       let size = window.inner_size();
 
       let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
@@ -120,8 +124,10 @@ impl App {
       surface.configure(&device, &config);
 
       Self {
-        last_time,
+        last_update_time,
+        last_render_time,
         time,
+        render_time,
         surface,
         device,
         queue,
@@ -147,11 +153,11 @@ impl App {
     }
 
     let now = Instant::now();
-    let elapsed = now.duration_since(self.last_time);
+    let elapsed = now.duration_since(self.last_update_time);
     if elapsed >= Duration::from_secs_f64(0.20) {
-      let fps = format!("Avg update time: {:.9}", self.time.average_delta_secs(),);
+      let fps = format!("Avg update time: {:.9}", self.time.average_delta_secs());
       info!("{fps}");
-      self.last_time = now;
+      self.last_update_time = now;
     }
   }
 
@@ -159,6 +165,19 @@ impl App {
     let size = window.inner_size();
     if size.width <= 1 || size.height <= 1 {
       return;
+    }
+
+    self.render_time.update();
+    while self.render_time.should_do_tick_unchecked() {
+      self.render_time.tick();
+    }
+
+    let now = Instant::now();
+    let elapsed = now.duration_since(self.last_render_time);
+    if elapsed >= Duration::from_secs_f64(0.20) {
+      let fps = format!(" | Avg FPS: {:.0}", 1.0 / self.render_time.average_delta_secs());
+      window.set_subtitle(fps);
+      self.last_render_time = now;
     }
 
     let output = match self.surface.get_current_texture() {
