@@ -149,8 +149,8 @@ impl App {
     let now = Instant::now();
     let elapsed = now.duration_since(self.last_time);
     if elapsed >= Duration::from_secs_f64(0.20) {
-      let title = format!(" | U: {:.1}", 1.0 / self.time.average_delta_secs(),);
-      info!("{title}");
+      let fps = format!("Update FPS: {:.1}", 1.0 / self.time.average_delta_secs(),);
+      info!("{fps}");
       self.last_time = now;
     }
   }
@@ -222,13 +222,11 @@ fn app_loop(
       loop {
         let message = message_receiver.try_recv().ok();
 
-        if !matches!(
-          message,
-          Some(Message::Window(WindowMessage::Paint | WindowMessage::Cursor { .. }))
-        ) {
-          if let Some(Message::Window(..)) = message {
-            info!("APP: {message:?}");
-          }
+        if let Some(Message::Window(
+          WindowMessage::MouseButton { .. } | WindowMessage::Key { .. },
+        )) = message
+        {
+          info!("{message:?}");
         }
 
         app.update(&window);
