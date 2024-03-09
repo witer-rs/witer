@@ -135,29 +135,6 @@ impl Window {
     Ok(window)
   }
 
-  fn message_pump(sync: &SyncData, state: &Handle<InternalState>) -> bool {
-    let is_none = matches!(*sync.next_message.lock().unwrap(), Message::None);
-    if !is_none {
-      sync.wait_on_frame(|| state.get().stage == Stage::ExitLoop);
-    }
-
-    // pass message to main thread
-    sync.next_message.lock().unwrap().replace(Message::Wait);
-    sync.signal_new_message();
-    sync.wait_on_frame(|| state.get().stage == Stage::ExitLoop);
-
-    let mut msg = MSG::default();
-    if unsafe { GetMessageW(&mut msg, None, 0, 0).as_bool() } {
-      unsafe {
-        TranslateMessage(&msg);
-        DispatchMessageW(&msg);
-      }
-      true
-    } else {
-      false
-    }
-  }
-
   fn window_loop(
     settings: WindowSettings,
     tx: Sender<Self>,
@@ -171,12 +148,6 @@ impl Window {
         tx.send(window).expect("failed to send opened message");
 
         while Self::message_pump(&sync, &state) {}
-
-        // sync.next_message.lock().unwrap().replace(Message::ExitLoop);
-        // let (lock, cvar) = sync.new_message.as_ref();
-        // let mut new = lock.lock().unwrap();
-        // *new = true;
-        // cvar.notify_one();
 
         Ok(())
       },
@@ -249,6 +220,29 @@ impl Window {
     }
   }
 
+  fn message_pump(sync: &SyncData, state: &Handle<InternalState>) -> bool {
+    let is_none = matches!(*sync.next_message.lock().unwrap(), Message::None);
+    if !is_none {
+      sync.wait_on_frame(|| state.get().stage == Stage::ExitLoop);
+    }
+
+    // pass message to main thread
+    sync.next_message.lock().unwrap().replace(Message::Wait);
+    sync.signal_new_message();
+    sync.wait_on_frame(|| state.get().stage == Stage::ExitLoop);
+
+    let mut msg = MSG::default();
+    if unsafe { GetMessageW(&mut msg, None, 0, 0).as_bool() } {
+      unsafe {
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
+      }
+      true
+    } else {
+      false
+    }
+  }
+
   fn signal_next_frame(&self) {
     let (lock, cvar) = self.sync.next_frame.as_ref();
     let mut next = lock.lock().unwrap();
@@ -256,7 +250,7 @@ impl Window {
     cvar.notify_one();
   }
 
-  fn next_message_internal(&self) -> Option<Message> {
+  fn take_message(&self) -> Option<Message> {
     let flow = self.state.get().flow;
     if let Flow::Wait = flow {
       let (lock, cvar) = self.sync.new_message.as_ref();
@@ -275,7 +269,7 @@ impl Window {
 
     let next = match current_stage {
       Stage::Looping => {
-        let message = self.next_message_internal();
+        let message = self.take_message();
         if let Some(Message::Window(WindowMessage::CloseRequested)) = message {
           let x = self.state.get().close_on_x;
           if x {
@@ -285,7 +279,7 @@ impl Window {
         message
       }
       Stage::Closing => {
-        let _ = self.next_message_internal();
+        let _ = self.take_message();
         self.state.get_mut().stage = Stage::ExitLoop;
         Some(Message::ExitLoop)
       }
@@ -493,15 +487,6 @@ impl Window {
     self.force_set_subtitle(subtitle)
   }
 
-  fn request(&self, command: Command) {
-    let err_str = format!("failed to post command `{command:?}`");
-
-    self.sync.command_queue.push(command);
-
-    unsafe { PostMessageW(self.hwnd, WindowsAndMessaging::WM_APP, WPARAM(0), LPARAM(0)) }
-      .unwrap_or_else(|_| panic!("{}", err_str));
-  }
-
   fn force_request_redraw(&self) {
     self.state.get_mut().requested_redraw = true;
     self.request(Command::Redraw);
@@ -521,6 +506,15 @@ impl Window {
       return; // already closing
     }
     self.state.get_mut().stage = Stage::Closing;
+  }
+
+  fn request(&self, command: Command) {
+    let err_str = format!("failed to post command `{command:?}`");
+
+    self.sync.command_queue.push(command);
+
+    unsafe { PostMessageW(self.hwnd, WindowsAndMessaging::WM_APP, WPARAM(0), LPARAM(0)) }
+      .unwrap_or_else(|_| panic!("{}", err_str));
   }
 
   #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
