@@ -228,9 +228,6 @@ fn on_message(
       Command::SetSize(_size) => todo!(),
       Command::SetPosition(_position) => todo!(),
       Command::SetFullscreen(fullscreen) => {
-        {
-          data.state.get_mut().fullscreen = fullscreen;
-        }
         // update style
         let visible = data.state.get().visibility;
         unsafe {

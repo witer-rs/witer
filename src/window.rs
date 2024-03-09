@@ -121,9 +121,6 @@ impl Window {
       let mut state = window.state.get_mut();
       state.thread = thread;
       state.title = settings.title;
-      state.theme = settings.theme;
-      state.visibility = settings.visibility;
-      state.fullscreen = settings.fullscreen;
       state.windowed_size = settings.size;
       state.windowed_position = settings.position.unwrap_or_default();
       state.cursor_mode = settings.cursor_mode;
@@ -131,10 +128,9 @@ impl Window {
       state.close_on_x = settings.close_on_x;
     }
 
-    // // delay potentially revealing window to minimize "white flash" time
-    window.set_theme(settings.theme);
-    window.set_visibility(settings.visibility);
-    window.set_fullscreen(settings.fullscreen);
+    window.force_set_theme(settings.theme);
+    window.force_set_visibility(settings.visibility);
+    window.force_set_fullscreen(settings.fullscreen);
 
     Ok(window)
   }
@@ -405,20 +401,19 @@ impl Window {
 
   // SETTERS
 
-  pub fn set_visibility(&self, visibility: Visibility) {
-    if visibility == self.state.get().visibility {
-      return;
-    }
-
+  fn force_set_visibility(&self, visibility: Visibility) {
     self.state.get_mut().visibility = visibility;
     self.request(Command::SetVisibility(visibility));
   }
 
-  pub fn set_theme(&self, theme: Theme) {
-    if theme == self.state.get().theme {
+  pub fn set_visibility(&self, visibility: Visibility) {
+    if visibility == self.state.get().visibility {
       return;
     }
+    self.force_set_visibility(visibility)
+  }
 
+  fn force_set_theme(&self, theme: Theme) {
     let theme = match theme {
       Theme::Auto => {
         if *crate::IS_SYSTEM_DARK_MODE.get().unwrap() {
@@ -451,12 +446,29 @@ impl Window {
     };
   }
 
+  pub fn set_theme(&self, theme: Theme) {
+    if theme == self.state.get().theme {
+      return;
+    }
+    self.force_set_theme(theme)
+  }
+
+  fn force_set_fullscreen(&self, fullscreen: Option<Fullscreen>) {
+    self.state.get_mut().fullscreen = fullscreen;
+    self.request(Command::SetFullscreen(fullscreen));
+  }
+
   pub fn set_fullscreen(&self, fullscreen: Option<Fullscreen>) {
     if fullscreen == self.state.get().fullscreen {
       return;
     }
+    self.force_set_fullscreen(fullscreen)
+  }
 
-    self.request(Command::SetFullscreen(fullscreen));
+  fn force_set_title(&self, title: impl AsRef<str>) {
+    self.state.get_mut().title = title.as_ref().into();
+    let title = HSTRING::from(format!("{}{}", title.as_ref(), self.state.get().subtitle));
+    self.request(Command::SetWindowText(title));
   }
 
   /// Set the title of the window
@@ -464,9 +476,12 @@ impl Window {
     if title.as_ref() == self.state.get().title {
       return;
     }
+    self.force_set_title(title)
+  }
 
-    self.state.get_mut().title = title.as_ref().into();
-    let title = HSTRING::from(format!("{}{}", title.as_ref(), self.state.get().subtitle));
+  fn force_set_subtitle(&self, subtitle: impl AsRef<str>) {
+    self.state.get_mut().subtitle = subtitle.as_ref().into();
+    let title = HSTRING::from(format!("{}{}", self.state.get().title, subtitle.as_ref()));
     self.request(Command::SetWindowText(title));
   }
 
@@ -475,10 +490,7 @@ impl Window {
     if subtitle.as_ref() == self.state.get().subtitle {
       return;
     }
-
-    self.state.get_mut().subtitle = subtitle.as_ref().into();
-    let title = HSTRING::from(format!("{}{}", self.state.get().title, subtitle.as_ref()));
-    self.request(Command::SetWindowText(title));
+    self.force_set_subtitle(subtitle)
   }
 
   fn request(&self, command: Command) {
@@ -490,14 +502,17 @@ impl Window {
       .unwrap_or_else(|_| panic!("{}", err_str));
   }
 
+  fn force_request_redraw(&self) {
+    self.state.get_mut().requested_redraw = true;
+    self.request(Command::Redraw);
+  }
+
   /// Request a new Draw event
   pub fn request_redraw(&self) {
     if self.state.get().requested_redraw {
       return;
     }
-
-    self.state.get_mut().requested_redraw = true;
-    self.request(Command::Redraw);
+    self.force_request_redraw()
   }
 
   /// Request the window be closed
