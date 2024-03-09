@@ -1,7 +1,11 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
-use std::time::{Duration, Instant};
+use std::{
+  thread::JoinHandle,
+  time::{Duration, Instant},
+};
 
+use crossbeam::channel::Receiver;
 use ezwin::prelude::*;
 use foxy_time::{Time, TimeSettings};
 use tracing::{info, Level};
@@ -15,22 +19,23 @@ fn main() -> WindowResult<()> {
 
   let settings = WindowSettings::default()
     .with_flow(Flow::Poll)
-    .with_title("WGPU")
+    .with_title("Threaded Example")
     .with_size((800, 600));
 
   let window = Arc::new(Window::new(settings)?);
 
-  let mut app = App::new(&window);
+  let (message_sender, message_receiver) = crossbeam::channel::unbounded();
+  let handle = app_loop(window.clone(), message_receiver);
 
   for message in window.as_ref() {
-    if !matches!(
-      message,
-      Message::Window(WindowMessage::Paint | WindowMessage::Cursor { .. })
-    ) {
-      if let Message::Window(..) = message {
-        info!("WINDOW: {message:?}");
-      }
-    }
+    // if !matches!(
+    //   message,
+    //   Message::Window(WindowMessage::Paint | WindowMessage::Cursor { .. })
+    // ) {
+    //   if let Message::Window(..) = message {
+    //     info!("WINDOW: {message:?}");
+    //   }
+    // }
 
     if message.is_key(Key::F11, KeyState::Pressed) {
       let fullscreen = window.fullscreen();
@@ -40,20 +45,22 @@ fn main() -> WindowResult<()> {
       }
     }
 
-    if window.shift().is_pressed() && window.key(Key::Escape).is_pressed() {
-      window.close();
+    if message.is_some() {
+      message_sender.try_send(message).unwrap();
     }
-
-    match &message {
-      Message::Window(WindowMessage::Resized(..)) => app.resize(window.inner_size()),
-      Message::Window(WindowMessage::Paint) => {
-        app.update(&window);
-        app.draw(&window);
-      }
-      Message::Wait => window.request_redraw(),
-      _ => (),
-    }
+    // match &message {
+    //   Message::Window(WindowMessage::Resized(..)) =>
+    // app.resize(window.inner_size()),
+    //   Message::Window(WindowMessage::Paint) => {
+    //     app.update(&window);
+    //     app.draw(&window);
+    //   }
+    //   Message::Wait => window.request_redraw(),
+    //   _ => (),
+    // }
   }
+
+  handle.join().unwrap();
 
   Ok(())
 }
@@ -211,8 +218,42 @@ impl App {
     self.queue.submit(std::iter::once(encoder.finish()));
     output.present();
   }
+}
 
-  // fn app_loop(mrx: Receiver<Message>) -> () {
-  //   todo!()
-  // }
+fn app_loop(window: Arc<Window>, message_receiver: Receiver<Message>) -> JoinHandle<()> {
+  std::thread::Builder::new()
+    .name("app".to_owned())
+    .spawn(move || {
+      let mut app = App::new(&window);
+
+      loop {
+        let message = message_receiver.try_recv().ok();
+
+        if !matches!(
+          message,
+          Some(Message::Window(WindowMessage::Paint | WindowMessage::Cursor { .. }))
+        ) {
+          if let Some(Message::Window(..)) = message {
+            info!("APP: {message:?}");
+          }
+        }
+
+        match &message {
+          Some(Message::Window(WindowMessage::Resized(..))) => {
+            app.resize(window.inner_size())
+          }
+          Some(Message::Window(WindowMessage::Paint)) => {
+            app.update(&window);
+            app.draw(&window);
+          }
+          Some(Message::Wait) => window.request_redraw(),
+          _ => (),
+        }
+
+        if let Some(Message::ExitLoop) = message {
+          break;
+        }
+      }
+    })
+    .unwrap()
 }

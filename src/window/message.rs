@@ -285,4 +285,12 @@ impl Message {
   pub fn is_mouse_button(&self, button: Mouse, state: ButtonState) -> bool {
     matches!(self, Message::Window(WindowMessage::MouseButton { button: b, state: s, .. }) if *b == button && *s == state)
   }
+
+  pub fn is_some(&self) -> bool {
+    !matches!(self, Message::None)
+  }
+
+  pub fn is_none(&self) -> bool {
+    matches!(self, Message::None)
+  }
 }

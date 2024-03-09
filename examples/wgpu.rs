@@ -10,7 +10,7 @@ fn main() -> WindowResult<()> {
   let settings = WindowSettings::default()
     .with_flow(Flow::Poll)
     .with_visibility(Visibility::Hidden) // start hidden to prevent first frame white flash
-    .with_title("WGPU")
+    .with_title("wgpu Example")
     .with_size((800, 600));
 
   let window = Arc::new(Window::new(settings)?);
