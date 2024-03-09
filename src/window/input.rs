@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use strum::IntoEnumIterator;
 
 use self::state::KeyState;
-use super::state::Position;
 use crate::window::input::{key::Key, mouse::Mouse, state::ButtonState};
 
 pub mod key;

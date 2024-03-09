@@ -1,9 +1,19 @@
-use std::sync::{Arc, Condvar, Mutex};
+use std::{
+  mem::size_of,
+  sync::{Arc, Condvar, Mutex},
+};
 
 use crossbeam::queue::SegQueue;
 use windows::Win32::{
   Foundation::*,
-  Graphics::Gdi::{self, RedrawWindow},
+  Graphics::Gdi::{
+    self,
+    GetMonitorInfoW,
+    InvalidateRgn,
+    MonitorFromWindow,
+    RedrawWindow,
+    MONITORINFO,
+  },
   UI::{
     Shell::{DefSubclassProc, SetWindowSubclass},
     WindowsAndMessaging::{
@@ -11,6 +21,8 @@ use windows::Win32::{
       DestroyWindow,
       GetWindowLongPtrW,
       PostQuitMessage,
+      SetWindowLongW,
+      SetWindowPos,
       SetWindowTextW,
       ShowWindow,
       CREATESTRUCTW,
@@ -20,8 +32,15 @@ use windows::Win32::{
 
 #[allow(unused)]
 use super::message::{Message, WindowMessage};
-use super::{command::Command, settings::WindowSettings, state::Visibility, Window};
+use super::{
+  command::Command,
+  settings::WindowSettings,
+  state::{Fullscreen, Visibility},
+  Window,
+};
 use crate::{
+  get_window_ex_style,
+  get_window_style,
   handle::Handle,
   prelude::Input,
   window::{stage::Stage, state::InternalState},
@@ -97,6 +116,10 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
     subtitle: Default::default(),
     theme: Default::default(),
     visibility: Default::default(),
+    fullscreen: Default::default(),
+    windowed_position: Default::default(),
+    windowed_size: Default::default(),
+    cursor_mode: Default::default(),
     flow: Default::default(),
     close_on_x: Default::default(),
     stage: Stage::Looping,
@@ -204,7 +227,70 @@ fn on_message(
       },
       Command::SetSize(_size) => todo!(),
       Command::SetPosition(_position) => todo!(),
-      Command::SetFullscreen(_fullscreen) => todo!(),
+      Command::SetFullscreen(fullscreen) => {
+        {
+          data.state.get_mut().fullscreen = fullscreen;
+        }
+        // update style
+        let visible = data.state.get().visibility;
+        unsafe {
+          SetWindowLongW(
+            hwnd,
+            WindowsAndMessaging::GWL_STYLE,
+            get_window_style(fullscreen, visible).0 as i32,
+          )
+        };
+        unsafe {
+          SetWindowLongW(
+            hwnd,
+            WindowsAndMessaging::GWL_EXSTYLE,
+            get_window_ex_style(fullscreen, visible).0 as i32,
+          )
+        };
+        // update size
+        match fullscreen {
+          Some(Fullscreen::Borderless) => {
+            let monitor =
+              unsafe { MonitorFromWindow(hwnd, Gdi::MONITOR_DEFAULTTONEAREST) };
+            let mut info = MONITORINFO {
+              cbSize: size_of::<MONITORINFO>() as u32,
+              ..Default::default()
+            };
+            if unsafe { GetMonitorInfoW(monitor, &mut info) }.as_bool() {
+              unsafe {
+                SetWindowPos(
+                  hwnd,
+                  None,
+                  info.rcMonitor.left,
+                  info.rcMonitor.top,
+                  info.rcMonitor.right - info.rcMonitor.left,
+                  info.rcMonitor.bottom - info.rcMonitor.top,
+                  WindowsAndMessaging::SWP_NOZORDER,
+                )
+                .expect("Failed to set window to fullscreen");
+              }
+              unsafe { InvalidateRgn(hwnd, None, false) };
+            }
+          }
+          None => {
+            let size = data.state.get().windowed_size;
+            let position = data.state.get().windowed_position;
+            unsafe {
+              SetWindowPos(
+                hwnd,
+                None,
+                position.x,
+                position.y,
+                size.width,
+                size.height,
+                WindowsAndMessaging::SWP_NOZORDER,
+              )
+              .expect("Failed to set window to windowed");
+            };
+            unsafe { InvalidateRgn(hwnd, None, false) };
+          }
+        }
+      }
     }
   }
 
@@ -232,6 +318,18 @@ fn on_message(
 fn update_state(data: &SubclassWindowData, message: &Message) {
   if let Message::Window(window_message) = &message {
     match window_message {
+      &WindowMessage::Resized(size) => {
+        let is_windowed = data.state.get().fullscreen.is_none();
+        if is_windowed {
+          data.state.get_mut().windowed_size = size;
+        }
+      }
+      &WindowMessage::Moved(position) => {
+        let is_windowed = data.state.get().fullscreen.is_none();
+        if is_windowed {
+          data.state.get_mut().windowed_position = position;
+        }
+      }
       &WindowMessage::Key { key, state, .. } => {
         data.state.get_mut().input.update_key_state(key, state);
         data.state.get_mut().input.update_modifiers_state();

@@ -27,6 +27,14 @@ fn main() -> WindowResult<()> {
       }
     }
 
+    if message.is_key(Key::F11, KeyState::Pressed) {
+      let fullscreen = window.fullscreen();
+      match fullscreen {
+        Some(Fullscreen::Borderless) => window.set_fullscreen(None),
+        None => window.set_fullscreen(Some(Fullscreen::Borderless)),
+      }
+    }
+
     match app.frame_count {
       0..=9 => app.frame_count = app.frame_count.wrapping_add(1),
       10 => {
@@ -178,7 +186,7 @@ impl App {
 
     let output = match self.surface.get_current_texture() {
       Ok(output) => output,
-      Err(wgpu::SurfaceError::Lost) => {
+      Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
         self.resize(window.inner_size());
         return;
       }

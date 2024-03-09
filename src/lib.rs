@@ -16,9 +16,12 @@ use windows::{
       LibraryLoader::{GetProcAddress, LoadLibraryA},
       SystemInformation::OSVERSIONINFOW,
     },
+    UI::WindowsAndMessaging::{self, WINDOW_EX_STYLE, WINDOW_STYLE},
   },
   UI::ViewManagement::{UIColorType, UISettings},
 };
+
+use self::prelude::{Fullscreen, Visibility};
 
 pub mod debug;
 mod handle;
@@ -95,6 +98,10 @@ macro_rules! get_function {
 pub(crate) static WIN10_BUILD_VERSION: OnceLock<Option<u32>> = OnceLock::new();
 pub(crate) static DARK_MODE_SUPPORTED: OnceLock<bool> = OnceLock::new();
 pub(crate) static IS_SYSTEM_DARK_MODE: OnceLock<bool> = OnceLock::new();
+pub(crate) static NORMAL_STYLE: OnceLock<WINDOW_STYLE> = OnceLock::new();
+pub(crate) static NORMAL_EX_STYLE: OnceLock<WINDOW_EX_STYLE> = OnceLock::new();
+pub(crate) static BORDERLESS_STYLE: OnceLock<WINDOW_STYLE> = OnceLock::new();
+pub(crate) static BORDERLESS_EX_STYLE: OnceLock<WINDOW_EX_STYLE> = OnceLock::new();
 
 pub(crate) fn init_statics() {
   let _ = WIN10_BUILD_VERSION.set({
@@ -141,9 +148,57 @@ pub(crate) fn init_statics() {
       .unwrap_or_default();
     is_color_light(&foreground)
   });
+
+  let _ = NORMAL_STYLE.set({
+    WindowsAndMessaging::WS_OVERLAPPEDWINDOW
+      | WindowsAndMessaging::WS_CLIPCHILDREN
+      | WindowsAndMessaging::WS_CLIPSIBLINGS
+  });
+
+  let _ = NORMAL_EX_STYLE.set({
+    WindowsAndMessaging::WS_EX_OVERLAPPEDWINDOW | WindowsAndMessaging::WS_EX_APPWINDOW
+  });
+
+  let _ = BORDERLESS_STYLE.set({
+    WindowsAndMessaging::WS_POPUP
+      | WindowsAndMessaging::WS_CLIPCHILDREN
+      | WindowsAndMessaging::WS_CLIPSIBLINGS
+  });
+
+  let _ = BORDERLESS_EX_STYLE.set(WindowsAndMessaging::WS_EX_APPWINDOW);
 }
 
 #[inline]
 fn is_color_light(clr: &windows::UI::Color) -> bool {
   ((5 * clr.G as u32) + (2 * clr.R as u32) + clr.B as u32) > (8 * 128)
+}
+
+pub(crate) fn get_window_style(
+  fullscreen: Option<Fullscreen>,
+  visible: Visibility,
+) -> WINDOW_STYLE {
+  match fullscreen {
+    Some(Fullscreen::Borderless) => match visible {
+      Visibility::Shown => {
+        *crate::BORDERLESS_STYLE.get().unwrap() | WindowsAndMessaging::WS_VISIBLE
+      }
+      Visibility::Hidden => *crate::BORDERLESS_STYLE.get().unwrap(),
+    },
+    None => match visible {
+      Visibility::Shown => {
+        *crate::NORMAL_STYLE.get().unwrap() | WindowsAndMessaging::WS_VISIBLE
+      }
+      Visibility::Hidden => *crate::NORMAL_STYLE.get().unwrap(),
+    },
+  }
+}
+
+pub(crate) fn get_window_ex_style(
+  fullscreen: Option<Fullscreen>,
+  _visible: Visibility,
+) -> WINDOW_EX_STYLE {
+  match fullscreen {
+    Some(Fullscreen::Borderless) => *crate::BORDERLESS_EX_STYLE.get().unwrap(),
+    None => *crate::NORMAL_EX_STYLE.get().unwrap(),
+  }
 }

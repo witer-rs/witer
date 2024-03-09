@@ -9,6 +9,10 @@ pub struct InternalState {
   pub subtitle: String,
   pub theme: Theme,
   pub visibility: Visibility,
+  pub fullscreen: Option<Fullscreen>,
+  pub windowed_position: Position,
+  pub windowed_size: Size,
+  pub cursor_mode: CursorMode,
   pub flow: Flow,
   pub close_on_x: bool,
   pub stage: Stage,
@@ -108,7 +112,7 @@ impl From<[i32; 2]> for Size {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum Fullscreen {
-  Exclusive,
+  // Exclusive, // todo
   Borderless,
 }
 

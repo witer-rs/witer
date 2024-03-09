@@ -45,7 +45,6 @@ use windows::{
       RegisterClassExW,
       TranslateMessage,
       MSG,
-      WINDOW_EX_STYLE,
       WNDCLASSEXW,
     },
   },
@@ -56,7 +55,7 @@ use self::{
   message::WindowMessage,
   procedure::SyncData,
   stage::Stage,
-  state::Position,
+  state::{Fullscreen, Position},
 };
 use crate::{
   debug::{error::WindowError, WindowResult},
@@ -124,6 +123,10 @@ impl Window {
       state.title = settings.title;
       state.theme = settings.theme;
       state.visibility = settings.visibility;
+      state.fullscreen = settings.fullscreen;
+      state.windowed_size = settings.size;
+      state.windowed_position = settings.position.unwrap_or_default();
+      state.cursor_mode = settings.cursor_mode;
       state.flow = settings.flow;
       state.close_on_x = settings.close_on_x;
     }
@@ -131,6 +134,7 @@ impl Window {
     // // delay potentially revealing window to minimize "white flash" time
     window.set_theme(settings.theme);
     window.set_visibility(settings.visibility);
+    window.set_fullscreen(settings.fullscreen);
 
     Ok(window)
   }
@@ -226,12 +230,10 @@ impl Window {
 
     let hwnd = unsafe {
       CreateWindowExW(
-        WINDOW_EX_STYLE::default(),
+        *crate::NORMAL_EX_STYLE.get().unwrap(),
         &window_class,
         &title,
-        WindowsAndMessaging::WS_OVERLAPPEDWINDOW
-          | WindowsAndMessaging::WS_CLIPCHILDREN
-          | WindowsAndMessaging::WS_CLIPSIBLINGS,
+        *crate::NORMAL_STYLE.get().unwrap(),
         position.x,
         position.y,
         size.width,
@@ -355,12 +357,9 @@ impl Window {
     }
   }
 
-  pub fn key(&self, keycode: Key) -> KeyState {
-    self.state.get().input.key(keycode)
-  }
-
-  pub fn mouse(&self, button: Mouse) -> ButtonState {
-    self.state.get().input.mouse(button)
+  pub fn fullscreen(&self) -> Option<Fullscreen> {
+    let state = self.state.get();
+    state.fullscreen
   }
 
   pub fn cursor_screen_position(&self) -> Position {
@@ -369,24 +368,39 @@ impl Window {
     Position { x: pt.x, y: pt.y }
   }
 
+  pub fn key(&self, keycode: Key) -> KeyState {
+    let state = self.state.get();
+    state.input.key(keycode)
+  }
+
+  pub fn mouse(&self, button: Mouse) -> ButtonState {
+    let state = self.state.get();
+    state.input.mouse(button)
+  }
+
   pub fn shift(&self) -> ButtonState {
-    self.state.get().input.shift()
+    let state = self.state.get();
+    state.input.shift()
   }
 
   pub fn ctrl(&self) -> ButtonState {
-    self.state.get().input.ctrl()
+    let state = self.state.get();
+    state.input.ctrl()
   }
 
   pub fn alt(&self) -> ButtonState {
-    self.state.get().input.alt()
+    let state = self.state.get();
+    state.input.alt()
   }
 
   pub fn win(&self) -> ButtonState {
-    self.state.get().input.win()
+    let state = self.state.get();
+    state.input.win()
   }
 
   pub fn is_closing(&self) -> bool {
-    self.state.get().is_closing()
+    let state = self.state.get();
+    state.is_closing()
   }
 
   // SETTERS
@@ -427,6 +441,18 @@ impl Window {
     } {
       error!("{error}");
     };
+  }
+
+  pub fn set_fullscreen(&self, fullscreen: Option<Fullscreen>) {
+    {
+      let state = self.state.get();
+      let current_fullscreen = state.fullscreen;
+      if current_fullscreen == fullscreen {
+        return;
+      }
+    }
+
+    self.request(Command::SetFullscreen(fullscreen));
   }
 
   /// Set the title of the window
