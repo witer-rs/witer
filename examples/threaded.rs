@@ -149,7 +149,7 @@ impl App {
     let now = Instant::now();
     let elapsed = now.duration_since(self.last_time);
     if elapsed >= Duration::from_secs_f64(0.20) {
-      let fps = format!("Update time: {:.9}", self.time.average_delta_secs(),);
+      let fps = format!("Avg update time: {:.9}", self.time.average_delta_secs(),);
       info!("{fps}");
       self.last_time = now;
     }
