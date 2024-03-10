@@ -65,11 +65,11 @@ You can get in contact through the discord linked at the top, or post in the Dis
 could lead to performance gains (unsubstantiated). Additionally, I was simply not satisfied with the way the `winit` API
 looks and feels. If you are perfectly satisfied with what `winit` offers, then I recommend you stick with it.
 
-**Q:** What happened to the 3.0 version?
+**Q:** What happened to `ezwin`?
 
-**A:** As this project is in flux, there was a temporary `3.0` version that was implemented which strayed from my vision of
-the crate. I regret publishing that version, and have since yanked each of them off of crates.io. In the future, I intend
-to be far more deliberate and considerate over what gets published rather than willy-nilly publishing the next big features.
+**A:** I wanted a name that was more inline with the ideas and goals behind the project. Additionally, I wanted a chance
+to pull the project back to `v0.x.x` to reflect its volatile nature. This isn't currently possible with Crates.io (ignoring
+yanking). Furthermore, the `v3.x.x` could be seen as confusing for those who didn't understand why they existed.
 
 ## ⚠️ Warning ⚠️
 
