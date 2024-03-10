@@ -69,6 +69,20 @@ pub struct Size {
   pub height: i32,
 }
 
+impl Size {
+  pub fn is_positive(&self) -> bool {
+    self.width > 0 && self.height > 0
+  }
+
+  pub fn is_negative(&self) -> bool {
+    self.width < 0 && self.height < 0
+  }
+
+  pub fn is_zero(&self) -> bool {
+    self.width == 0 && self.height == 0
+  }
+}
+
 impl From<Size> for (u32, u32) {
   fn from(val: Size) -> Self {
     (val.width as u32, val.height as u32)
