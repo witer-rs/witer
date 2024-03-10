@@ -13,6 +13,7 @@ pub struct InternalState {
   pub windowed_position: Position,
   pub windowed_size: Size,
   pub cursor_mode: CursorMode,
+  pub cursor_visibility: Visibility,
   pub flow: Flow,
   pub close_on_x: bool,
   pub stage: Stage,
@@ -120,8 +121,8 @@ pub enum Fullscreen {
 pub enum CursorMode {
   #[default]
   Normal,
-  Confined,
-  Locked,
+  Hidden,
+  Disabled,
 }
 
 #[derive(Default, Debug, Copy, Clone, Eq, PartialEq, Hash)]

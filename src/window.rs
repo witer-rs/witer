@@ -3,7 +3,10 @@ use std::{
   thread::JoinHandle,
 };
 
-use crossbeam::channel::{Receiver, Sender, TryRecvError};
+use crossbeam::{
+  channel::{Receiver, Sender, TryRecvError},
+  queue::SegQueue,
+};
 #[cfg(all(feature = "rwh_05", not(feature = "rwh_06")))]
 use rwh_05::{
   HasRawDisplayHandle,
@@ -55,7 +58,7 @@ use self::{
   message::WindowMessage,
   procedure::SyncData,
   stage::Stage,
-  state::{Fullscreen, Position},
+  state::{CursorMode, Fullscreen, Position},
 };
 use crate::{
   debug::{error::WindowError, WindowResult},
@@ -85,7 +88,8 @@ pub struct Window {
   hwnd: HWND,
   state: Handle<InternalState>,
   sync: SyncData,
-  command_sender: Sender<Command>,
+  command_queue: Arc<SegQueue<Command>>,
+  // command_sender: Sender<Command>,
   message_receiver: Receiver<Message>,
 }
 
@@ -108,12 +112,11 @@ impl Window {
     crate::init_statics();
 
     let (message_sender, message_receiver) = crossbeam::channel::unbounded();
-    let (command_sender, command_receiver) = crossbeam::channel::unbounded();
+    // let (command_sender, command_receiver) = crossbeam::channel::unbounded();
 
     let (tx, rx) = crossbeam::channel::bounded(0);
 
     let sync = SyncData {
-      // command_queue: Arc::new(SegQueue::new()),
       new_message: Arc::new((Mutex::new(false), Condvar::new())),
       next_frame: Arc::new((Mutex::new(false), Condvar::new())),
     };
@@ -122,8 +125,7 @@ impl Window {
       settings: settings.clone(),
       window: None,
       sync,
-      command_sender,
-      command_receiver,
+      command_queue: Arc::new(SegQueue::new()),
       message_sender,
       message_receiver,
     };
@@ -339,7 +341,7 @@ impl Window {
 
   pub fn outer_size(&self) -> Size {
     let mut window_rect = RECT::default();
-    let _ = unsafe { GetWindowRect(self.hwnd, std::ptr::addr_of_mut!(window_rect)) };
+    let _ = unsafe { GetWindowRect(self.hwnd, &mut window_rect) };
     Size {
       width: window_rect.right - window_rect.left,
       height: window_rect.bottom - window_rect.top,
@@ -348,7 +350,7 @@ impl Window {
 
   pub fn inner_size(&self) -> Size {
     let mut client_rect = RECT::default();
-    let _ = unsafe { GetClientRect(self.hwnd, std::ptr::addr_of_mut!(client_rect)) };
+    let _ = unsafe { GetClientRect(self.hwnd, &mut client_rect) };
     Size {
       width: client_rect.right - client_rect.left,
       height: client_rect.bottom - client_rect.top,
@@ -357,7 +359,7 @@ impl Window {
 
   pub fn outer_position(&self) -> Position {
     let mut window_rect = RECT::default();
-    let _ = unsafe { GetWindowRect(self.hwnd, std::ptr::addr_of_mut!(window_rect)) };
+    let _ = unsafe { GetWindowRect(self.hwnd, &mut window_rect) };
     Position {
       x: window_rect.left,
       y: window_rect.top,
@@ -366,7 +368,7 @@ impl Window {
 
   pub fn inner_position(&self) -> Position {
     let mut window_rect = RECT::default();
-    let _ = unsafe { GetClientRect(self.hwnd, std::ptr::addr_of_mut!(window_rect)) };
+    let _ = unsafe { GetClientRect(self.hwnd, &mut window_rect) };
     Position {
       x: window_rect.left,
       y: window_rect.top,
@@ -499,6 +501,30 @@ impl Window {
     self.force_set_title(title)
   }
 
+  fn force_set_cursor_mode(&self, cursor_mode: CursorMode) {
+    self.state.get_mut().cursor_mode = cursor_mode;
+    self.request(Command::SetCursorMode(cursor_mode));
+  }
+
+  pub fn set_cursor_mode(&self, cursor_mode: CursorMode) {
+    if cursor_mode == self.state.get().cursor_mode {
+      return;
+    }
+    self.force_set_cursor_mode(cursor_mode)
+  }
+
+  fn force_set_cursor_visibility(&self, cursor_visibility: Visibility) {
+    self.state.get_mut().cursor_visibility = cursor_visibility;
+    self.request(Command::SetCursorVisibility(cursor_visibility));
+  }
+
+  pub fn set_cursor_visibility(&self, cursor_visibility: Visibility) {
+    if cursor_visibility == self.state.get().cursor_visibility {
+      return;
+    }
+    self.force_set_cursor_visibility(cursor_visibility)
+  }
+
   fn force_set_subtitle(&self, subtitle: impl AsRef<str>) {
     self.state.get_mut().subtitle = subtitle.as_ref().into();
     let title = HSTRING::from(format!("{}{}", self.state.get().title, subtitle.as_ref()));
@@ -537,10 +563,7 @@ impl Window {
   fn request(&self, command: Command) {
     let err_str = format!("failed to post command `{command:?}`");
 
-    self
-      .command_sender
-      .try_send(command)
-      .unwrap_or_else(|e| panic!("{}", e));
+    self.command_queue.push(command);
 
     unsafe { PostMessageW(self.hwnd, WindowsAndMessaging::WM_APP, WPARAM(0), LPARAM(0)) }
       .unwrap_or_else(|e| panic!("{}: {e}", err_str));

@@ -3,8 +3,11 @@ use std::{
   sync::{Arc, Condvar, Mutex},
 };
 
-use crossbeam::channel::{Receiver, Sender};
-use tracing::error;
+use crossbeam::{
+  channel::{Receiver, Sender},
+  queue::SegQueue,
+};
+use tracing::{debug, error, info};
 use windows::Win32::{
   Foundation::*,
   Graphics::Gdi::{
@@ -20,7 +23,9 @@ use windows::Win32::{
     WindowsAndMessaging::{
       self,
       DestroyWindow,
+      GetClientRect,
       GetWindowLongPtrW,
+      PostMessageW,
       PostQuitMessage,
       SetWindowLongW,
       SetWindowPos,
@@ -36,7 +41,7 @@ use super::message::{Message, WindowMessage};
 use super::{
   command::Command,
   settings::WindowSettings,
-  state::{Fullscreen, Visibility},
+  state::{CursorMode, Fullscreen, Visibility},
   Window,
 };
 use crate::{
@@ -44,6 +49,8 @@ use crate::{
   get_window_style,
   handle::Handle,
   prelude::Input,
+  set_cursor_clip,
+  set_cursor_visibility,
   window::{stage::Stage, state::InternalState},
 };
 
@@ -51,8 +58,7 @@ pub struct CreateInfo {
   pub settings: WindowSettings,
   pub window: Option<(Window, Handle<InternalState>)>,
   pub sync: SyncData,
-  pub command_sender: Sender<Command>,
-  pub command_receiver: Receiver<Command>,
+  pub command_queue: Arc<SegQueue<Command>>,
   pub message_sender: Sender<Message>,
   pub message_receiver: Receiver<Message>,
 }
@@ -83,8 +89,9 @@ impl SyncData {
 pub struct SubclassWindowData {
   pub state: Handle<InternalState>,
   pub sync: SyncData,
-  pub command_receiver: Receiver<Command>,
+  pub command_queue: Arc<SegQueue<Command>>,
   pub message_sender: Sender<Message>,
+  pub processing_command: bool, // required to prevent re-entrant commands
 }
 
 pub extern "system" fn wnd_proc(
@@ -123,6 +130,7 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
     windowed_position: Default::default(),
     windowed_size: Default::default(),
     cursor_mode: Default::default(),
+    cursor_visibility: Visibility::Shown,
     flow: Default::default(),
     close_on_x: Default::default(),
     stage: Stage::Looping,
@@ -149,15 +157,16 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
     hwnd,
     state: state.clone(),
     sync: create_info.sync.clone(),
-    command_sender: create_info.command_sender.clone(),
+    command_queue: create_info.command_queue.clone(),
     message_receiver: create_info.message_receiver.clone(),
   };
 
   let subclass_data = SubclassWindowData {
     state: state.clone(),
     sync: create_info.sync.clone(),
-    command_receiver: create_info.command_receiver.clone(),
+    command_queue: create_info.command_queue.clone(),
     message_sender: create_info.message_sender.clone(),
+    processing_command: false,
   };
 
   create_info.window = Some((window, state));
@@ -198,7 +207,7 @@ fn on_message(
   msg: u32,
   w_param: WPARAM,
   l_param: LPARAM,
-  data: &SubclassWindowData,
+  data: &mut SubclassWindowData,
 ) -> LRESULT {
   let message = Message::new(hwnd, msg, w_param, l_param);
   // handle from wndproc
@@ -232,7 +241,7 @@ fn on_message(
 
   // pass message to main thread
   if let Some(message) = message {
-    update_state(data, &message);
+    update_state(hwnd, data, &message);
     data.message_sender.try_send(message).unwrap();
     // data.sync.next_message.lock().unwrap().replace(message);
     data.sync.signal_new_message();
@@ -244,9 +253,23 @@ fn on_message(
   result
 }
 
-fn update_state(data: &SubclassWindowData, message: &Message) {
+fn update_state(hwnd: HWND, data: &SubclassWindowData, message: &Message) {
   if let Message::Window(window_message) = &message {
     match window_message {
+      &WindowMessage::Focus(is_focused) => {
+        let cursor_visibility = data.state.get().cursor_visibility;
+        let cursor_mode = data.state.get().cursor_mode;
+        if is_focused {
+          data.command_queue.push(Command::SetCursorMode(cursor_mode));
+          data
+            .command_queue
+            .push(Command::SetCursorVisibility(cursor_visibility));
+          unsafe {
+            PostMessageW(hwnd, WindowsAndMessaging::WM_APP, WPARAM(0), LPARAM(0))
+          }
+          .unwrap();
+        }
+      }
       &WindowMessage::Resized(size) => {
         let is_windowed = data.state.get().fullscreen.is_none();
         if is_windowed {
@@ -276,24 +299,35 @@ fn update_state(data: &SubclassWindowData, message: &Message) {
   }
 }
 
-fn process_commands(hwnd: HWND, data: &SubclassWindowData) -> bool {
-  while let Ok(command) = data.command_receiver.try_recv() {
+fn process_commands(hwnd: HWND, data: &mut SubclassWindowData) -> bool {
+  if data.processing_command {
+    return false;
+  }
+
+  while let Some(command) = data.command_queue.pop() {
+    data.processing_command = true;
+    debug!("Command: {command:?}");
+
     match command {
       Command::Destroy => {
         unsafe { DestroyWindow(hwnd) }.unwrap();
+        data.processing_command = false;
         return true; // hwnd will be invalid
       }
       Command::Redraw => unsafe {
         RedrawWindow(hwnd, None, None, Gdi::RDW_INTERNALPAINT);
+        data.processing_command = false;
       },
       Command::SetVisibility(visibility) => unsafe {
         ShowWindow(hwnd, match visibility {
           Visibility::Hidden => WindowsAndMessaging::SW_HIDE,
           Visibility::Shown => WindowsAndMessaging::SW_SHOW,
         });
+        data.processing_command = false;
       },
       Command::SetWindowText(text) => unsafe {
         SetWindowTextW(hwnd, &text).unwrap();
+        data.processing_command = false;
       },
       Command::SetSize(_size) => todo!(),
       Command::SetPosition(_position) => todo!(),
@@ -357,6 +391,36 @@ fn process_commands(hwnd: HWND, data: &SubclassWindowData) -> bool {
             unsafe { InvalidateRgn(hwnd, None, false) };
           }
         }
+        info!("{fullscreen:?}");
+        data.processing_command = false;
+      }
+      Command::SetCursorMode(mode) => {
+        match mode {
+          CursorMode::Normal => {
+            set_cursor_clip(None);
+          }
+          CursorMode::Hidden => {
+            set_cursor_clip(None);
+          }
+          CursorMode::Disabled => {
+            let mut client_rect = RECT::default();
+            unsafe { GetClientRect(hwnd, &mut client_rect) }.unwrap();
+            info!("{client_rect:?}");
+            set_cursor_clip(Some(&client_rect));
+          }
+        };
+        data.processing_command = false;
+      }
+      Command::SetCursorVisibility(visibility) => {
+        match visibility {
+          Visibility::Shown => {
+            set_cursor_visibility(Visibility::Shown);
+          }
+          Visibility::Hidden => {
+            set_cursor_visibility(Visibility::Hidden);
+          }
+        }
+        data.processing_command = false;
       }
     }
   }

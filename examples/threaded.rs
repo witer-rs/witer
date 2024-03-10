@@ -33,8 +33,14 @@ fn main() -> WindowResult<()> {
     if message.is_key(Key::F11, KeyState::Pressed) {
       let fullscreen = window.fullscreen();
       match fullscreen {
-        Some(Fullscreen::Borderless) => window.set_fullscreen(None),
-        None => window.set_fullscreen(Some(Fullscreen::Borderless)),
+        Some(Fullscreen::Borderless) => {
+          window.set_fullscreen(None);
+          window.set_cursor_mode(CursorMode::Normal);
+        }
+        None => {
+          window.set_fullscreen(Some(Fullscreen::Borderless));
+          window.set_cursor_mode(CursorMode::Disabled);
+        }
       }
     }
 
@@ -160,8 +166,8 @@ impl App {
     let now = Instant::now();
     let elapsed = now.duration_since(self.last_update_time);
     if elapsed >= Duration::from_secs_f64(0.20) {
-      let fps = format!("Avg update time: {:.9}", self.time.average_delta_secs());
-      info!("{fps}");
+      // let fps = format!("Avg update time: {:.9}", self.time.average_delta_secs());
+      // // info!("{fps}");
       self.last_update_time = now;
     }
   }

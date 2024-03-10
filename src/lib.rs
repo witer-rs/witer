@@ -2,21 +2,31 @@
 #![cfg_attr(target_os, windows)] // for now, it only supports Win32
 #![deny(unsafe_op_in_unsafe_fn)]
 
-use std::sync::OnceLock;
+use std::sync::{
+  atomic::{AtomicBool, Ordering},
+  OnceLock,
+};
 
 #[cfg(all(feature = "rwh_05", not(feature = "rwh_06")))]
 pub use rwh_05 as raw_window_handle;
 #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
 pub use rwh_06 as raw_window_handle;
+use tracing::error;
 use windows::{
   core::PCSTR,
   Win32::{
-    Foundation::NTSTATUS,
+    Foundation::{NTSTATUS, RECT},
     System::{
       LibraryLoader::{GetProcAddress, LoadLibraryA},
       SystemInformation::OSVERSIONINFOW,
     },
-    UI::WindowsAndMessaging::{self, WINDOW_EX_STYLE, WINDOW_STYLE},
+    UI::WindowsAndMessaging::{
+      self,
+      ClipCursor,
+      ShowCursor,
+      WINDOW_EX_STYLE,
+      WINDOW_STYLE,
+    },
   },
   UI::ViewManagement::{UIColorType, UISettings},
 };
@@ -200,5 +210,40 @@ pub(crate) fn get_window_ex_style(
   match fullscreen {
     Some(Fullscreen::Borderless) => *crate::BORDERLESS_EX_STYLE.get().unwrap(),
     None => *crate::NORMAL_EX_STYLE.get().unwrap(),
+  }
+}
+
+// pub(crate) fn get_cursor_clip() -> RECT {
+//   let mut rect = RECT::default();
+//   if let Err(e) = unsafe { GetClipCursor(&mut rect) } {
+//     error!("{e}");
+//   };
+//   rect
+// }
+
+pub(crate) fn set_cursor_clip(rect: Option<&RECT>) {
+  if let Err(e) = unsafe { ClipCursor(rect.map(|r| r as _)) } {
+    error!("{e}");
+  }
+}
+
+// pub(crate) fn get_desktop_rect() -> RECT {
+//   unsafe {
+//     let left = GetSystemMetrics(WindowsAndMessaging::SM_XVIRTUALSCREEN);
+//     let top = GetSystemMetrics(WindowsAndMessaging::SM_YVIRTUALSCREEN);
+//     RECT {
+//       left,
+//       top,
+//       right: left +
+// GetSystemMetrics(WindowsAndMessaging::SM_CXVIRTUALSCREEN),       bottom: top
+// + GetSystemMetrics(WindowsAndMessaging::SM_CYVIRTUALSCREEN),     } }
+// }
+
+pub(crate) fn set_cursor_visibility(visible: Visibility) {
+  let hidden = visible == Visibility::Hidden;
+  static HIDDEN: AtomicBool = AtomicBool::new(false);
+  let changed = HIDDEN.swap(hidden, Ordering::SeqCst) ^ hidden;
+  if changed {
+    unsafe { ShowCursor(!hidden) };
   }
 }

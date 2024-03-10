@@ -1,6 +1,6 @@
 use windows::core::HSTRING;
 
-use super::state::{Fullscreen, Position, Size, Visibility};
+use super::state::{CursorMode, Fullscreen, Position, Size, Visibility};
 
 #[repr(u32)]
 #[derive(Debug)]
@@ -12,4 +12,6 @@ pub enum Command {
   SetSize(Size),
   SetPosition(Position),
   SetFullscreen(Option<Fullscreen>),
+  SetCursorMode(CursorMode),
+  SetCursorVisibility(Visibility),
 }
