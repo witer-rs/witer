@@ -94,8 +94,8 @@ macro_rules! get_function {
   };
 }
 
-static WIN10_BUILD_VERSION: OnceLock<Option<u32>> = OnceLock::new();
 pub fn windows_10_build_version() -> Option<u32> {
+  static WIN10_BUILD_VERSION: OnceLock<Option<u32>> = OnceLock::new();
   *WIN10_BUILD_VERSION.get_or_init(|| {
     type RtlGetVersion = unsafe extern "system" fn(*mut OSVERSIONINFOW) -> NTSTATUS;
     let handle = get_function!("ntdll.dll", RtlGetVersion);
@@ -125,8 +125,8 @@ pub fn windows_10_build_version() -> Option<u32> {
   })
 }
 
-static DARK_MODE_SUPPORTED: OnceLock<bool> = OnceLock::new();
 pub fn is_dark_mode_supported() -> bool {
+  static DARK_MODE_SUPPORTED: OnceLock<bool> = OnceLock::new();
   *DARK_MODE_SUPPORTED.get_or_init(|| {
     // We won't try to do anything for windows versions < 17763
     // (Windows 10 October 2018 update)
@@ -137,8 +137,8 @@ pub fn is_dark_mode_supported() -> bool {
   })
 }
 
-static IS_SYSTEM_DARK_MODE: OnceLock<bool> = OnceLock::new();
 pub fn is_system_dark_mode_enabled() -> bool {
+  static IS_SYSTEM_DARK_MODE: OnceLock<bool> = OnceLock::new();
   *IS_SYSTEM_DARK_MODE.get_or_init(|| {
     let settings = UISettings::new().unwrap();
     let foreground = settings
@@ -153,12 +153,12 @@ fn is_color_light(clr: &windows::UI::Color) -> bool {
   ((5 * clr.G as u32) + (2 * clr.R as u32) + clr.B as u32) > (8 * 128)
 }
 
-static NORMAL_STYLE: OnceLock<WINDOW_STYLE> = OnceLock::new();
-static BORDERLESS_STYLE: OnceLock<WINDOW_STYLE> = OnceLock::new();
 pub(crate) fn get_window_style(
   fullscreen: Option<Fullscreen>,
   visible: Visibility,
 ) -> WINDOW_STYLE {
+  static NORMAL_STYLE: OnceLock<WINDOW_STYLE> = OnceLock::new();
+  static BORDERLESS_STYLE: OnceLock<WINDOW_STYLE> = OnceLock::new();
   match fullscreen {
     Some(Fullscreen::Borderless) => {
       let style = BORDERLESS_STYLE.get_or_init(|| {
@@ -185,9 +185,9 @@ pub(crate) fn get_window_style(
   }
 }
 
-static NORMAL_EX_STYLE: OnceLock<WINDOW_EX_STYLE> = OnceLock::new();
-static BORDERLESS_EX_STYLE: OnceLock<WINDOW_EX_STYLE> = OnceLock::new();
 pub(crate) fn get_window_ex_style(fullscreen: Option<Fullscreen>) -> WINDOW_EX_STYLE {
+  static NORMAL_EX_STYLE: OnceLock<WINDOW_EX_STYLE> = OnceLock::new();
+  static BORDERLESS_EX_STYLE: OnceLock<WINDOW_EX_STYLE> = OnceLock::new();
   match fullscreen {
     Some(Fullscreen::Borderless) => {
       let style =
