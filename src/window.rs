@@ -111,7 +111,6 @@ impl Window {
 
     let (message_sender, message_receiver) = crossbeam::channel::unbounded();
 
-
     let sync = SyncData {
       new_message: Arc::new((Mutex::new(false), Condvar::new())),
       next_frame: Arc::new((Mutex::new(false), Condvar::new())),
@@ -130,7 +129,9 @@ impl Window {
 
     let thread = Some(Self::window_loop(window_sender, create_info)?);
 
-    let window = window_receiver.recv().expect("failed to receive opened message");
+    let window = window_receiver
+      .recv()
+      .expect("failed to receive opened message");
     {
       let mut state = window.state.get_mut();
       state.thread = thread;
@@ -158,8 +159,10 @@ impl Window {
         let sync = create_info.sync.clone();
         let message_sender = create_info.message_sender.clone();
         let (window, state) = Self::create_hwnd(create_info)?;
-        
-        window_sender.send(window).expect("failed to send opened message");
+
+        window_sender
+          .send(window)
+          .expect("failed to send opened message");
 
         while Self::message_pump(&sync, &message_sender, &state) {}
 
