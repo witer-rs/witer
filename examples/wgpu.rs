@@ -1,10 +1,13 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
-use std::time::{Duration, Instant};
+use std::{
+  sync::Arc,
+  time::{Duration, Instant},
+};
 
-use witer::prelude::*;
 use foxy_time::{Time, TimeSettings};
 use wgpu::PresentMode;
+use witer::prelude::*;
 
 fn main() -> WindowResult<()> {
   let settings = WindowSettings::default()

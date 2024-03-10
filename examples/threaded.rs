@@ -1,15 +1,15 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 use std::{
-  sync::Barrier,
+  sync::{Arc, Barrier},
   thread::JoinHandle,
   time::{Duration, Instant},
 };
 
 use crossbeam::channel::Receiver;
-use witer::prelude::*;
 use foxy_time::{Time, TimeSettings};
 use tracing::{error, info, Level};
+use witer::prelude::*;
 
 fn main() -> WindowResult<()> {
   tracing_subscriber::fmt()
