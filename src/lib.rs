@@ -11,7 +11,6 @@ use std::sync::{
 pub use rwh_05 as raw_window_handle;
 #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
 pub use rwh_06 as raw_window_handle;
-use tracing::error;
 use windows::{
   core::PCSTR,
   Win32::{
@@ -222,8 +221,8 @@ pub(crate) fn get_window_ex_style(
 // }
 
 pub(crate) fn set_cursor_clip(rect: Option<&RECT>) {
-  if let Err(e) = unsafe { ClipCursor(rect.map(|r| r as _)) } {
-    error!("{e}");
+  if let Err(_e) = unsafe { ClipCursor(rect.map(|r| r as _)) } {
+    tracing::error!("{_e}");
   }
 }
 

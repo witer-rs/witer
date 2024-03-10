@@ -28,7 +28,6 @@ use rwh_06::{
   WindowHandle,
   WindowsDisplayHandle,
 };
-use tracing::*;
 use windows::{
   core::{HSTRING, PCWSTR},
   Win32::{
@@ -236,18 +235,13 @@ impl Window {
     message_sender: &Sender<Message>,
     state: &Handle<InternalState>,
   ) -> bool {
-    // let is_none = matches!(*sync.next_message.lock().unwrap(), Message::None);
-    // if !is_none {
-    //   sync.wait_on_frame(|| state.get().stage == Stage::ExitLoop);
-    // }
     if !message_sender.is_empty() {
       sync.wait_on_frame(|| state.get().stage == Stage::ExitLoop);
     }
 
     // pass message to main thread
-    // sync.next_message.lock().unwrap().replace(Message::Wait);
-    if let Err(e) = message_sender.try_send(Message::Wait) {
-      error!("{e}");
+    if let Err(_e) = message_sender.try_send(Message::Wait) {
+      tracing::error!("{_e}");
       state.get_mut().stage = Stage::ExitLoop;
     }
     sync.signal_new_message();
@@ -456,7 +450,7 @@ impl Window {
 
     self.state.get_mut().theme = theme;
     let dark_mode = BOOL::from(theme == Theme::Dark);
-    if let Err(error) = unsafe {
+    if let Err(_error) = unsafe {
       DwmSetWindowAttribute(
         self.hwnd,
         Dwm::DWMWA_USE_IMMERSIVE_DARK_MODE,
@@ -464,7 +458,7 @@ impl Window {
         std::mem::size_of::<BOOL>() as u32,
       )
     } {
-      error!("{error}");
+      tracing::error!("{_error}");
     };
   }
 

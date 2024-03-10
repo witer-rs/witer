@@ -1,7 +1,7 @@
 [package]
 name        = "ezwin"
 description = "Easy, minimal Win32 window creation"
-version     = "2.14.0"
+version     = "2.15.0"
 edition     = "2021"
 authors     = ["Gabriel Lugo <dev.gabriel.lugo@gmail.com>"]
 license     = "MIT OR Apache-2.0"
@@ -23,11 +23,11 @@ rwh_06  = ["dep:rwh_06"]
 
 [dependencies]
 thiserror = "1.0"
-tracing   = "0.1"
+tracing   = { version = "0.1", default-features = false }
+crossbeam = "0.8"
 
 rwh_05    = { package = "raw-window-handle", version = "0.5.2", features = ["std"], optional = true }
 rwh_06    = { package = "raw-window-handle", version = "0.6", features = ["std"], optional = true }
-crossbeam = "0.8"
 
 [dependencies.windows]
 version  = "0.54"
@@ -38,3 +38,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 foxy_time          = { version = "1", path = "../foxy_time" }
 wgpu               = "0.19"
 pollster           = "0.3"
+
+[[example]]
+name              = "threaded"
+required-features = ["tracing"]

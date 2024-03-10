@@ -7,7 +7,6 @@ use crossbeam::{
   channel::{Receiver, Sender},
   queue::SegQueue,
 };
-use tracing::{debug, error, info};
 use windows::Win32::{
   Foundation::*,
   Graphics::Gdi::{
@@ -138,7 +137,7 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
     requested_redraw: false,
   });
 
-  if let Err(e) =
+  if let Err(_e) =
     create_info
       .message_sender
       .try_send(Message::Window(WindowMessage::Created {
@@ -146,7 +145,7 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
         hinstance: create_struct.hInstance,
       }))
   {
-    error!("{e}");
+    tracing::error!("{_e}");
     return LRESULT(-1);
   }
 
@@ -306,7 +305,8 @@ fn process_commands(hwnd: HWND, data: &mut SubclassWindowData) -> bool {
 
   while let Some(command) = data.command_queue.pop() {
     data.processing_command = true;
-    debug!("Command: {command:?}");
+
+    tracing::debug!("Command: {command:?}");
 
     match command {
       Command::Destroy => {
@@ -391,7 +391,8 @@ fn process_commands(hwnd: HWND, data: &mut SubclassWindowData) -> bool {
             unsafe { InvalidateRgn(hwnd, None, false) };
           }
         }
-        info!("{fullscreen:?}");
+
+        tracing::info!("{fullscreen:?}");
         data.processing_command = false;
       }
       Command::SetCursorMode(mode) => {
@@ -405,7 +406,8 @@ fn process_commands(hwnd: HWND, data: &mut SubclassWindowData) -> bool {
           CursorMode::Disabled => {
             let mut client_rect = RECT::default();
             unsafe { GetClientRect(hwnd, &mut client_rect) }.unwrap();
-            info!("{client_rect:?}");
+
+            tracing::info!("{client_rect:?}");
             set_cursor_clip(Some(&client_rect));
           }
         };
