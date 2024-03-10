@@ -8,7 +8,7 @@ license     = "MIT OR Apache-2.0"
 readme      = "README.md"
 keywords    = ["win32", "windows", "windowing"]
 categories  = ["game-development", "rendering", "gui"]
-repository  = "https://github.com/ezwin-rs/ezwin"
+repository  = "https://github.com/witer-rs/witer"
 
 [profile.dev]
 opt-level = 0
