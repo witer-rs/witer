@@ -57,7 +57,7 @@ is subject to change.
 
 You can get in contact through the discord linked at the top, or post in the Discussions tab on GitHub.
 
-Alternatively, you can email me at dev.gabriel.lugo@gmail.com
+Alternatively, you can email me at <dev.gabriel.lugo@gmail.com>
 
 ## FAQ
 
