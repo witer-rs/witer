@@ -1,4 +1,4 @@
-# ezwin: Minimal native Win32 window library
+# ezwin: A Minimal native Win32 window library
 
 [![Crates.io Version](https://img.shields.io/crates/v/ezwin)](https://crates.io/crates/ezwin)
 [![Discord](https://img.shields.io/discord/1215348294105169940?logo=discord&label=discord&color=5865F2)](https://discord.gg/KEtfte9xWZ)
