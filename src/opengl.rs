@@ -1,8 +1,12 @@
 use std::num::NonZeroU32;
 
-use glutin::{
+use glium::glutin::{
+  api::wgl::{config::Config, display::Display},
+  config::ConfigTemplateBuilder,
   context::PossiblyCurrentContext,
+  display::GlDisplay,
   surface::{
+    GlSurface,
     ResizeableSurface,
     Surface,
     SurfaceAttributes,
@@ -11,7 +15,12 @@ use glutin::{
     WindowSurface,
   },
 };
-use raw_window_handle::{HasRawWindowHandle, RawDisplayHandle};
+use raw_window_handle::{
+  HasRawDisplayHandle,
+  HasRawWindowHandle,
+  RawDisplayHandle,
+  RawWindowHandle,
+};
 use rwh_05 as raw_window_handle;
 
 use crate::prelude::{Size, Window, WindowSettings};
@@ -67,17 +76,6 @@ impl NonZeroU32PhysicalSize for Size {
 }
 
 use std::error::Error;
-
-#[cfg(x11_platform)]
-use glutin::platform::x11::X11GlConfigExt;
-use glutin::{
-  config::{Config, ConfigTemplateBuilder},
-  display::{Display, DisplayApiPreference},
-  prelude::*,
-};
-#[cfg(wgl_backend)]
-use raw_window_handle::HasRawWindowHandle;
-use raw_window_handle::{HasRawDisplayHandle, RawWindowHandle};
 
 /// The helper to perform [`Display`] creation and OpenGL platform
 /// bootstrapping with the help of [`winit`] with little to no platform specific
@@ -141,7 +139,5 @@ fn create_display(
   _raw_display_handle: RawDisplayHandle,
   _raw_window_handle: Option<RawWindowHandle>,
 ) -> Result<Display, Box<dyn Error>> {
-  let _preference = DisplayApiPreference::Wgl(_raw_window_handle);
-
-  unsafe { Ok(Display::new(_raw_display_handle, _preference)?) }
+  unsafe { Ok(Display::new(_raw_display_handle, _raw_window_handle)?) }
 }

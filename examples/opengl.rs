@@ -1,13 +1,20 @@
 use std::num::NonZeroU32;
 
-use glutin::{
-  config::ConfigTemplateBuilder,
-  context::NotCurrentGlContext,
-  display::{GetGlDisplay, GlDisplay},
-  surface::WindowSurface,
+use glium::{
+  glutin::{
+    config::ConfigTemplateBuilder,
+    context::{
+      ContextApi,
+      ContextAttributesBuilder,
+      NotCurrentGlContext,
+    },
+    display::{GetGlDisplay, GlDisplay},
+    surface::{SurfaceAttributesBuilder, WindowSurface},
+  },
+  Display, Surface,
 };
 use rwh_05::HasRawWindowHandle;
-use witer::{glutin::DisplayBuilder, prelude::*};
+use witer::{opengl::DisplayBuilder, prelude::*};
 
 fn main() {
   let settings = WindowSettings::default()
@@ -25,10 +32,9 @@ fn main() {
     .unwrap();
 
   let raw_window_handle = window.raw_window_handle();
-  let context_attributes =
-    glutin::context::ContextAttributesBuilder::new().build(Some(raw_window_handle));
-  let fallback_context_attributes = glutin::context::ContextAttributesBuilder::new()
-    .with_context_api(glutin::context::ContextApi::Gles(None))
+  let context_attributes = ContextAttributesBuilder::new().build(Some(raw_window_handle));
+  let fallback_context_attributes = ContextAttributesBuilder::new()
+    .with_context_api(ContextApi::Gles(None))
     .build(Some(raw_window_handle));
 
   let not_current_gl_context = unsafe {
@@ -44,7 +50,7 @@ fn main() {
   };
 
   let (width, height): (u32, u32) = window.inner_size().into();
-  let attrs = glutin::surface::SurfaceAttributesBuilder::<WindowSurface>::new().build(
+  let attrs = SurfaceAttributesBuilder::<WindowSurface>::new().build(
     raw_window_handle,
     NonZeroU32::new(width).unwrap(),
     NonZeroU32::new(height).unwrap(),
@@ -58,7 +64,15 @@ fn main() {
       .unwrap()
   };
   let current_context = not_current_gl_context.make_current(&surface).unwrap();
-  let _display = glium::Display::from_context_surface(current_context, surface).unwrap();
+  let display = Display::from_context_surface(
+    glium::glutin::context::PossiblyCurrentContext::Wgl(current_context),
+    glium::glutin::surface::Surface::Wgl(surface),
+  )
+  .unwrap();
+
+  let mut target = display.draw();
+  target.clear_color(0.0, 0.0, 1.0, 1.0);
+  target.finish().unwrap();
 
   for message in &window {
     if let Message::Window(WindowMessage::Key {

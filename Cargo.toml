@@ -20,7 +20,7 @@ opt-level = 3
 default = ["rwh_06"]
 rwh_05  = ["dep:rwh_05"]
 rwh_06  = ["dep:rwh_06"]
-glutin  = ["dep:glutin", "rwh_05"]
+# opengl  = ["dep:glium", "rwh_05"]
 
 [dependencies]
 thiserror = "1.0"
@@ -29,7 +29,8 @@ crossbeam = "0.8"
 
 rwh_05 = { package = "raw-window-handle", version = "0.5.2", features = ["std"], optional = true }
 rwh_06 = { package = "raw-window-handle", version = "0.6", features = ["std"], optional = true }
-glutin = { version = "0.31", optional = true }
+
+# glium = { version = "0.34", optional = true }
 
 [dependencies.windows]
 version  = "0.54"
@@ -40,8 +41,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 foxy_time          = { version = "1", path = "../foxy_time" }
 pollster           = "0.3"
 wgpu               = "0.19"
-glium              = "0.34"
 
 [[example]]
 name              = "opengl"
-required-features = ["glutin"]
+required-features = ["opengl"]
