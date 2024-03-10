@@ -1,7 +1,6 @@
-use strum::EnumIter;
 use windows::Win32::UI::Input::{KeyboardAndMouse::VIRTUAL_KEY, *};
 
-#[derive(EnumIter, Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum Key {
   Unknown = 0,
   // ASCII

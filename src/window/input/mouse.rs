@@ -1,6 +1,4 @@
-use strum::EnumIter;
-
-#[derive(EnumIter, Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 #[repr(u16)]
 pub enum Mouse {
   Unknown = 0,

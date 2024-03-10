@@ -36,10 +36,12 @@ fn main() -> WindowResult<()> {
         Some(Fullscreen::Borderless) => {
           window.set_fullscreen(None);
           window.set_cursor_mode(CursorMode::Normal);
+          window.set_cursor_visibility(Visibility::Shown);
         }
         None => {
           window.set_fullscreen(Some(Fullscreen::Borderless));
           window.set_cursor_mode(CursorMode::Disabled);
+          window.set_cursor_visibility(Visibility::Hidden);
         }
       }
     }

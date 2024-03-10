@@ -1,7 +1,5 @@
 use std::collections::HashMap;
 
-use strum::IntoEnumIterator;
-
 use self::state::KeyState;
 use crate::window::input::{key::Key, mouse::Mouse, state::ButtonState};
 
@@ -26,21 +24,8 @@ pub struct Input {
 
 impl Input {
   pub fn new() -> Self {
-    let mouse_buttons = {
-      let mut map = HashMap::default();
-      for code in Mouse::iter() {
-        map.insert(code, ButtonState::Released);
-      }
-      map
-    };
-
-    let keys = {
-      let mut map = HashMap::default();
-      for code in Key::iter() {
-        map.insert(code, KeyState::Released);
-      }
-      map
-    };
+    let mouse_buttons = HashMap::default();
+    let keys = HashMap::default();
 
     Self {
       mouse_buttons,
