@@ -1,10 +1,12 @@
-# ezwin: A Minimal native Win32 window library
+# `witer`
 
-[![Crates.io Version](https://img.shields.io/crates/v/ezwin)](https://crates.io/crates/ezwin)
+## An iterator-based Win32 window library built in Rust
+
+[![Crates.io Version](https://img.shields.io/crates/v/witer)](https://crates.io/crates/witer)
 [![Discord](https://img.shields.io/discord/1215348294105169940?logo=discord&label=discord&color=5865F2)](https://discord.gg/KEtfte9xWZ)
 
 ```rust
-use ezwin::prelude::*;
+use witer::prelude::*;
 
 fn main() {
   // Configure
@@ -24,7 +26,7 @@ fn main() {
 
 ## Goals
 
-The main goal of `ezwin` is to have a simple, easy-to-use API. The target audience is developers looking to create
+The main goal of `witer` is to have a simple, easy-to-use API. The target audience is developers looking to create
 a window quickly, easily, and idiomatically. I aim to have feature-parity with `winit` eventually as a secondary goal.
 
 Cross-platform support is highly unlikely, but pull requests are welcomed if anyone else wants to tackle it.
@@ -48,7 +50,7 @@ questions, either:
 ## Examples
 
 You can find examples in [the examples folder](examples). You can also see the vulkano branch of
-[foxy-rs/foxy](https://github.com/foxy-rs/foxy/tree/vulkano), which as of the time of writing is utilizing `ezwin`, but
+[foxy-rs/foxy](https://github.com/foxy-rs/foxy/tree/vulkano), which as of the time of writing is utilizing `witer`, but
 is subject to change.
 
 ## Contact Me
