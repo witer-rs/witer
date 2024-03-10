@@ -88,7 +88,6 @@ pub struct Window {
   state: Handle<InternalState>,
   sync: SyncData,
   command_queue: Arc<SegQueue<Command>>,
-  // command_sender: Sender<Command>,
   message_receiver: Receiver<Message>,
 }
 
@@ -111,9 +110,7 @@ impl Window {
     crate::init_statics();
 
     let (message_sender, message_receiver) = crossbeam::channel::unbounded();
-    // let (command_sender, command_receiver) = crossbeam::channel::unbounded();
 
-    let (tx, rx) = crossbeam::channel::bounded(0);
 
     let sync = SyncData {
       new_message: Arc::new((Mutex::new(false), Condvar::new())),
@@ -129,10 +126,11 @@ impl Window {
       message_receiver,
     };
 
-    let thread = Some(Self::window_loop(tx, create_info)?);
+    let (window_sender, window_receiver) = crossbeam::channel::bounded(0);
 
-    // block until first message sent (which will be the window opening)
-    let window = rx.recv().expect("failed to receive opened message");
+    let thread = Some(Self::window_loop(window_sender, create_info)?);
+
+    let window = window_receiver.recv().expect("failed to receive opened message");
     {
       let mut state = window.state.get_mut();
       state.thread = thread;
@@ -152,7 +150,7 @@ impl Window {
   }
 
   fn window_loop(
-    tx: Sender<Self>,
+    window_sender: Sender<Self>,
     create_info: CreateInfo,
   ) -> WindowResult<JoinHandle<WindowResult<()>>> {
     let thread_handle = std::thread::Builder::new().name("win32".to_owned()).spawn(
@@ -160,9 +158,8 @@ impl Window {
         let sync = create_info.sync.clone();
         let message_sender = create_info.message_sender.clone();
         let (window, state) = Self::create_hwnd(create_info)?;
-
-        // Send opened message to main function
-        tx.send(window).expect("failed to send opened message");
+        
+        window_sender.send(window).expect("failed to send opened message");
 
         while Self::message_pump(&sync, &message_sender, &state) {}
 
