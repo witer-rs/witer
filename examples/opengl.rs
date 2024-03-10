@@ -1,5 +1,7 @@
 use std::num::NonZeroU32;
 
+// OPENGL SUPPORT IS WIP
+
 use glium::{
   glutin::{
     config::ConfigTemplateBuilder,
