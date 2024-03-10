@@ -1,12 +1,12 @@
-# ezwin: A Minimal native Win32 window library
+# `witer`
 
-## NOTICE: Further development will be done as the [`witer`](https://crates.io/crates/witer) crate
+## An iterator-based Win32 window library built in Rust
 
-[![Crates.io Version](https://img.shields.io/crates/v/ezwin)](https://crates.io/crates/ezwin)
+[![Crates.io Version](https://img.shields.io/crates/v/witer)](https://crates.io/crates/witer)
 [![Discord](https://img.shields.io/discord/1215348294105169940?logo=discord&label=discord&color=5865F2)](https://discord.gg/KEtfte9xWZ)
 
 ```rust
-use ezwin::prelude::*;
+use witer::prelude::*;
 
 fn main() {
   // Configure
@@ -26,7 +26,7 @@ fn main() {
 
 ## Goals
 
-The main goal of `ezwin` is to have a simple, easy-to-use API. The target audience is developers looking to create
+The main goal of `witer` is to have a simple, easy-to-use API. The target audience is developers looking to create
 a window quickly, easily, and idiomatically. I aim to have feature-parity with `winit` eventually as a secondary goal.
 
 Cross-platform support is highly unlikely, but pull requests are welcomed if anyone else wants to tackle it.
@@ -50,7 +50,7 @@ questions, either:
 ## Examples
 
 You can find examples in [the examples folder](examples). You can also see the vulkano branch of
-[foxy-rs/foxy](https://github.com/foxy-rs/foxy/tree/vulkano), which as of the time of writing is utilizing `ezwin`, but
+[foxy-rs/foxy](https://github.com/foxy-rs/foxy/tree/vulkano), which as of the time of writing is utilizing `witer`, but
 is subject to change.
 
 ## Contact Me
@@ -65,11 +65,11 @@ You can get in contact through the discord linked at the top, or post in the Dis
 could lead to performance gains (unsubstantiated). Additionally, I was simply not satisfied with the way the `winit` API
 looks and feels. If you are perfectly satisfied with what `winit` offers, then I recommend you stick with it.
 
-**Q:** What happened to the 3.0 version?
+**Q:** What happened to `ezwin`?
 
-**A:** As this project is in flux, there was a temporary `3.0` version that was implemented which strayed from my vision of
-the crate. I regret publishing that version, and have since yanked each of them off of crates.io. In the future, I intend
-to be far more deliberate and considerate over what gets published rather than willy-nilly publishing the next big features.
+**A:** I wanted a name that was more inline with the ideas and goals behind the project. Additionally, I wanted a chance
+to pull the project back to `v0.x.x` to reflect its volatile nature. This isn't currently possible with Crates.io (ignoring
+yanking). Furthermore, the `v3.x.x` could be seen as confusing for those who didn't understand why they existed.
 
 ## ⚠️ Warning ⚠️
 

@@ -7,7 +7,7 @@ use std::{
 };
 
 use crossbeam::channel::Receiver;
-use ezwin::prelude::*;
+use witer::prelude::*;
 use foxy_time::{Time, TimeSettings};
 use tracing::{error, info, Level};
 

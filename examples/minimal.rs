@@ -1,4 +1,4 @@
-use ezwin::prelude::*;
+use witer::prelude::*;
 
 fn main() {
   let w = Window::new(Default::default()).unwrap();

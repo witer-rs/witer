@@ -2,7 +2,7 @@
 
 use std::time::{Duration, Instant};
 
-use ezwin::prelude::*;
+use witer::prelude::*;
 use foxy_time::{Time, TimeSettings};
 use wgpu::PresentMode;
 
