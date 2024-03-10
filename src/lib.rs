@@ -8,6 +8,8 @@ pub use rwh_05 as raw_window_handle;
 pub use rwh_06 as raw_window_handle;
 
 pub mod debug;
+#[cfg(feature = "glutin")]
+pub mod glutin;
 mod handle;
 pub mod prelude;
 pub mod utilities;

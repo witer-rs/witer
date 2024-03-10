@@ -151,7 +151,7 @@ impl App {
   }
 
   fn resize(&mut self, new_size: Size) {
-    if new_size.width > 0 && new_size.height > 0 {
+    if new_size.is_positive() {
       self.size = new_size;
       self.config.width = new_size.width as u32;
       self.config.height = new_size.height as u32;
