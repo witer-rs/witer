@@ -220,7 +220,7 @@ fn on_message(
   // handle command requests
   if process_commands(hwnd, data) {
     // process commands returns true to interrupt
-    return unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) };
+    return result;
   }
 
   // Wait for previous message to be handled

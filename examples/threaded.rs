@@ -60,7 +60,9 @@ struct App {
   last_render_time: Instant,
   time: Time,
   render_time: Time,
+
   frame_count: u32,
+  is_revealed: bool,
 
   surface: wgpu::Surface<'static>,
   device: wgpu::Device,
@@ -131,6 +133,7 @@ impl App {
         time,
         render_time,
         frame_count: 0,
+        is_revealed: false,
         surface,
         device,
         queue,
@@ -183,10 +186,14 @@ impl App {
       self.last_render_time = now;
     }
 
-    self.frame_count = self.frame_count.wrapping_add(1);
-    if self.frame_count == 10 {
-      window.set_visibility(Visibility::Shown);
-    }
+    match (self.is_revealed, self.frame_count) {
+      (false, 10) => {
+        window.set_visibility(Visibility::Shown);
+        self.is_revealed = true;
+      }
+      (false, _) => self.frame_count = self.frame_count.wrapping_add(1),
+      _ => (),
+    };
 
     let output = match self.surface.get_current_texture() {
       Ok(output) => output,
