@@ -44,12 +44,14 @@ use super::{
   Window,
 };
 use crate::{
-  get_window_ex_style,
-  get_window_style,
   handle::Handle,
   prelude::Input,
-  set_cursor_clip,
-  set_cursor_visibility,
+  utilities::{
+    get_window_ex_style,
+    get_window_style,
+    set_cursor_clip,
+    set_cursor_visibility,
+  },
   window::{stage::Stage, state::InternalState},
 };
 
@@ -345,7 +347,7 @@ fn process_commands(hwnd: HWND, data: &mut SubclassWindowData) -> bool {
           SetWindowLongW(
             hwnd,
             WindowsAndMessaging::GWL_EXSTYLE,
-            get_window_ex_style(fullscreen, visible).0 as i32,
+            get_window_ex_style(fullscreen).0 as i32,
           )
         };
         // update size

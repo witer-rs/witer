@@ -63,6 +63,12 @@ use crate::{
   debug::{error::WindowError, WindowResult},
   handle::Handle,
   prelude::{ButtonState, Key, KeyState, Mouse},
+  utilities::{
+    get_window_ex_style,
+    get_window_style,
+    is_dark_mode_supported,
+    is_system_dark_mode_enabled,
+  },
   window::{
     input::Input,
     message::Message,
@@ -107,8 +113,6 @@ impl Window {
 
   /// Create a new window based on the settings provided.
   pub fn new(settings: WindowSettings) -> Result<Self, WindowError> {
-    crate::init_statics();
-
     let (message_sender, message_receiver) = crossbeam::channel::unbounded();
 
     let sync = SyncData {
@@ -207,10 +211,10 @@ impl Window {
 
     let hwnd = unsafe {
       CreateWindowExW(
-        *crate::NORMAL_EX_STYLE.get().unwrap(),
+        get_window_ex_style(create_info.settings.fullscreen),
         &window_class,
         &title,
-        *crate::NORMAL_STYLE.get().unwrap(),
+        get_window_style(create_info.settings.fullscreen, Visibility::Hidden),
         position.x,
         position.y,
         size.width,
@@ -432,14 +436,14 @@ impl Window {
   fn force_set_theme(&self, theme: Theme) {
     let theme = match theme {
       Theme::Auto => {
-        if *crate::IS_SYSTEM_DARK_MODE.get().unwrap() {
+        if is_system_dark_mode_enabled() {
           Theme::Dark
         } else {
           Theme::Light
         }
       }
       Theme::Dark => {
-        if *crate::DARK_MODE_SUPPORTED.get().unwrap() {
+        if is_dark_mode_supported() {
           Theme::Dark
         } else {
           Theme::Light

@@ -19,11 +19,7 @@ use super::{
   state::{Position, Size},
 };
 use crate::{
-  hi_word,
-  lo_byte,
-  lo_word,
-  signed_hi_word,
-  signed_lo_word,
+  utilities::{hi_word, lo_byte, lo_word, signed_hi_word, signed_lo_word},
   window::input::{
     key::Key,
     state::{ButtonState, KeyState},
