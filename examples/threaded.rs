@@ -10,7 +10,6 @@ use crossbeam::channel::Receiver;
 use ezwin::prelude::*;
 use foxy_time::{Time, TimeSettings};
 use tracing::{error, info, Level};
-use wgpu::PresentMode;
 
 fn main() -> WindowResult<()> {
   tracing_subscriber::fmt()
@@ -120,7 +119,7 @@ impl App {
         format: surface_format,
         width: size.width as u32,
         height: size.height as u32,
-        present_mode: PresentMode::AutoNoVsync,
+        present_mode: wgpu::PresentMode::AutoNoVsync,
         alpha_mode: surface_caps.alpha_modes[0],
         view_formats: vec![],
         desired_maximum_frame_latency: 2,
