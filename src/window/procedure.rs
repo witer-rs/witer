@@ -114,9 +114,20 @@ pub extern "system" fn wnd_proc(
     unsafe { GetWindowLongPtrW(hwnd, WindowsAndMessaging::GWLP_USERDATA) };
 
   match (user_data_ptr, msg) {
+    (0, WindowsAndMessaging::WM_NCCREATE) => on_nccreate(hwnd, msg, w_param, l_param),
     (0, WindowsAndMessaging::WM_CREATE) => on_create(hwnd, msg, w_param, l_param),
     _ => unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, w_param, l_param) },
   }
+}
+fn on_nccreate(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT {
+  if unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) }
+    .is_err()
+  {
+    unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE) }
+      .unwrap();
+  }
+
+  unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, w_param, l_param) }
 }
 
 fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT {
@@ -126,15 +137,6 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
       .as_mut()
       .unwrap()
   };
-
-  if unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) }
-    .is_err()
-  {
-    unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE) }
-      .unwrap();
-  }
-
-  unsafe { EnableNonClientDpiScaling(hwnd) }.unwrap();
 
   let scale_factor = dpi_to_scale_factor(hwnd_dpi(hwnd));
 
