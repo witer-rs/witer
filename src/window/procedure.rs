@@ -19,6 +19,7 @@ use windows::Win32::{
   },
   UI::{
     HiDpi::{
+      EnableNonClientDpiScaling,
       SetProcessDpiAwarenessContext,
       DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE,
       DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
@@ -132,6 +133,8 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
     unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE) }
       .unwrap();
   }
+
+  unsafe { EnableNonClientDpiScaling(hwnd) }.unwrap();
 
   let scale_factor = dpi_to_scale_factor(hwnd_dpi(hwnd));
 
