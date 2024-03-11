@@ -182,11 +182,8 @@ impl Window {
   ) -> WindowResult<(Self, Handle<InternalState>)> {
     let hinstance: HINSTANCE = unsafe { GetModuleHandleW(None)? }.into();
     debug_assert_ne!(hinstance.0, 0);
-    let size = create_info.settings.size;
-    let position = create_info.settings.position.unwrap_or(Position {
-      x: WindowsAndMessaging::CW_USEDEFAULT,
-      y: WindowsAndMessaging::CW_USEDEFAULT,
-    });
+    // let size = create_info.settings.size;
+    let position = create_info.settings.position;
     let title = HSTRING::from(create_info.settings.title.clone());
     let window_class = title.clone();
 
@@ -209,16 +206,19 @@ impl Window {
       debug_assert_ne!(atom, 0);
     }
 
+    let p = position.map(|p| (p.x, p.y));
+    let (x, y) = (p.map(|(x, _)| x), p.map(|(_, y)| y));
+
     let hwnd = unsafe {
       CreateWindowExW(
         get_window_ex_style(create_info.settings.fullscreen),
         &window_class,
         &title,
         get_window_style(create_info.settings.fullscreen, Visibility::Hidden),
-        position.x,
-        position.y,
-        size.width,
-        size.height,
+        x.unwrap_or(WindowsAndMessaging::CW_USEDEFAULT),
+        y.unwrap_or(WindowsAndMessaging::CW_USEDEFAULT),
+        0,
+        0,
         None,
         None,
         hinstance,
@@ -230,6 +230,7 @@ impl Window {
       Err(WindowError::Win32Error(windows::core::Error::from_win32()))
     } else {
       let (window, state) = create_info.window.take().unwrap();
+
       Ok((window, state))
     }
   }
@@ -382,6 +383,10 @@ impl Window {
     let mut pt = POINT::default();
     let _ = unsafe { GetCursorPos(std::ptr::addr_of_mut!(pt)) };
     Position { x: pt.x, y: pt.y }
+  }
+
+  pub fn scale_factor(&self) -> f64 {
+    self.state.get().scale_factor
   }
 
   pub fn key(&self, keycode: Key) -> KeyState {

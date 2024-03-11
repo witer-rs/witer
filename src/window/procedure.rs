@@ -18,6 +18,11 @@ use windows::Win32::{
     MONITORINFO,
   },
   UI::{
+    HiDpi::{
+      SetProcessDpiAwarenessContext,
+      DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE,
+      DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+    },
     Shell::{DefSubclassProc, SetWindowSubclass},
     WindowsAndMessaging::{
       self,
@@ -47,8 +52,10 @@ use crate::{
   handle::Handle,
   prelude::Input,
   utilities::{
+    dpi_to_scale_factor,
     get_window_ex_style,
     get_window_style,
+    hwnd_dpi,
     set_cursor_clip,
     set_cursor_visibility,
   },
@@ -119,6 +126,28 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
       .unwrap()
   };
 
+  if unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) }
+    .is_err()
+  {
+    unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE) }
+      .unwrap();
+  }
+
+  let scale_factor = dpi_to_scale_factor(hwnd_dpi(hwnd));
+
+  unsafe {
+    SetWindowPos(
+      hwnd,
+      None,
+      WindowsAndMessaging::CW_USEDEFAULT,
+      WindowsAndMessaging::CW_USEDEFAULT,
+      (create_info.settings.size.width as f64 * scale_factor).ceil() as i32,
+      (create_info.settings.size.height as f64 * scale_factor).ceil() as i32,
+      WindowsAndMessaging::SWP_NOZORDER | WindowsAndMessaging::SWP_NOMOVE,
+    )
+    .expect("Failed to set window to windowed");
+  };
+
   // create state
   let input = Input::new();
   let state = Handle::new(InternalState {
@@ -128,6 +157,7 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
     theme: Default::default(),
     visibility: Default::default(),
     fullscreen: Default::default(),
+    scale_factor,
     windowed_position: Default::default(),
     windowed_size: Default::default(),
     cursor_mode: Default::default(),

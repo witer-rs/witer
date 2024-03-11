@@ -1,5 +1,5 @@
 use windows::Win32::{
-  Foundation::{HINSTANCE, HWND, LPARAM, WPARAM},
+  Foundation::{HINSTANCE, HWND, LPARAM, RECT, WPARAM},
   System::SystemServices::{
     MK_LBUTTON,
     MK_MBUTTON,
@@ -10,7 +10,7 @@ use windows::Win32::{
   },
   UI::{
     Input::KeyboardAndMouse::{MapVirtualKeyW, MAPVK_VSC_TO_VK_EX, VIRTUAL_KEY},
-    WindowsAndMessaging::{self, WINDOWPOS},
+    WindowsAndMessaging::{self, SetWindowPos, WINDOWPOS},
   },
 };
 
@@ -19,7 +19,14 @@ use super::{
   state::{Position, Size},
 };
 use crate::{
-  utilities::{hi_word, lo_byte, lo_word, signed_hi_word, signed_lo_word},
+  utilities::{
+    dpi_to_scale_factor,
+    hi_word,
+    lo_byte,
+    lo_word,
+    signed_hi_word,
+    signed_lo_word,
+  },
   window::input::{
     key::Key,
     state::{ButtonState, KeyState},
@@ -66,6 +73,7 @@ pub enum WindowMessage {
   Command,
   SystemCommand,
   Focus(bool),
+  ScaleFactorChanged(f64),
 }
 
 impl Message {
@@ -77,12 +85,7 @@ impl Message {
     std::mem::replace(self, message)
   }
 
-  pub fn new(
-    _hwnd: HWND,
-    message: u32,
-    w_param: WPARAM,
-    l_param: LPARAM,
-  ) -> Option<Self> {
+  pub fn new(hwnd: HWND, message: u32, w_param: WPARAM, l_param: LPARAM) -> Option<Self> {
     Some(match message {
       WindowsAndMessaging::WM_CLOSE => Message::Window(WindowMessage::CloseRequested),
       WindowsAndMessaging::WM_PAINT => Message::Window(WindowMessage::Paint),
@@ -104,6 +107,23 @@ impl Message {
       WindowsAndMessaging::WM_KILLFOCUS => Message::Window(WindowMessage::Focus(false)),
       WindowsAndMessaging::WM_COMMAND => Message::Window(WindowMessage::Command),
       WindowsAndMessaging::WM_SYSCOMMAND => Message::Window(WindowMessage::SystemCommand),
+      WindowsAndMessaging::WM_DPICHANGED => {
+        let dpi = lo_word(w_param.0 as u32) as u32;
+        let suggested_rect = unsafe { *(l_param.0 as *const RECT) };
+        unsafe {
+          SetWindowPos(
+            hwnd,
+            None,
+            suggested_rect.left,
+            suggested_rect.top,
+            suggested_rect.right - suggested_rect.left,
+            suggested_rect.bottom - suggested_rect.top,
+            WindowsAndMessaging::SWP_NOZORDER | WindowsAndMessaging::SWP_NOACTIVATE,
+          )
+        }
+        .unwrap();
+        Message::Window(WindowMessage::ScaleFactorChanged(dpi_to_scale_factor(dpi)))
+      }
       WindowsAndMessaging::WM_KEYDOWN
       | WindowsAndMessaging::WM_SYSKEYDOWN
       | WindowsAndMessaging::WM_KEYUP

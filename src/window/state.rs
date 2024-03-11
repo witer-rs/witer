@@ -14,6 +14,7 @@ pub struct InternalState {
   pub windowed_size: Size,
   pub cursor_mode: CursorMode,
   pub cursor_visibility: Visibility,
+  pub scale_factor: f64,
   pub flow: Flow,
   pub close_on_x: bool,
   pub stage: Stage,

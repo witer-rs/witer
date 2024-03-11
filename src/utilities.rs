@@ -6,17 +6,21 @@ use std::sync::{
 use windows::{
   core::PCSTR,
   Win32::{
-    Foundation::{NTSTATUS, RECT},
+    Foundation::{HWND, NTSTATUS, RECT},
+    Graphics::Gdi::GetDC,
     System::{
       LibraryLoader::{GetProcAddress, LoadLibraryA},
       SystemInformation::OSVERSIONINFOW,
     },
-    UI::WindowsAndMessaging::{
-      self,
-      ClipCursor,
-      ShowCursor,
-      WINDOW_EX_STYLE,
-      WINDOW_STYLE,
+    UI::{
+      HiDpi::GetDpiForWindow,
+      WindowsAndMessaging::{
+        self,
+        ClipCursor,
+        ShowCursor,
+        WINDOW_EX_STYLE,
+        WINDOW_STYLE,
+      },
     },
   },
   UI::ViewManagement::{UIColorType, UISettings},
@@ -58,7 +62,7 @@ pub fn hi_byte(word: u16) -> u8 {
 
 /*
   Some of the following code was taken directly from `winit` and is currently under the Apache-2.0 copyright.
-  > https://github.com/rust-windowing/winit/blob/master/src/platform_impl/windows/dark_mode.rs
+  > https://github.com/rust-windowing/winit/blob/master/src/platform_impl/windows/
   Some functions are simplified to be more specific to the goals of ezwin or reduce dependencies.
   Changes were also made to adapt from the crate `windows-sys` to `windows`
 
@@ -235,5 +239,23 @@ pub(crate) fn set_cursor_visibility(visible: Visibility) {
   let changed = HIDDEN.swap(hidden, Ordering::SeqCst) ^ hidden;
   if changed {
     unsafe { ShowCursor(!hidden) };
+  }
+}
+
+pub const BASE_DPI: u32 = 96;
+
+pub fn dpi_to_scale_factor(dpi: u32) -> f64 {
+  dpi as f64 / BASE_DPI as f64
+}
+
+pub fn hwnd_dpi(hwnd: HWND) -> u32 {
+  let hdc = unsafe { GetDC(hwnd) };
+  if hdc.is_invalid() {
+    panic!("device context was invalid");
+  }
+
+  match unsafe { GetDpiForWindow(hwnd) } {
+    0 => BASE_DPI, // 0 is returned if hwnd is invalid
+    dpi => dpi,
   }
 }

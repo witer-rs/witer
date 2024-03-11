@@ -1,19 +1,15 @@
 use std::num::NonZeroU32;
 
 // OPENGL SUPPORT IS WIP
-
 use glium::{
   glutin::{
     config::ConfigTemplateBuilder,
-    context::{
-      ContextApi,
-      ContextAttributesBuilder,
-      NotCurrentGlContext,
-    },
+    context::{ContextApi, ContextAttributesBuilder, NotCurrentGlContext},
     display::{GetGlDisplay, GlDisplay},
     surface::{SurfaceAttributesBuilder, WindowSurface},
   },
-  Display, Surface,
+  Display,
+  Surface,
 };
 use rwh_05::HasRawWindowHandle;
 use witer::{opengl::DisplayBuilder, prelude::*};

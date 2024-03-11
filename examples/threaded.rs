@@ -46,7 +46,10 @@ fn main() -> WindowResult<()> {
       }
     }
 
-    let should_sync = matches!(message, Message::Window(WindowMessage::Resized(..)));
+    let should_sync = matches!(
+      message,
+      Message::Window(WindowMessage::Resized(..) | WindowMessage::ScaleFactorChanged(..))
+    );
 
     if message.is_some() {
       message_sender.try_send(message).unwrap();
@@ -271,7 +274,9 @@ fn app_loop(
         }
 
         match &message {
-          Some(Message::Window(WindowMessage::Resized(..))) => {
+          Some(Message::Window(
+            WindowMessage::Resized(..) | WindowMessage::ScaleFactorChanged(..),
+          )) => {
             app.resize(window.inner_size());
             sync_barrier.wait();
           }
