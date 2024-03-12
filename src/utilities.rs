@@ -164,6 +164,7 @@ pub(crate) fn get_window_style(info: &StyleInfo) -> WINDOW_STYLE {
     | WindowsAndMessaging::WS_SYSMENU;
 
   if info.resizeable {
+    style |= WindowsAndMessaging::WS_SIZEBOX;
     style |= WindowsAndMessaging::WS_MAXIMIZEBOX;
     style |= WindowsAndMessaging::WS_MINIMIZEBOX;
   }
