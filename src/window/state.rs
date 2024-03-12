@@ -3,14 +3,20 @@ use std::thread::JoinHandle;
 use super::stage::Stage;
 use crate::{debug::WindowResult, window::Input};
 
+#[derive(Debug, Clone, Copy)]
+pub struct StyleInfo {
+  pub visibility: Visibility,
+  pub decorations: Visibility,
+  pub fullscreen: Option<Fullscreen>,
+  pub resizeable: bool,
+}
+
 pub struct InternalState {
   pub thread: Option<JoinHandle<WindowResult<()>>>,
   pub title: String,
   pub subtitle: String,
   pub theme: Theme,
-  pub visibility: Visibility,
-  pub decorations: Visibility,
-  pub fullscreen: Option<Fullscreen>,
+  pub style: StyleInfo,
   pub windowed_position: Position,
   pub windowed_size: Size,
   pub cursor_mode: CursorMode,

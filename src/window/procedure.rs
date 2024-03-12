@@ -45,7 +45,7 @@ use super::message::{Message, WindowMessage};
 use super::{
   command::Command,
   settings::WindowSettings,
-  state::{CursorMode, Fullscreen, Visibility},
+  state::{CursorMode, Fullscreen, StyleInfo, Visibility},
   Window,
 };
 use crate::{
@@ -69,6 +69,7 @@ pub struct CreateInfo {
   pub command_queue: Arc<SegQueue<Command>>,
   pub message_sender: Sender<Message>,
   pub message_receiver: Receiver<Message>,
+  pub style: StyleInfo,
 }
 
 #[derive(Clone)]
@@ -160,9 +161,7 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
     title: Default::default(),
     subtitle: Default::default(),
     theme: Default::default(),
-    visibility: Default::default(),
-    decorations: Default::default(),
-    fullscreen: Default::default(),
+    style: create_info.style,
     scale_factor,
     windowed_position: Default::default(),
     windowed_size: Default::default(),
@@ -308,13 +307,13 @@ fn update_state(hwnd: HWND, data: &SubclassWindowData, message: &Message) {
         }
       }
       &WindowMessage::Resized(size) => {
-        let is_windowed = data.state.get().fullscreen.is_none();
+        let is_windowed = data.state.get().style.fullscreen.is_none();
         if is_windowed {
           data.state.get_mut().windowed_size = size;
         }
       }
       &WindowMessage::Moved(position) => {
-        let is_windowed = data.state.get().fullscreen.is_none();
+        let is_windowed = data.state.get().style.fullscreen.is_none();
         if is_windowed {
           data.state.get_mut().windowed_position = position;
         }
@@ -364,22 +363,21 @@ fn process_commands(hwnd: HWND, data: &mut SubclassWindowData) -> bool {
         data.processing_command = false;
       },
       Command::SetDecorations(decorations) => {
-        let fullscreen = data.state.get().fullscreen;
-        let visible = data.state.get().visibility;
+        let style = data.state.get().style;
         match decorations {
           Visibility::Shown => {
             unsafe {
               SetWindowLongW(
                 hwnd,
                 WindowsAndMessaging::GWL_STYLE,
-                get_window_style(fullscreen, visible, decorations).0 as i32,
+                get_window_style(&style).0 as i32,
               )
             };
             unsafe {
               SetWindowLongW(
                 hwnd,
                 WindowsAndMessaging::GWL_EXSTYLE,
-                get_window_ex_style(fullscreen, decorations).0 as i32,
+                get_window_ex_style(&style).0 as i32,
               )
             };
           }
@@ -388,14 +386,14 @@ fn process_commands(hwnd: HWND, data: &mut SubclassWindowData) -> bool {
               SetWindowLongW(
                 hwnd,
                 WindowsAndMessaging::GWL_STYLE,
-                get_window_style(fullscreen, visible, decorations).0 as i32,
+                get_window_style(&style).0 as i32,
               )
             };
             unsafe {
               SetWindowLongW(
                 hwnd,
                 WindowsAndMessaging::GWL_EXSTYLE,
-                get_window_ex_style(fullscreen, decorations).0 as i32,
+                get_window_ex_style(&style).0 as i32,
               )
             };
           }
@@ -410,20 +408,19 @@ fn process_commands(hwnd: HWND, data: &mut SubclassWindowData) -> bool {
       Command::SetPosition(_position) => todo!(),
       Command::SetFullscreen(fullscreen) => {
         // update style
-        let decorations = data.state.get().decorations;
-        let visible = data.state.get().visibility;
+        let style = data.state.get().style;
         unsafe {
           SetWindowLongW(
             hwnd,
             WindowsAndMessaging::GWL_STYLE,
-            get_window_style(fullscreen, visible, decorations).0 as i32,
+            get_window_style(&style).0 as i32,
           )
         };
         unsafe {
           SetWindowLongW(
             hwnd,
             WindowsAndMessaging::GWL_EXSTYLE,
-            get_window_ex_style(fullscreen, decorations).0 as i32,
+            get_window_ex_style(&style).0 as i32,
           )
         };
         // update size

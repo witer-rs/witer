@@ -19,7 +19,6 @@ fn main() -> WindowResult<()> {
 
   let settings = WindowSettings::default()
     .with_flow(Flow::Poll)
-    .with_decorations(Visibility::Hidden)
     .with_visibility(Visibility::Hidden)
     .with_title("Threaded Example")
     .with_size((800, 600));

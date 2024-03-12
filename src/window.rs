@@ -57,7 +57,7 @@ use self::{
   message::WindowMessage,
   procedure::SyncData,
   stage::Stage,
-  state::{CursorMode, Fullscreen, Position},
+  state::{CursorMode, Fullscreen, Position, StyleInfo},
 };
 use crate::{
   debug::{error::WindowError, WindowResult},
@@ -127,6 +127,12 @@ impl Window {
       command_queue: Arc::new(SegQueue::new()),
       message_sender,
       message_receiver,
+      style: StyleInfo {
+        visibility: settings.visibility,
+        decorations: settings.decorations,
+        fullscreen: settings.fullscreen,
+        resizeable: settings.resizeable,
+      },
     };
 
     let (window_sender, window_receiver) = crossbeam::channel::bounded(0);
@@ -212,17 +218,10 @@ impl Window {
 
     let hwnd = unsafe {
       CreateWindowExW(
-        get_window_ex_style(
-          create_info.settings.fullscreen,
-          create_info.settings.decorations,
-        ),
+        get_window_ex_style(&create_info.style),
         &window_class,
         &title,
-        get_window_style(
-          create_info.settings.fullscreen,
-          Visibility::Hidden,
-          create_info.settings.decorations,
-        ),
+        get_window_style(&create_info.style),
         x.unwrap_or(WindowsAndMessaging::CW_USEDEFAULT),
         y.unwrap_or(WindowsAndMessaging::CW_USEDEFAULT),
         0,
@@ -327,7 +326,7 @@ impl Window {
   // GETTERS
 
   pub fn visibility(&self) -> Visibility {
-    self.state.get().visibility
+    self.state.get().style.visibility
   }
 
   pub fn theme(&self) -> Theme {
@@ -384,7 +383,7 @@ impl Window {
 
   pub fn fullscreen(&self) -> Option<Fullscreen> {
     let state = self.state.get();
-    state.fullscreen
+    state.style.fullscreen
   }
 
   pub fn cursor_screen_position(&self) -> Position {
@@ -435,24 +434,24 @@ impl Window {
   // SETTERS
 
   fn force_set_visibility(&self, visibility: Visibility) {
-    self.state.get_mut().visibility = visibility;
+    self.state.get_mut().style.visibility = visibility;
     self.request(Command::SetVisibility(visibility));
   }
 
   pub fn set_visibility(&self, visibility: Visibility) {
-    if visibility == self.state.get().visibility {
+    if visibility == self.state.get().style.visibility {
       return;
     }
     self.force_set_visibility(visibility)
   }
 
   fn force_set_decorations(&self, visibility: Visibility) {
-    self.state.get_mut().decorations = visibility;
+    self.state.get_mut().style.decorations = visibility;
     self.request(Command::SetDecorations(visibility));
   }
 
   pub fn set_decorations(&self, visibility: Visibility) {
-    if visibility == self.state.get().decorations {
+    if visibility == self.state.get().style.decorations {
       return;
     }
     self.force_set_decorations(visibility)
@@ -499,12 +498,12 @@ impl Window {
   }
 
   fn force_set_fullscreen(&self, fullscreen: Option<Fullscreen>) {
-    self.state.get_mut().fullscreen = fullscreen;
+    self.state.get_mut().style.fullscreen = fullscreen;
     self.request(Command::SetFullscreen(fullscreen));
   }
 
   pub fn set_fullscreen(&self, fullscreen: Option<Fullscreen>) {
-    if fullscreen == self.state.get().fullscreen {
+    if fullscreen == self.state.get().style.fullscreen {
       return;
     }
     self.force_set_fullscreen(fullscreen)

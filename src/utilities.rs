@@ -26,7 +26,7 @@ use windows::{
   UI::ViewManagement::{UIColorType, UISettings},
 };
 
-use crate::window::state::{Fullscreen, Visibility};
+use crate::window::state::{Fullscreen, StyleInfo, Visibility};
 
 pub fn signed_lo_word(dword: i32) -> i16 {
   dword as i16
@@ -157,79 +157,47 @@ fn is_color_light(clr: &windows::UI::Color) -> bool {
   ((5 * clr.G as u32) + (2 * clr.R as u32) + clr.B as u32) > (8 * 128)
 }
 
-pub(crate) fn get_window_style(
-  fullscreen: Option<Fullscreen>,
-  visible: Visibility,
-  decorations: Visibility,
-) -> WINDOW_STYLE {
-  static NORMAL_STYLE: OnceLock<WINDOW_STYLE> = OnceLock::new();
-  static BORDERLESS_STYLE: OnceLock<WINDOW_STYLE> = OnceLock::new();
-  match fullscreen {
-    Some(Fullscreen::Borderless) => {
-      let style = *BORDERLESS_STYLE.get_or_init(|| {
-        WindowsAndMessaging::WS_POPUP
-          | WindowsAndMessaging::WS_CLIPCHILDREN
-          | WindowsAndMessaging::WS_CLIPSIBLINGS
-      });
+pub(crate) fn get_window_style(info: &StyleInfo) -> WINDOW_STYLE {
+  let mut style = WindowsAndMessaging::WS_CAPTION
+    | WindowsAndMessaging::WS_BORDER
+    | WindowsAndMessaging::WS_CLIPSIBLINGS
+    | WindowsAndMessaging::WS_SYSMENU;
 
-      match visible {
-        Visibility::Shown => style | WindowsAndMessaging::WS_VISIBLE,
-        Visibility::Hidden => style,
-      }
-    }
-    None => {
-      let style = *NORMAL_STYLE.get_or_init(|| {
-        WindowsAndMessaging::WS_OVERLAPPEDWINDOW
-          | WindowsAndMessaging::WS_CLIPCHILDREN
-          | WindowsAndMessaging::WS_CLIPSIBLINGS
-      });
-
-      let style = match visible {
-        Visibility::Shown => style | WindowsAndMessaging::WS_VISIBLE,
-        Visibility::Hidden => style,
-      };
-
-      style
-      // match decorations {
-      //   Visibility::Shown => style,
-      //   Visibility::Hidden => {
-      //     style | WindowsAndMessaging::WS_POPUP
-      //     // & !(WindowsAndMessaging::WS_CAPTION
-      //     //   | WindowsAndMessaging::WS_THICKFRAME
-      //     //   | WindowsAndMessaging::WS_MINIMIZE
-      //     //   | WindowsAndMessaging::WS_MAXIMIZE
-      //     //   | WindowsAndMessaging::WS_SYSMENU)
-      //   }
-      // }
-    }
+  if info.resizeable {
+    style |= WindowsAndMessaging::WS_MAXIMIZEBOX;
+    style |= WindowsAndMessaging::WS_MINIMIZEBOX;
   }
+
+  if let Visibility::Shown = info.visibility {
+    style |= WindowsAndMessaging::WS_VISIBLE;
+  }
+
+  if let Some(Fullscreen::Borderless) = info.fullscreen {
+    style &= !WindowsAndMessaging::WS_OVERLAPPEDWINDOW;
+    style |= WindowsAndMessaging::WS_POPUP;
+  }
+
+  if let Visibility::Hidden = info.decorations {
+    style &= !(WindowsAndMessaging::WS_CAPTION | WindowsAndMessaging::WS_BORDER);
+    // style_ex &= !WS_EX_WINDOWEDGE;
+  }
+
+  style
 }
 
-pub(crate) fn get_window_ex_style(
-  fullscreen: Option<Fullscreen>,
-  decorations: Visibility,
-) -> WINDOW_EX_STYLE {
-  static NORMAL_EX_STYLE: OnceLock<WINDOW_EX_STYLE> = OnceLock::new();
-  static BORDERLESS_EX_STYLE: OnceLock<WINDOW_EX_STYLE> = OnceLock::new();
-  match fullscreen {
-    Some(Fullscreen::Borderless) => {
-      let style =
-        *BORDERLESS_EX_STYLE.get_or_init(|| WindowsAndMessaging::WS_EX_APPWINDOW);
+pub(crate) fn get_window_ex_style(info: &StyleInfo) -> WINDOW_EX_STYLE {
+  let mut style =
+    WindowsAndMessaging::WS_EX_WINDOWEDGE | WindowsAndMessaging::WS_EX_APPWINDOW;
 
-      style
-    }
-    None => {
-      let style = *NORMAL_EX_STYLE.get_or_init(|| {
-        WindowsAndMessaging::WS_EX_OVERLAPPEDWINDOW | WindowsAndMessaging::WS_EX_APPWINDOW
-      });
-
-      // match decorations {
-      //   Visibility::Shown => style,
-      //   Visibility::Hidden => style & !WindowsAndMessaging::WS_EX_OVERLAPPEDWINDOW,
-      // }
-      style
-    }
+  if let Some(Fullscreen::Borderless) = info.fullscreen {
+    style &= !WindowsAndMessaging::WS_EX_OVERLAPPEDWINDOW;
   }
+
+  if let Visibility::Hidden = info.decorations {
+    style &= !WindowsAndMessaging::WS_EX_WINDOWEDGE;
+  }
+
+  style
 }
 
 // pub(crate) fn get_cursor_clip() -> RECT {

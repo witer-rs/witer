@@ -10,6 +10,7 @@ pub struct WindowSettings {
   pub theme: Theme,
   pub visibility: Visibility,
   pub decorations: Visibility,
+  pub resizeable: bool,
   pub fullscreen: Option<Fullscreen>,
   pub cursor_mode: CursorMode,
   pub close_on_x: bool,
@@ -26,6 +27,7 @@ impl Default for WindowSettings {
     let cursor_mode = CursorMode::default();
     let visibility = Visibility::default();
     let decorations = Visibility::default();
+    let resizeable = true;
     let close_on_x = true;
 
     Self {
@@ -38,6 +40,7 @@ impl Default for WindowSettings {
       decorations,
       close_on_x,
       fullscreen,
+      resizeable,
       cursor_mode,
     }
   }
@@ -92,6 +95,11 @@ impl WindowSettings {
 
   pub fn with_close_on_x(mut self, close_on_x: bool) -> Self {
     self.close_on_x = close_on_x;
+    self
+  }
+
+  pub fn with_resizeable(mut self, resizeable: bool) -> Self {
+    self.resizeable = resizeable;
     self
   }
 }
