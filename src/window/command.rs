@@ -8,6 +8,7 @@ pub enum Command {
   Destroy,
   Redraw,
   SetVisibility(Visibility),
+  SetDecorations(Visibility),
   SetWindowText(HSTRING),
   SetSize(Size),
   SetPosition(Position),

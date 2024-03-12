@@ -9,6 +9,7 @@ pub struct InternalState {
   pub subtitle: String,
   pub theme: Theme,
   pub visibility: Visibility,
+  pub decorations: Visibility,
   pub fullscreen: Option<Fullscreen>,
   pub windowed_position: Position,
   pub windowed_size: Size,
@@ -136,8 +137,7 @@ pub enum Fullscreen {
 pub enum CursorMode {
   #[default]
   Normal,
-  Hidden,
-  Disabled,
+  Confined,
 }
 
 #[derive(Default, Debug, Copy, Clone, Eq, PartialEq, Hash)]

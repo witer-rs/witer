@@ -19,7 +19,6 @@ use windows::Win32::{
   },
   UI::{
     HiDpi::{
-      EnableNonClientDpiScaling,
       SetProcessDpiAwarenessContext,
       DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE,
       DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
@@ -162,6 +161,7 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
     subtitle: Default::default(),
     theme: Default::default(),
     visibility: Default::default(),
+    decorations: Default::default(),
     fullscreen: Default::default(),
     scale_factor,
     windowed_position: Default::default(),
@@ -363,6 +363,45 @@ fn process_commands(hwnd: HWND, data: &mut SubclassWindowData) -> bool {
         });
         data.processing_command = false;
       },
+      Command::SetDecorations(decorations) => {
+        let fullscreen = data.state.get().fullscreen;
+        let visible = data.state.get().visibility;
+        match decorations {
+          Visibility::Shown => {
+            unsafe {
+              SetWindowLongW(
+                hwnd,
+                WindowsAndMessaging::GWL_STYLE,
+                get_window_style(fullscreen, visible, decorations).0 as i32,
+              )
+            };
+            unsafe {
+              SetWindowLongW(
+                hwnd,
+                WindowsAndMessaging::GWL_EXSTYLE,
+                get_window_ex_style(fullscreen, decorations).0 as i32,
+              )
+            };
+          }
+          Visibility::Hidden => {
+            unsafe {
+              SetWindowLongW(
+                hwnd,
+                WindowsAndMessaging::GWL_STYLE,
+                get_window_style(fullscreen, visible, decorations).0 as i32,
+              )
+            };
+            unsafe {
+              SetWindowLongW(
+                hwnd,
+                WindowsAndMessaging::GWL_EXSTYLE,
+                get_window_ex_style(fullscreen, decorations).0 as i32,
+              )
+            };
+          }
+        }
+        data.processing_command = false;
+      }
       Command::SetWindowText(text) => unsafe {
         SetWindowTextW(hwnd, &text).unwrap();
         data.processing_command = false;
@@ -371,19 +410,20 @@ fn process_commands(hwnd: HWND, data: &mut SubclassWindowData) -> bool {
       Command::SetPosition(_position) => todo!(),
       Command::SetFullscreen(fullscreen) => {
         // update style
+        let decorations = data.state.get().decorations;
         let visible = data.state.get().visibility;
         unsafe {
           SetWindowLongW(
             hwnd,
             WindowsAndMessaging::GWL_STYLE,
-            get_window_style(fullscreen, visible).0 as i32,
+            get_window_style(fullscreen, visible, decorations).0 as i32,
           )
         };
         unsafe {
           SetWindowLongW(
             hwnd,
             WindowsAndMessaging::GWL_EXSTYLE,
-            get_window_ex_style(fullscreen).0 as i32,
+            get_window_ex_style(fullscreen, decorations).0 as i32,
           )
         };
         // update size
@@ -438,10 +478,7 @@ fn process_commands(hwnd: HWND, data: &mut SubclassWindowData) -> bool {
           CursorMode::Normal => {
             set_cursor_clip(None);
           }
-          CursorMode::Hidden => {
-            set_cursor_clip(None);
-          }
-          CursorMode::Disabled => {
+          CursorMode::Confined => {
             let mut client_rect = RECT::default();
             unsafe { GetClientRect(hwnd, &mut client_rect) }.unwrap();
 

@@ -19,6 +19,7 @@ fn main() -> WindowResult<()> {
 
   let settings = WindowSettings::default()
     .with_flow(Flow::Poll)
+    .with_decorations(Visibility::Hidden)
     .with_visibility(Visibility::Hidden)
     .with_title("Threaded Example")
     .with_size((800, 600));
@@ -40,7 +41,7 @@ fn main() -> WindowResult<()> {
         }
         None => {
           window.set_fullscreen(Some(Fullscreen::Borderless));
-          window.set_cursor_mode(CursorMode::Disabled);
+          window.set_cursor_mode(CursorMode::Confined);
           window.set_cursor_visibility(Visibility::Hidden);
         }
       }

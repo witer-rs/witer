@@ -9,6 +9,7 @@ pub struct WindowSettings {
   pub flow: Flow,
   pub theme: Theme,
   pub visibility: Visibility,
+  pub decorations: Visibility,
   pub fullscreen: Option<Fullscreen>,
   pub cursor_mode: CursorMode,
   pub close_on_x: bool,
@@ -24,6 +25,7 @@ impl Default for WindowSettings {
     let fullscreen = None;
     let cursor_mode = CursorMode::default();
     let visibility = Visibility::default();
+    let decorations = Visibility::default();
     let close_on_x = true;
 
     Self {
@@ -33,6 +35,7 @@ impl Default for WindowSettings {
       flow,
       theme,
       visibility,
+      decorations,
       close_on_x,
       fullscreen,
       cursor_mode,
@@ -71,8 +74,14 @@ impl WindowSettings {
     self
   }
 
+  pub fn with_decorations(mut self, visibility: Visibility) -> Self {
+    self.decorations = visibility;
+    self
+  }
+
   pub fn with_fullscreen(mut self, fullscreen: Option<Fullscreen>) -> Self {
     self.fullscreen = fullscreen;
+
     self
   }
 

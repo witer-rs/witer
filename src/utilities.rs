@@ -160,49 +160,74 @@ fn is_color_light(clr: &windows::UI::Color) -> bool {
 pub(crate) fn get_window_style(
   fullscreen: Option<Fullscreen>,
   visible: Visibility,
+  decorations: Visibility,
 ) -> WINDOW_STYLE {
   static NORMAL_STYLE: OnceLock<WINDOW_STYLE> = OnceLock::new();
   static BORDERLESS_STYLE: OnceLock<WINDOW_STYLE> = OnceLock::new();
   match fullscreen {
     Some(Fullscreen::Borderless) => {
-      let style = BORDERLESS_STYLE.get_or_init(|| {
+      let style = *BORDERLESS_STYLE.get_or_init(|| {
         WindowsAndMessaging::WS_POPUP
           | WindowsAndMessaging::WS_CLIPCHILDREN
           | WindowsAndMessaging::WS_CLIPSIBLINGS
       });
+
       match visible {
-        Visibility::Shown => *style | WindowsAndMessaging::WS_VISIBLE,
-        Visibility::Hidden => *style,
+        Visibility::Shown => style | WindowsAndMessaging::WS_VISIBLE,
+        Visibility::Hidden => style,
       }
     }
     None => {
-      let style = NORMAL_STYLE.get_or_init(|| {
+      let style = *NORMAL_STYLE.get_or_init(|| {
         WindowsAndMessaging::WS_OVERLAPPEDWINDOW
           | WindowsAndMessaging::WS_CLIPCHILDREN
           | WindowsAndMessaging::WS_CLIPSIBLINGS
       });
-      match visible {
-        Visibility::Shown => *style | WindowsAndMessaging::WS_VISIBLE,
-        Visibility::Hidden => *style,
-      }
+
+      let style = match visible {
+        Visibility::Shown => style | WindowsAndMessaging::WS_VISIBLE,
+        Visibility::Hidden => style,
+      };
+
+      style
+      // match decorations {
+      //   Visibility::Shown => style,
+      //   Visibility::Hidden => {
+      //     style | WindowsAndMessaging::WS_POPUP
+      //     // & !(WindowsAndMessaging::WS_CAPTION
+      //     //   | WindowsAndMessaging::WS_THICKFRAME
+      //     //   | WindowsAndMessaging::WS_MINIMIZE
+      //     //   | WindowsAndMessaging::WS_MAXIMIZE
+      //     //   | WindowsAndMessaging::WS_SYSMENU)
+      //   }
+      // }
     }
   }
 }
 
-pub(crate) fn get_window_ex_style(fullscreen: Option<Fullscreen>) -> WINDOW_EX_STYLE {
+pub(crate) fn get_window_ex_style(
+  fullscreen: Option<Fullscreen>,
+  decorations: Visibility,
+) -> WINDOW_EX_STYLE {
   static NORMAL_EX_STYLE: OnceLock<WINDOW_EX_STYLE> = OnceLock::new();
   static BORDERLESS_EX_STYLE: OnceLock<WINDOW_EX_STYLE> = OnceLock::new();
   match fullscreen {
     Some(Fullscreen::Borderless) => {
       let style =
-        BORDERLESS_EX_STYLE.get_or_init(|| WindowsAndMessaging::WS_EX_APPWINDOW);
-      *style
+        *BORDERLESS_EX_STYLE.get_or_init(|| WindowsAndMessaging::WS_EX_APPWINDOW);
+
+      style
     }
     None => {
-      let style = NORMAL_EX_STYLE.get_or_init(|| {
+      let style = *NORMAL_EX_STYLE.get_or_init(|| {
         WindowsAndMessaging::WS_EX_OVERLAPPEDWINDOW | WindowsAndMessaging::WS_EX_APPWINDOW
       });
-      *style
+
+      // match decorations {
+      //   Visibility::Shown => style,
+      //   Visibility::Hidden => style & !WindowsAndMessaging::WS_EX_OVERLAPPEDWINDOW,
+      // }
+      style
     }
   }
 }

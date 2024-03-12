@@ -147,6 +147,7 @@ impl Window {
       state.close_on_x = settings.close_on_x;
     }
 
+    window.force_set_decorations(settings.decorations);
     window.force_set_theme(settings.theme);
     window.force_set_visibility(settings.visibility);
     window.force_set_fullscreen(settings.fullscreen);
@@ -211,10 +212,17 @@ impl Window {
 
     let hwnd = unsafe {
       CreateWindowExW(
-        get_window_ex_style(create_info.settings.fullscreen),
+        get_window_ex_style(
+          create_info.settings.fullscreen,
+          create_info.settings.decorations,
+        ),
         &window_class,
         &title,
-        get_window_style(create_info.settings.fullscreen, Visibility::Hidden),
+        get_window_style(
+          create_info.settings.fullscreen,
+          Visibility::Hidden,
+          create_info.settings.decorations,
+        ),
         x.unwrap_or(WindowsAndMessaging::CW_USEDEFAULT),
         y.unwrap_or(WindowsAndMessaging::CW_USEDEFAULT),
         0,
@@ -436,6 +444,18 @@ impl Window {
       return;
     }
     self.force_set_visibility(visibility)
+  }
+
+  fn force_set_decorations(&self, visibility: Visibility) {
+    self.state.get_mut().decorations = visibility;
+    self.request(Command::SetDecorations(visibility));
+  }
+
+  pub fn set_decorations(&self, visibility: Visibility) {
+    if visibility == self.state.get().decorations {
+      return;
+    }
+    self.force_set_decorations(visibility)
   }
 
   fn force_set_theme(&self, theme: Theme) {
