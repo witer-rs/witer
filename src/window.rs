@@ -57,7 +57,7 @@ use self::{
   message::WindowMessage,
   procedure::SyncData,
   stage::Stage,
-  state::{CursorMode, Fullscreen, Position, StyleInfo},
+  state::{CursorMode, Fullscreen, PhysicalSize, Position, StyleInfo},
 };
 use crate::{
   debug::{error::WindowError, WindowResult},
@@ -74,7 +74,7 @@ use crate::{
     message::Message,
     procedure::CreateInfo,
     settings::WindowSettings,
-    state::{Flow, InternalState, Size, Theme, Visibility},
+    state::{Flow, InternalState, PhysicalPosition, Size, Theme, Visibility},
   },
 };
 
@@ -123,7 +123,7 @@ impl Window {
     let create_info = CreateInfo {
       settings: settings.clone(),
       window: None,
-      sync,
+      sync: sync.clone(),
       command_queue: Arc::new(SegQueue::new()),
       message_sender,
       message_receiver,
@@ -139,20 +139,18 @@ impl Window {
 
     let thread = Some(Self::window_loop(window_sender, create_info)?);
 
-    let window = window_receiver
-      .recv()
-      .expect("failed to receive opened message");
+    let window = window_receiver.recv().unwrap();
+
     {
       let mut state = window.state.get_mut();
       state.thread = thread;
-      state.title = settings.title;
-      state.windowed_size = settings.size;
-      state.windowed_position = settings.position.unwrap_or_default();
-      state.cursor_mode = settings.cursor_mode;
-      state.flow = settings.flow;
-      state.close_on_x = settings.close_on_x;
+      state.stage = Stage::Looping;
     }
 
+    if let Some(position) = settings.position {
+      window.force_set_outer_position(position);
+    }
+    window.force_set_inner_size(settings.size);
     window.force_set_decorations(settings.decorations);
     window.force_set_theme(settings.theme);
     window.force_set_visibility(settings.visibility);
@@ -190,7 +188,7 @@ impl Window {
     let hinstance: HINSTANCE = unsafe { GetModuleHandleW(None)? }.into();
     debug_assert_ne!(hinstance.0, 0);
     // let size = create_info.settings.size;
-    let position = create_info.settings.position;
+    // let position = create_info.settings.position;
     let title = HSTRING::from(create_info.settings.title.clone());
     let window_class = title.clone();
 
@@ -213,19 +211,16 @@ impl Window {
       debug_assert_ne!(atom, 0);
     }
 
-    let p = position.map(|p| (p.x, p.y));
-    let (x, y) = (p.map(|(x, _)| x), p.map(|(_, y)| y));
-
     let hwnd = unsafe {
       CreateWindowExW(
         get_window_ex_style(&create_info.style),
         &window_class,
         &title,
-        get_window_style(&create_info.style),
-        x.unwrap_or(WindowsAndMessaging::CW_USEDEFAULT),
-        y.unwrap_or(WindowsAndMessaging::CW_USEDEFAULT),
-        0,
-        0,
+        get_window_style(&create_info.style) & !WindowsAndMessaging::WS_VISIBLE,
+        WindowsAndMessaging::CW_USEDEFAULT,
+        WindowsAndMessaging::CW_USEDEFAULT,
+        WindowsAndMessaging::CW_USEDEFAULT,
+        WindowsAndMessaging::CW_USEDEFAULT,
         None,
         None,
         hinstance,
@@ -271,13 +266,6 @@ impl Window {
     }
   }
 
-  fn signal_next_frame(&self) {
-    let (lock, cvar) = self.sync.next_frame.as_ref();
-    let mut next = lock.lock().unwrap();
-    *next = true;
-    cvar.notify_one();
-  }
-
   fn take_message(&self) -> Option<Message> {
     let flow = self.state.get().flow;
     if let Flow::Wait = flow {
@@ -299,7 +287,7 @@ impl Window {
   pub fn next_message(&self) -> Option<Message> {
     let current_stage = self.state.get().stage;
 
-    self.signal_next_frame();
+    self.sync.signal_next_frame();
 
     let next = match current_stage {
       Stage::Looping => {
@@ -345,37 +333,37 @@ impl Window {
     self.state.get().subtitle.to_string()
   }
 
-  pub fn outer_size(&self) -> Size {
+  pub fn outer_size(&self) -> PhysicalSize {
     let mut window_rect = RECT::default();
     let _ = unsafe { GetWindowRect(self.hwnd, &mut window_rect) };
-    Size {
-      width: window_rect.right - window_rect.left,
-      height: window_rect.bottom - window_rect.top,
+    PhysicalSize {
+      width: (window_rect.right - window_rect.left) as u32,
+      height: (window_rect.bottom - window_rect.top) as u32,
     }
   }
 
-  pub fn inner_size(&self) -> Size {
+  pub fn inner_size(&self) -> PhysicalSize {
     let mut client_rect = RECT::default();
     let _ = unsafe { GetClientRect(self.hwnd, &mut client_rect) };
-    Size {
-      width: client_rect.right - client_rect.left,
-      height: client_rect.bottom - client_rect.top,
+    PhysicalSize {
+      width: (client_rect.right - client_rect.left) as u32,
+      height: (client_rect.bottom - client_rect.top) as u32,
     }
   }
 
-  pub fn outer_position(&self) -> Position {
+  pub fn outer_position(&self) -> PhysicalPosition {
     let mut window_rect = RECT::default();
     let _ = unsafe { GetWindowRect(self.hwnd, &mut window_rect) };
-    Position {
+    PhysicalPosition {
       x: window_rect.left,
       y: window_rect.top,
     }
   }
 
-  pub fn inner_position(&self) -> Position {
+  pub fn inner_position(&self) -> PhysicalPosition {
     let mut window_rect = RECT::default();
     let _ = unsafe { GetClientRect(self.hwnd, &mut window_rect) };
-    Position {
+    PhysicalPosition {
       x: window_rect.left,
       y: window_rect.top,
     }
@@ -386,10 +374,10 @@ impl Window {
     state.style.fullscreen
   }
 
-  pub fn cursor_screen_position(&self) -> Position {
+  pub fn cursor_screen_position(&self) -> PhysicalPosition {
     let mut pt = POINT::default();
     let _ = unsafe { GetCursorPos(std::ptr::addr_of_mut!(pt)) };
-    Position { x: pt.x, y: pt.y }
+    PhysicalPosition { x: pt.x, y: pt.y }
   }
 
   pub fn scale_factor(&self) -> f64 {
@@ -432,6 +420,30 @@ impl Window {
   }
 
   // SETTERS
+
+  fn force_set_outer_position(&self, position: Position) {
+    self.state.get_mut().position = position;
+    self.request(Command::SetPosition(position));
+  }
+
+  pub fn set_outer_position(&self, position: Position) {
+    if position == self.state.get().position {
+      return;
+    }
+    self.force_set_outer_position(position)
+  }
+
+  fn force_set_inner_size(&self, size: Size) {
+    self.state.get_mut().size = size;
+    self.request(Command::SetSize(size));
+  }
+
+  pub fn set_inner_size(&self, size: Size) {
+    if size == self.state.get().size {
+      return;
+    }
+    self.force_set_inner_size(size)
+  }
 
   fn force_set_visibility(&self, visibility: Visibility) {
     self.state.get_mut().style.visibility = visibility;

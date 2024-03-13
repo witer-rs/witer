@@ -16,7 +16,7 @@ use windows::Win32::{
 
 use super::{
   input::mouse::Mouse,
-  state::{Position, Size},
+  state::{PhysicalPosition, PhysicalSize, Position, Size},
 };
 use crate::{
   utilities::{
@@ -93,15 +93,16 @@ impl Message {
         let width = lo_word(l_param.0 as u32) as i32;
         let height = hi_word(l_param.0 as u32) as i32;
 
-        Message::Window(WindowMessage::Resized(Size { width, height }))
+        Message::Window(WindowMessage::Resized(
+          PhysicalSize::new((width as u32, height as u32)).into(),
+        ))
       }
       WindowsAndMessaging::WM_WINDOWPOSCHANGED => {
         let window_pos = unsafe { &*(l_param.0 as *const WINDOWPOS) };
 
-        Message::Window(WindowMessage::Moved(Position {
-          x: window_pos.x,
-          y: window_pos.y,
-        }))
+        Message::Window(WindowMessage::Moved(
+          PhysicalPosition::new((window_pos.x, window_pos.y)).into(),
+        ))
       }
       WindowsAndMessaging::WM_SETFOCUS => Message::Window(WindowMessage::Focus(true)),
       WindowsAndMessaging::WM_KILLFOCUS => Message::Window(WindowMessage::Focus(false)),
@@ -129,11 +130,10 @@ impl Message {
       | WindowsAndMessaging::WM_KEYUP
       | WindowsAndMessaging::WM_SYSKEYUP => Self::new_keyboard_message(l_param),
       WindowsAndMessaging::WM_MOUSEMOVE => {
-        let position = Position {
-          x: signed_lo_word(l_param.0 as i32) as i32,
-          y: signed_hi_word(l_param.0 as i32) as i32,
-        };
-        Message::Window(WindowMessage::Cursor(position))
+        let x = signed_lo_word(l_param.0 as i32) as i32;
+        let y = signed_hi_word(l_param.0 as i32) as i32;
+
+        Message::Window(WindowMessage::Cursor(PhysicalPosition::new((x, y)).into()))
       }
       WindowsAndMessaging::WM_MOUSEWHEEL => {
         let delta = signed_hi_word(w_param.0 as i32) as f32

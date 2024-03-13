@@ -26,6 +26,7 @@ use windows::Win32::{
     Shell::{DefSubclassProc, SetWindowSubclass},
     WindowsAndMessaging::{
       self,
+      DefWindowProcW,
       DestroyWindow,
       GetClientRect,
       GetWindowLongPtrW,
@@ -59,7 +60,10 @@ use crate::{
     set_cursor_clip,
     set_cursor_visibility,
   },
-  window::{stage::Stage, state::InternalState},
+  window::{
+    stage::Stage,
+    state::{InternalState, PhysicalPosition},
+  },
 };
 
 pub struct CreateInfo {
@@ -93,6 +97,13 @@ impl SyncData {
       .unwrap();
     *next = false;
   }
+
+  pub fn signal_next_frame(&self) {
+    let (lock, cvar) = self.next_frame.as_ref();
+    let mut next = lock.lock().unwrap();
+    *next = true;
+    cvar.notify_one();
+  }
 }
 
 pub struct SubclassWindowData {
@@ -102,6 +113,10 @@ pub struct SubclassWindowData {
   pub message_sender: Sender<Message>,
   pub processing_command: bool, // required to prevent re-entrant commands
 }
+
+////////////////////////
+/// WINDOW PROCEDURE ///
+////////////////////////
 
 pub extern "system" fn wnd_proc(
   hwnd: HWND,
@@ -116,7 +131,7 @@ pub extern "system" fn wnd_proc(
   match (user_data_ptr, msg) {
     (0, WindowsAndMessaging::WM_NCCREATE) => on_nccreate(hwnd, msg, w_param, l_param),
     (0, WindowsAndMessaging::WM_CREATE) => on_create(hwnd, msg, w_param, l_param),
-    _ => unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, w_param, l_param) },
+    _ => unsafe { DefWindowProcW(hwnd, msg, w_param, l_param) },
   }
 }
 
@@ -128,7 +143,7 @@ fn on_nccreate(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESUL
       .unwrap();
   }
 
-  unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, w_param, l_param) }
+  unsafe { DefWindowProcW(hwnd, msg, w_param, l_param) }
 }
 
 fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT {
@@ -140,35 +155,32 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
   };
 
   let scale_factor = dpi_to_scale_factor(hwnd_dpi(hwnd));
-
-  unsafe {
-    SetWindowPos(
-      hwnd,
-      None,
+  let size = create_info.settings.size;
+  let position = create_info.settings.position.unwrap_or(
+    PhysicalPosition::new((
       WindowsAndMessaging::CW_USEDEFAULT,
       WindowsAndMessaging::CW_USEDEFAULT,
-      (create_info.settings.size.width as f64 * scale_factor).ceil() as i32,
-      (create_info.settings.size.height as f64 * scale_factor).ceil() as i32,
-      WindowsAndMessaging::SWP_NOZORDER | WindowsAndMessaging::SWP_NOMOVE,
-    )
-    .expect("Failed to set window to windowed");
-  };
+    ))
+    .into(),
+  );
 
   // create state
   let input = Input::new();
   let state = Handle::new(InternalState {
     thread: None,
-    title: Default::default(),
+    title: create_info.settings.title.clone(),
     subtitle: Default::default(),
     theme: Default::default(),
     style: create_info.style,
     scale_factor,
-    windowed_position: Default::default(),
-    windowed_size: Default::default(),
-    cursor_mode: Default::default(),
+    position,
+    size,
+    last_windowed_position: position,
+    last_windowed_size: size,
+    cursor_mode: create_info.settings.cursor_mode,
     cursor_visibility: Visibility::Shown,
-    flow: Default::default(),
-    close_on_x: Default::default(),
+    flow: create_info.settings.flow,
+    close_on_x: create_info.settings.close_on_x,
     stage: Stage::Looping,
     input,
     requested_redraw: false,
@@ -197,6 +209,8 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
     message_receiver: create_info.message_receiver.clone(),
   };
 
+  create_info.window = Some((window, state.clone()));
+
   let subclass_data = SubclassWindowData {
     state: state.clone(),
     sync: create_info.sync.clone(),
@@ -204,8 +218,6 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
     message_sender: create_info.message_sender.clone(),
     processing_command: false,
   };
-
-  create_info.window = Some((window, state));
 
   // create subclass ptr
   let window_data_ptr = Box::into_raw(Box::new(subclass_data));
@@ -222,8 +234,12 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
   .as_bool();
   debug_assert!(result);
 
-  unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, w_param, l_param) }
+  unsafe { DefWindowProcW(hwnd, msg, w_param, l_param) }
 }
+
+//////////////////////////
+/// SUBCLASS PROCEDURE ///
+//////////////////////////
 
 pub extern "system" fn subclass_proc(
   hwnd: HWND,
@@ -308,14 +324,16 @@ fn update_state(hwnd: HWND, data: &SubclassWindowData, message: &Message) {
       }
       &WindowMessage::Resized(size) => {
         let is_windowed = data.state.get().style.fullscreen.is_none();
+        data.state.get_mut().size = size;
         if is_windowed {
-          data.state.get_mut().windowed_size = size;
+          data.state.get_mut().last_windowed_size = size;
         }
       }
       &WindowMessage::Moved(position) => {
         let is_windowed = data.state.get().style.fullscreen.is_none();
+        data.state.get_mut().position = position;
         if is_windowed {
-          data.state.get_mut().windowed_position = position;
+          data.state.get_mut().last_windowed_position = position;
         }
       }
       &WindowMessage::Key { key, state, .. } => {
@@ -343,24 +361,19 @@ fn process_commands(hwnd: HWND, data: &mut SubclassWindowData) -> bool {
   while let Some(command) = data.command_queue.pop() {
     data.processing_command = true;
 
-    tracing::debug!("Command: {command:?}");
-
     match command {
       Command::Destroy => {
         unsafe { DestroyWindow(hwnd) }.unwrap();
-        data.processing_command = false;
         return true; // hwnd will be invalid
       }
       Command::Redraw => unsafe {
         RedrawWindow(hwnd, None, None, Gdi::RDW_INTERNALPAINT);
-        data.processing_command = false;
       },
       Command::SetVisibility(visibility) => unsafe {
         ShowWindow(hwnd, match visibility {
           Visibility::Hidden => WindowsAndMessaging::SW_HIDE,
           Visibility::Shown => WindowsAndMessaging::SW_SHOW,
         });
-        data.processing_command = false;
       },
       Command::SetDecorations(decorations) => {
         let style = data.state.get().style;
@@ -398,14 +411,50 @@ fn process_commands(hwnd: HWND, data: &mut SubclassWindowData) -> bool {
             };
           }
         }
-        data.processing_command = false;
       }
       Command::SetWindowText(text) => unsafe {
         SetWindowTextW(hwnd, &text).unwrap();
-        data.processing_command = false;
       },
-      Command::SetSize(_size) => todo!(),
-      Command::SetPosition(_position) => todo!(),
+      Command::SetSize(size) => {
+        let physical_size = size.as_physical(data.state.get().scale_factor);
+        unsafe {
+          SetWindowPos(
+            hwnd,
+            None,
+            0,
+            0,
+            physical_size.width as i32,
+            physical_size.height as i32,
+            WindowsAndMessaging::SWP_ASYNCWINDOWPOS
+              | WindowsAndMessaging::SWP_NOZORDER
+              | WindowsAndMessaging::SWP_NOMOVE
+              | WindowsAndMessaging::SWP_NOREPOSITION
+              | WindowsAndMessaging::SWP_NOACTIVATE,
+          )
+          .expect("Failed to set window size");
+        }
+        unsafe { InvalidateRgn(hwnd, None, false) };
+      }
+      Command::SetPosition(position) => {
+        let physical_position = position.as_physical(data.state.get().scale_factor);
+        unsafe {
+          SetWindowPos(
+            hwnd,
+            None,
+            physical_position.x,
+            physical_position.y,
+            0,
+            0,
+            WindowsAndMessaging::SWP_ASYNCWINDOWPOS
+              | WindowsAndMessaging::SWP_NOZORDER
+              | WindowsAndMessaging::SWP_NOSIZE
+              | WindowsAndMessaging::SWP_NOREPOSITION
+              | WindowsAndMessaging::SWP_NOACTIVATE,
+          )
+          .expect("Failed to set window position");
+        }
+        unsafe { InvalidateRgn(hwnd, None, false) };
+      }
       Command::SetFullscreen(fullscreen) => {
         // update style
         let style = data.state.get().style;
@@ -449,16 +498,25 @@ fn process_commands(hwnd: HWND, data: &mut SubclassWindowData) -> bool {
             }
           }
           None => {
-            let size = data.state.get().windowed_size;
-            let position = data.state.get().windowed_position;
+            let scale_factor = data.state.get().scale_factor;
+            let size = data
+              .state
+              .get()
+              .last_windowed_size
+              .as_physical(scale_factor);
+            let position = data
+              .state
+              .get()
+              .last_windowed_position
+              .as_physical(scale_factor);
             unsafe {
               SetWindowPos(
                 hwnd,
                 None,
                 position.x,
                 position.y,
-                size.width,
-                size.height,
+                size.width as i32,
+                size.height as i32,
                 WindowsAndMessaging::SWP_NOZORDER,
               )
               .expect("Failed to set window to windowed");
@@ -466,9 +524,6 @@ fn process_commands(hwnd: HWND, data: &mut SubclassWindowData) -> bool {
             unsafe { InvalidateRgn(hwnd, None, false) };
           }
         }
-
-        tracing::info!("{fullscreen:?}");
-        data.processing_command = false;
       }
       Command::SetCursorMode(mode) => {
         match mode {
@@ -479,24 +534,21 @@ fn process_commands(hwnd: HWND, data: &mut SubclassWindowData) -> bool {
             let mut client_rect = RECT::default();
             unsafe { GetClientRect(hwnd, &mut client_rect) }.unwrap();
 
-            tracing::info!("{client_rect:?}");
             set_cursor_clip(Some(&client_rect));
           }
         };
-        data.processing_command = false;
       }
-      Command::SetCursorVisibility(visibility) => {
-        match visibility {
-          Visibility::Shown => {
-            set_cursor_visibility(Visibility::Shown);
-          }
-          Visibility::Hidden => {
-            set_cursor_visibility(Visibility::Hidden);
-          }
+      Command::SetCursorVisibility(visibility) => match visibility {
+        Visibility::Shown => {
+          set_cursor_visibility(Visibility::Shown);
         }
-        data.processing_command = false;
-      }
+        Visibility::Hidden => {
+          set_cursor_visibility(Visibility::Hidden);
+        }
+      },
     }
+
+    data.processing_command = false;
   }
 
   false

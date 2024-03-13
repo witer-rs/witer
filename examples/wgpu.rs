@@ -14,7 +14,7 @@ fn main() -> WindowResult<()> {
     .with_flow(Flow::Poll)
     .with_visibility(Visibility::Hidden) // start hidden to prevent first frame white flash
     .with_title("wgpu Example")
-    .with_size((800, 600));
+    .with_size(LogicalSize::new((800.0, 600.0)));
 
   let window = Arc::new(Window::new(settings)?);
 
@@ -73,7 +73,7 @@ struct App {
   device: wgpu::Device,
   queue: wgpu::Queue,
   config: wgpu::SurfaceConfiguration,
-  size: Size,
+  size: PhysicalSize,
 
   frame_count: u32,
 }
@@ -123,8 +123,8 @@ impl App {
       let config = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
         format: surface_format,
-        width: size.width as u32,
-        height: size.height as u32,
+        width: size.width,
+        height: size.height,
         present_mode: PresentMode::AutoNoVsync,
         alpha_mode: surface_caps.alpha_modes[0],
         view_formats: vec![],
@@ -145,11 +145,11 @@ impl App {
     })
   }
 
-  fn resize(&mut self, new_size: Size) {
-    if new_size.width > 0 && new_size.height > 0 {
+  fn resize(&mut self, new_size: PhysicalSize) {
+    if !new_size.is_zero() {
       self.size = new_size;
-      self.config.width = new_size.width as u32;
-      self.config.height = new_size.height as u32;
+      self.config.width = new_size.width;
+      self.config.height = new_size.height;
       self.surface.configure(&self.device, &self.config);
     }
   }

@@ -1,4 +1,13 @@
-use super::state::{CursorMode, Flow, Fullscreen, Position, Size, Theme, Visibility};
+use super::state::{
+  CursorMode,
+  Flow,
+  Fullscreen,
+  LogicalSize,
+  Position,
+  Size,
+  Theme,
+  Visibility,
+};
 
 /// Configures the window to be built.
 #[derive(Debug, Clone)]
@@ -19,7 +28,7 @@ pub struct WindowSettings {
 impl Default for WindowSettings {
   fn default() -> Self {
     let title: String = "Window".into();
-    let size = (800, 600).into();
+    let size = LogicalSize::new((800.0, 600.0)).into();
     let position = None;
     let flow = Flow::default();
     let theme = Theme::default();
