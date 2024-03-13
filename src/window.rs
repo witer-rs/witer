@@ -141,12 +141,7 @@ impl Window {
 
     let window = window_receiver.recv().unwrap();
 
-    {
-      let mut state = window.state.get_mut();
-      state.thread = thread;
-      state.stage = Stage::Looping;
-    }
-
+    window.state.get_mut().thread = thread;
     if let Some(position) = settings.position {
       window.force_set_outer_position(position);
     }
