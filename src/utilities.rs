@@ -180,7 +180,6 @@ pub(crate) fn get_window_style(info: &StyleInfo) -> WINDOW_STYLE {
 
   if let Visibility::Hidden = info.decorations {
     style &= !(WindowsAndMessaging::WS_CAPTION | WindowsAndMessaging::WS_BORDER);
-    // style_ex &= !WS_EX_WINDOWEDGE;
   }
 
   style
@@ -201,31 +200,11 @@ pub(crate) fn get_window_ex_style(info: &StyleInfo) -> WINDOW_EX_STYLE {
   style
 }
 
-// pub(crate) fn get_cursor_clip() -> RECT {
-//   let mut rect = RECT::default();
-//   if let Err(e) = unsafe { GetClipCursor(&mut rect) } {
-//     error!("{e}");
-//   };
-//   rect
-// }
-
 pub(crate) fn set_cursor_clip(rect: Option<&RECT>) {
   if let Err(_e) = unsafe { ClipCursor(rect.map(|r| r as _)) } {
     tracing::error!("{_e}");
   }
 }
-
-// pub(crate) fn get_desktop_rect() -> RECT {
-//   unsafe {
-//     let left = GetSystemMetrics(WindowsAndMessaging::SM_XVIRTUALSCREEN);
-//     let top = GetSystemMetrics(WindowsAndMessaging::SM_YVIRTUALSCREEN);
-//     RECT {
-//       left,
-//       top,
-//       right: left +
-// GetSystemMetrics(WindowsAndMessaging::SM_CXVIRTUALSCREEN),       bottom: top
-// + GetSystemMetrics(WindowsAndMessaging::SM_CYVIRTUALSCREEN),     } }
-// }
 
 pub(crate) fn set_cursor_visibility(visible: Visibility) {
   let hidden = visible == Visibility::Hidden;
