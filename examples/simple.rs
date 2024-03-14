@@ -10,9 +10,9 @@ fn main() {
   let window = Window::new(settings).unwrap();
 
   for message in &window {
-    if let Message::Window(WindowMessage::Key {
+    if let Message::Key {
       key: Key::Escape, ..
-    }) = message
+    } = message
     {
       window.close();
     }

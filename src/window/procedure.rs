@@ -42,7 +42,7 @@ use windows::Win32::{
 };
 
 #[allow(unused)]
-use super::message::{Message, WindowMessage};
+use super::message::Message;
 use super::{
   command::Command,
   settings::WindowSettings,
@@ -186,14 +186,10 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
     requested_redraw: false,
   });
 
-  if let Err(_e) =
-    create_info
-      .message_sender
-      .try_send(Message::Window(WindowMessage::Created {
-        hwnd,
-        hinstance: create_struct.hInstance,
-      }))
-  {
+  if let Err(_e) = create_info.message_sender.try_send(Message::Created {
+    hwnd,
+    hinstance: create_struct.hInstance,
+  }) {
     tracing::error!("{_e}");
     return LRESULT(-1);
   }
@@ -306,50 +302,46 @@ fn on_message(
 }
 
 fn update_state(hwnd: HWND, data: &SubclassWindowData, message: &Message) {
-  if let Message::Window(window_message) = &message {
-    match window_message {
-      &WindowMessage::Focus(is_focused) => {
-        let cursor_visibility = data.state.get().cursor_visibility;
-        let cursor_mode = data.state.get().cursor_mode;
-        if is_focused {
-          data.command_queue.push(Command::SetCursorMode(cursor_mode));
-          data
-            .command_queue
-            .push(Command::SetCursorVisibility(cursor_visibility));
-          unsafe {
-            PostMessageW(hwnd, WindowsAndMessaging::WM_APP, WPARAM(0), LPARAM(0))
-          }
+  match message {
+    &Message::Focus(is_focused) => {
+      let cursor_visibility = data.state.get().cursor_visibility;
+      let cursor_mode = data.state.get().cursor_mode;
+      if is_focused {
+        data.command_queue.push(Command::SetCursorMode(cursor_mode));
+        data
+          .command_queue
+          .push(Command::SetCursorVisibility(cursor_visibility));
+        unsafe { PostMessageW(hwnd, WindowsAndMessaging::WM_APP, WPARAM(0), LPARAM(0)) }
           .unwrap();
-        }
       }
-      &WindowMessage::Resized(size) => {
-        let is_windowed = data.state.get().style.fullscreen.is_none();
-        data.state.get_mut().size = size;
-        if is_windowed {
-          data.state.get_mut().last_windowed_size = size;
-        }
-      }
-      &WindowMessage::Moved(position) => {
-        let is_windowed = data.state.get().style.fullscreen.is_none();
-        data.state.get_mut().position = position;
-        if is_windowed {
-          data.state.get_mut().last_windowed_position = position;
-        }
-      }
-      &WindowMessage::Key { key, state, .. } => {
-        data.state.get_mut().input.update_key_state(key, state);
-        data.state.get_mut().input.update_modifiers_state();
-      }
-      &WindowMessage::MouseButton { button, state, .. } => data
-        .state
-        .get_mut()
-        .input
-        .update_mouse_button_state(button, state),
-      WindowMessage::Paint => {
-        data.state.get_mut().requested_redraw = false;
-      }
-      _ => (),
     }
+    &Message::Resized(size) => {
+      let is_windowed = data.state.get().style.fullscreen.is_none();
+      data.state.get_mut().size = size;
+      if is_windowed {
+        data.state.get_mut().last_windowed_size = size;
+      }
+    }
+    &Message::Moved(position) => {
+      let is_windowed = data.state.get().style.fullscreen.is_none();
+      data.state.get_mut().position = position;
+      if is_windowed {
+        data.state.get_mut().last_windowed_position = position;
+      }
+    }
+    &Message::Key { key, state, .. } => {
+      data.state.get_mut().input.update_key_state(key, state);
+      data.state.get_mut().input.update_modifiers_state();
+    }
+    &Message::MouseButton { button, state, .. } => data
+      .state
+      .get_mut()
+      .input
+      .update_mouse_button_state(button, state),
+    Message::Paint => {
+      data.state.get_mut().requested_redraw = false;
+    }
+    _ => (),
   }
 }
 

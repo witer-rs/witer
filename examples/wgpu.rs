@@ -21,13 +21,8 @@ fn main() -> WindowResult<()> {
   let mut app = App::new(&window);
 
   for message in window.as_ref() {
-    if !matches!(
-      message,
-      Message::Window(WindowMessage::Paint | WindowMessage::Cursor { .. })
-    ) {
-      if let Message::Window(..) = message {
-        println!("WINDOW: {message:?}");
-      }
+    if !matches!(message, Message::Paint | Message::Cursor { .. } | Message::Loop(..)) {
+      println!("WINDOW: {message:?}");
     }
 
     if message.is_key(Key::F11, KeyState::Pressed) {
@@ -52,12 +47,12 @@ fn main() -> WindowResult<()> {
     }
 
     match &message {
-      Message::Window(WindowMessage::Resized(..)) => app.resize(window.inner_size()),
-      Message::Window(WindowMessage::Paint) => {
+      Message::Resized(..) => app.resize(window.inner_size()),
+      Message::Paint => {
         app.update(&window);
         app.draw(&window);
       }
-      Message::Wait => window.request_redraw(),
+      Message::Loop(LoopMessage::Wait) => window.request_redraw(),
       _ => (),
     }
   }

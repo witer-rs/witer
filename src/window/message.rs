@@ -33,17 +33,10 @@ use crate::{
   },
 };
 
-#[derive(Debug, Default, PartialEq, Clone)]
-pub enum Message {
-  #[default]
-  None,
-  Window(WindowMessage),
-  Wait,
-  ExitLoop,
-}
-
 #[derive(Debug, PartialEq, Clone)]
-pub enum WindowMessage {
+pub enum Message {
+  Loop(LoopMessage),
+  RawInput(RawInputMessage),
   Created {
     hwnd: HWND,
     hinstance: HINSTANCE,
@@ -59,14 +52,13 @@ pub enum WindowMessage {
   MouseButton {
     button: Mouse,
     state: ButtonState,
-    x: i16,
-    y: i16,
+    position: PhysicalPosition,
     is_double_click: bool,
   },
   Cursor(Position),
   Scroll {
-    x: f32,
-    y: f32,
+    delta_x: f32,
+    delta_y: f32,
   },
   Resized(Size),
   Moved(Position),
@@ -76,38 +68,49 @@ pub enum WindowMessage {
   ScaleFactorChanged(f64),
 }
 
-impl Message {
-  pub fn take(&mut self) -> Message {
-    std::mem::take(self)
-  }
+#[derive(Debug, PartialEq, Clone)]
+pub enum LoopMessage {
+  Empty,
+  Wait,
+  ExitLoop,
+}
 
-  pub fn replace(&mut self, message: Message) -> Message {
-    std::mem::replace(self, message)
-  }
+#[derive(Debug, PartialEq, Clone)]
+pub enum RawInputMessage {
+  Key { key: Key, state: KeyState },
+  MouseButton { button: Mouse, state: ButtonState },
+  Cursor { delta_x: f32, delta_y: f32 },
+  Scroll { delta_x: f32, delta_y: f32 },
+}
+
+impl Message {
+  // pub fn take(&mut self) -> Message {
+  //   std::mem::take(self)
+  // }
+
+  // pub fn replace(&mut self, message: Message) -> Message {
+  //   std::mem::replace(self, message)
+  // }
 
   pub fn new(hwnd: HWND, message: u32, w_param: WPARAM, l_param: LPARAM) -> Option<Self> {
     Some(match message {
-      WindowsAndMessaging::WM_CLOSE => Message::Window(WindowMessage::CloseRequested),
-      WindowsAndMessaging::WM_PAINT => Message::Window(WindowMessage::Paint),
+      WindowsAndMessaging::WM_CLOSE => Message::CloseRequested,
+      WindowsAndMessaging::WM_PAINT => Message::Paint,
       WindowsAndMessaging::WM_SIZE => {
         let width = lo_word(l_param.0 as u32) as i32;
         let height = hi_word(l_param.0 as u32) as i32;
 
-        Message::Window(WindowMessage::Resized(
-          PhysicalSize::new((width as u32, height as u32)).into(),
-        ))
+        Message::Resized(PhysicalSize::new((width as u32, height as u32)).into())
       }
       WindowsAndMessaging::WM_WINDOWPOSCHANGED => {
         let window_pos = unsafe { &*(l_param.0 as *const WINDOWPOS) };
 
-        Message::Window(WindowMessage::Moved(
-          PhysicalPosition::new((window_pos.x, window_pos.y)).into(),
-        ))
+        Message::Moved(PhysicalPosition::new((window_pos.x, window_pos.y)).into())
       }
-      WindowsAndMessaging::WM_SETFOCUS => Message::Window(WindowMessage::Focus(true)),
-      WindowsAndMessaging::WM_KILLFOCUS => Message::Window(WindowMessage::Focus(false)),
-      WindowsAndMessaging::WM_COMMAND => Message::Window(WindowMessage::Command),
-      WindowsAndMessaging::WM_SYSCOMMAND => Message::Window(WindowMessage::SystemCommand),
+      WindowsAndMessaging::WM_SETFOCUS => Message::Focus(true),
+      WindowsAndMessaging::WM_KILLFOCUS => Message::Focus(false),
+      WindowsAndMessaging::WM_COMMAND => Message::Command,
+      WindowsAndMessaging::WM_SYSCOMMAND => Message::SystemCommand,
       WindowsAndMessaging::WM_DPICHANGED => {
         let dpi = lo_word(w_param.0 as u32) as u32;
         let suggested_rect = unsafe { *(l_param.0 as *const RECT) };
@@ -123,7 +126,14 @@ impl Message {
           )
         }
         .unwrap();
-        Message::Window(WindowMessage::ScaleFactorChanged(dpi_to_scale_factor(dpi)))
+        Message::ScaleFactorChanged(dpi_to_scale_factor(dpi))
+      }
+      WindowsAndMessaging::WM_INPUT => {
+        let _x = 0;
+        Message::RawInput(RawInputMessage::MouseButton {
+          button: Mouse::Unknown,
+          state: ButtonState::Pressed,
+        })
       }
       WindowsAndMessaging::WM_KEYDOWN
       | WindowsAndMessaging::WM_SYSKEYDOWN
@@ -133,17 +143,23 @@ impl Message {
         let x = signed_lo_word(l_param.0 as i32) as i32;
         let y = signed_hi_word(l_param.0 as i32) as i32;
 
-        Message::Window(WindowMessage::Cursor(PhysicalPosition::new((x, y)).into()))
+        Message::Cursor(PhysicalPosition::new((x, y)).into())
       }
       WindowsAndMessaging::WM_MOUSEWHEEL => {
         let delta = signed_hi_word(w_param.0 as i32) as f32
           / WindowsAndMessaging::WHEEL_DELTA as f32;
-        Message::Window(WindowMessage::Scroll { x: 0.0, y: delta })
+        Message::Scroll {
+          delta_x: 0.0,
+          delta_y: delta,
+        }
       }
       WindowsAndMessaging::WM_MOUSEHWHEEL => {
         let delta = signed_hi_word(w_param.0 as i32) as f32
           / WindowsAndMessaging::WHEEL_DELTA as f32;
-        Message::Window(WindowMessage::Scroll { x: delta, y: 0.0 })
+        Message::Scroll {
+          delta_x: delta,
+          delta_y: 0.0,
+        }
       }
       msg
         if (WindowsAndMessaging::WM_MOUSEFIRST..=WindowsAndMessaging::WM_MOUSELAST)
@@ -200,12 +216,12 @@ impl Message {
       }
     };
 
-    Message::Window(WindowMessage::Key {
+    Message::Key {
       key: key_code,
       state,
       scan_code,
       is_extended_key,
-    })
+    }
   }
 
   fn new_mouse_button_message(message: u32, w_param: WPARAM, l_param: LPARAM) -> Message {
@@ -285,28 +301,25 @@ impl Message {
 
     let (x, y) = (signed_lo_word(l_param.0 as i32), signed_hi_word(l_param.0 as i32));
 
-    Message::Window(WindowMessage::MouseButton {
+    let position = PhysicalPosition::new((x as i32, y as i32));
+
+    Message::MouseButton {
       button: mouse_code,
       state,
-      x,
-      y,
+      position,
       is_double_click,
-    })
+    }
   }
 
   pub fn is_key(&self, key: Key, state: KeyState) -> bool {
-    matches!(self, Message::Window(WindowMessage::Key { key: k, state: s, .. }) if *k == key && *s == state)
+    matches!(self, Message::Key { key: k, state: s, .. } if *k == key && *s == state)
   }
 
   pub fn is_mouse_button(&self, button: Mouse, state: ButtonState) -> bool {
-    matches!(self, Message::Window(WindowMessage::MouseButton { button: b, state: s, .. }) if *b == button && *s == state)
+    matches!(self, Message::MouseButton { button: b, state: s, .. } if *b == button && *s == state)
   }
 
-  pub fn is_some(&self) -> bool {
-    !matches!(self, Message::None)
-  }
-
-  pub fn is_none(&self) -> bool {
-    matches!(self, Message::None)
+  pub fn is_empty(&self) -> bool {
+    matches!(self, Message::Loop(LoopMessage::Empty))
   }
 }

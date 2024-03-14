@@ -8,7 +8,7 @@ pub use crate::{
       state::{ButtonState, KeyState},
       Input,
     },
-    message::{Message, WindowMessage},
+    message::{LoopMessage, Message, RawInputMessage},
     settings::WindowSettings,
     state::{
       CursorMode,

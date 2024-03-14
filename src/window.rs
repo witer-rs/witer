@@ -54,7 +54,7 @@ use windows::{
 
 use self::{
   command::Command,
-  message::WindowMessage,
+  message::LoopMessage,
   procedure::SyncData,
   stage::Stage,
   state::{CursorMode, Fullscreen, PhysicalSize, Position, StyleInfo},
@@ -242,7 +242,7 @@ impl Window {
     }
 
     // pass message to main thread
-    if let Err(_e) = message_sender.try_send(Message::Wait) {
+    if let Err(_e) = message_sender.try_send(Message::Loop(message::LoopMessage::Wait)) {
       tracing::error!("{_e}");
       state.get_mut().stage = Stage::ExitLoop;
     }
@@ -272,7 +272,7 @@ impl Window {
     // let msg = self.sync.next_message.lock().unwrap().take();
     self.message_receiver.try_recv().map_or_else(
       |e| match e {
-        TryRecvError::Empty => Some(Message::None),
+        TryRecvError::Empty => Some(Message::Loop(LoopMessage::Empty)),
         TryRecvError::Disconnected => None,
       },
       Some,
@@ -287,7 +287,7 @@ impl Window {
     let next = match current_stage {
       Stage::Looping => {
         let message = self.take_message();
-        if let Some(Message::Window(WindowMessage::CloseRequested)) = message {
+        if let Some(Message::CloseRequested) = message {
           let x = self.state.get().close_on_x;
           if x {
             self.close();
@@ -298,7 +298,7 @@ impl Window {
       Stage::Closing => {
         let _ = self.take_message();
         self.state.get_mut().stage = Stage::ExitLoop;
-        Some(Message::ExitLoop)
+        Some(Message::Loop(message::LoopMessage::ExitLoop))
       }
       Stage::ExitLoop => None,
     };

@@ -46,12 +46,10 @@ fn main() -> WindowResult<()> {
       }
     }
 
-    let should_sync = matches!(
-      message,
-      Message::Window(WindowMessage::Resized(..) | WindowMessage::ScaleFactorChanged(..))
-    );
+    let should_sync =
+      matches!(message, Message::Resized(..) | Message::ScaleFactorChanged(..));
 
-    if message.is_some() {
+    if !message.is_empty() {
       message_sender.try_send(message).unwrap();
     }
 
@@ -266,21 +264,16 @@ fn app_loop(
       loop {
         let message = message_receiver.try_recv().ok();
 
-        if let Some(Message::Window(
-          WindowMessage::MouseButton { .. } | WindowMessage::Key { .. },
-        )) = message
-        {
+        if let Some(Message::MouseButton { .. } | Message::Key { .. }) = message {
           info!("{message:?}");
         }
 
         match &message {
-          Some(Message::Window(
-            WindowMessage::Resized(..) | WindowMessage::ScaleFactorChanged(..),
-          )) => {
+          Some(Message::Resized(..) | Message::ScaleFactorChanged(..)) => {
             app.resize(window.inner_size());
             sync_barrier.wait();
           }
-          Some(Message::ExitLoop) => break,
+          Some(Message::Loop(LoopMessage::ExitLoop)) => break,
           _ => (),
         }
 
