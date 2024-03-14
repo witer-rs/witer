@@ -273,7 +273,7 @@ fn app_loop(
             app.resize(window.inner_size());
             sync_barrier.wait();
           }
-          Some(Message::Loop(LoopMessage::ExitLoop)) => break,
+          Some(Message::Loop(LoopMessage::Exit)) => break,
           _ => (),
         }
 

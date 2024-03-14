@@ -298,7 +298,7 @@ impl Window {
       Stage::Closing => {
         let _ = self.take_message();
         self.state.get_mut().stage = Stage::ExitLoop;
-        Some(Message::Loop(message::LoopMessage::ExitLoop))
+        Some(Message::Loop(message::LoopMessage::Exit))
       }
       Stage::ExitLoop => None,
     };

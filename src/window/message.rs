@@ -72,7 +72,7 @@ pub enum Message {
 pub enum LoopMessage {
   Empty,
   Wait,
-  ExitLoop,
+  Exit,
 }
 
 #[derive(Debug, PartialEq, Clone)]
