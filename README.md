@@ -17,7 +17,7 @@ fn main() {
 
   // Run
   for message in &window {
-    if let Message::Window(..) = message {
+    if let Message::Key { .. } = message {
       println!("{message:?}");
     }
   }
