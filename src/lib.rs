@@ -17,8 +17,6 @@
 
 #![cfg(target_os = "windows")]
 #![deny(unsafe_op_in_unsafe_fn)]
-#![cfg_attr(clippy, deny(warnings))]
-#![allow(clippy::missing_safety_doc)]
 
 #[cfg(all(feature = "rwh_05", not(feature = "rwh_06")))]
 pub use rwh_05 as raw_window_handle;

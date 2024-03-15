@@ -73,7 +73,6 @@ fn main() -> WindowResult<()> {
 }
 
 struct App {
-  last_update_time: Instant,
   last_render_time: Instant,
   time: Time,
   render_time: Time,
@@ -92,7 +91,6 @@ struct App {
 impl App {
   fn new(window: &Arc<Window>) -> Self {
     pollster::block_on(async {
-      let last_update_time = Instant::now();
       let last_render_time = Instant::now();
       let time = TimeSettings::default().build();
       let render_time = TimeSettings::default().build();
@@ -197,7 +195,6 @@ impl App {
         });
 
       Self {
-        last_update_time,
         last_render_time,
         time,
         render_time,
@@ -226,14 +223,6 @@ impl App {
     self.time.update();
     while self.time.should_do_tick_unchecked() {
       self.time.tick();
-    }
-
-    let now = Instant::now();
-    let elapsed = now.duration_since(self.last_update_time);
-    if elapsed >= Duration::from_secs_f64(0.20) {
-      // let fps = format!("Avg update time: {:.9}", self.time.average_delta_secs());
-      // // info!("{fps}");
-      self.last_update_time = now;
     }
   }
 
