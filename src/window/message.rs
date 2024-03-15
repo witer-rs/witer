@@ -77,10 +77,14 @@ pub enum Message {
   ScaleFactorChanged(f64),
 }
 
+/// Artificial window messages sent by the window loop.
 #[derive(Debug, PartialEq, Clone)]
 pub enum LoopMessage {
+  /// Sent when the message pump is polled, but there are no messages.
   Empty,
+  /// Sent when the message pump is about to do GetMessageW.
   Wait,
+  /// Sent when the message pump is exiting.
   Exit,
 }
 
