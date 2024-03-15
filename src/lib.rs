@@ -1,5 +1,5 @@
 // #![feature(c_str_literals)]
-#![cfg_attr(target_os, windows)] // for now, it only supports Win32
+#![cfg(target_os = "windows")]
 #![deny(unsafe_op_in_unsafe_fn)]
 
 #[cfg(all(feature = "rwh_05", not(feature = "rwh_06")))]
