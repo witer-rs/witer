@@ -50,10 +50,7 @@ pub enum Message {
   /// Messages sent by devices registered for raw input.
   RawInput(RawInputMessage),
   /// Message sent when window is created.
-  Created {
-    hwnd: HWND,
-    hinstance: HINSTANCE,
-  },
+  Created { hwnd: HWND, hinstance: HINSTANCE },
   /// Message sent when window X button is pressed.
   CloseRequested,
   /// Message sent when Windows requests the window be repainted.
@@ -77,10 +74,7 @@ pub enum Message {
   /// locked to the bounds of the window.
   Cursor(Position),
   /// Message sent when the scroll wheel is actuated.
-  Scroll {
-    delta_x: f32,
-    delta_y: f32,
-  },
+  Scroll { delta_x: f32, delta_y: f32 },
   /// Message sent when the window is resized.
   Resized(Size),
   /// Message sent when the window is moved.
@@ -112,7 +106,8 @@ pub enum RawInputMessage {
   Keyboard { key: Key, state: RawKeyState },
   /// Raw mouse button input
   MouseButton { button: Mouse, state: ButtonState },
-  /// Raw mouse motion. Use this for mouse input in cases such as first-person cameras.
+  /// Raw mouse motion. Use this for mouse input in cases such as first-person
+  /// cameras.
   MouseMotion { delta_x: f32, delta_y: f32 },
 }
 
@@ -395,7 +390,8 @@ impl Message {
     matches!(self, Message::Key { key: k, state: s, .. } if *k == key && *s == state)
   }
 
-  /// Returns `true` if the message matches the supplied mouse button and mouse button state
+  /// Returns `true` if the message matches the supplied mouse button and mouse
+  /// button state
   pub fn is_mouse_button(&self, button: Mouse, state: ButtonState) -> bool {
     matches!(self, Message::MouseButton { button: b, state: s, .. } if *b == button && *s == state)
   }

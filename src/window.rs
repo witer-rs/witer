@@ -1,4 +1,5 @@
 use std::{
+  collections::VecDeque,
   sync::{Arc, Condvar, Mutex},
   thread::JoinHandle,
 };
@@ -32,7 +33,17 @@ use windows::{
   core::{HSTRING, PCWSTR},
   Win32::{
     Foundation::*,
-    Graphics::Dwm::{self, DwmSetWindowAttribute},
+    Graphics::{
+      Dwm::{self, DwmSetWindowAttribute},
+      Gdi::{
+        self,
+        EnumDisplayMonitors,
+        MonitorFromPoint,
+        MonitorFromWindow,
+        HDC,
+        HMONITOR,
+      },
+    },
     System::LibraryLoader::GetModuleHandleW,
     UI::WindowsAndMessaging::{
       self,
@@ -68,6 +79,7 @@ use crate::{
     get_window_style,
     is_dark_mode_supported,
     is_system_dark_mode_enabled,
+    Monitor,
   },
   window::{
     input::Input,
@@ -377,6 +389,45 @@ impl Window {
 
   pub fn scale_factor(&self) -> f64 {
     self.state.read_lock().scale_factor
+  }
+
+  unsafe extern "system" fn monitor_enum_proc(
+    hmonitor: HMONITOR,
+    _hdc: HDC,
+    _place: *mut RECT,
+    data: LPARAM,
+  ) -> BOOL {
+    let monitors = data.0 as *mut VecDeque<HMONITOR>;
+    unsafe { (*monitors).push_back(hmonitor) };
+    true.into() // continue enumeration
+  }
+
+  pub fn available_monitors(&self) -> VecDeque<Monitor> {
+    let mut monitors: VecDeque<HMONITOR> = VecDeque::new();
+    unsafe {
+      EnumDisplayMonitors(
+        HDC::default(),
+        None,
+        Some(Self::monitor_enum_proc),
+        LPARAM(&mut monitors as *mut _ as _),
+      );
+    }
+
+    monitors
+      .into_iter()
+      .map(|hmonitor| Monitor { hmonitor })
+      .collect()
+  }
+
+  pub fn current_monitor(&self) -> Monitor {
+    let hmonitor = unsafe { MonitorFromWindow(self.hwnd, Gdi::MONITOR_DEFAULTTONEAREST) };
+    Monitor { hmonitor }
+  }
+
+  pub fn primary_monitor(&self) -> Monitor {
+    const ORIGIN: POINT = POINT { x: 0, y: 0 };
+    let hmonitor = unsafe { MonitorFromPoint(ORIGIN, Gdi::MONITOR_DEFAULTTOPRIMARY) };
+    Monitor { hmonitor }
   }
 
   pub fn key(&self, keycode: Key) -> KeyState {

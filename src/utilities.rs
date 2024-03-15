@@ -11,13 +11,13 @@ use windows::{
   Win32::{
     Devices::HumanInterfaceDevice,
     Foundation::{HWND, NTSTATUS, RECT},
-    Graphics::Gdi::GetDC,
+    Graphics::Gdi::{GetDC, GetMonitorInfoW, HMONITOR, MONITORINFO, MONITORINFOEXW},
     System::{
       LibraryLoader::{GetProcAddress, LoadLibraryA},
       SystemInformation::OSVERSIONINFOW,
     },
     UI::{
-      HiDpi::GetDpiForWindow,
+      HiDpi::{self, GetDpiForMonitor, GetDpiForWindow},
       Input::{
         self,
         GetRawInputData,
@@ -39,7 +39,10 @@ use windows::{
   UI::ViewManagement::{UIColorType, UISettings},
 };
 
-use crate::window::state::{Fullscreen, StyleInfo, Visibility};
+use crate::{
+  prelude::{PhysicalPosition, PhysicalSize},
+  window::state::{Fullscreen, StyleInfo, Visibility},
+};
 
 pub fn signed_lo_word(dword: i32) -> i16 {
   dword as i16
@@ -303,4 +306,64 @@ pub fn is_flag_set<T: Copy + BitAnd<T, Output = T> + PartialEq<T>>(
   flag: T,
 ) -> bool {
   (var & flag) == flag
+}
+
+pub struct Monitor {
+  pub hmonitor: HMONITOR,
+}
+
+impl Monitor {
+  fn monitor_info(&self) -> Option<MONITORINFOEXW> {
+    let mut monitor_info: MONITORINFOEXW = unsafe { std::mem::zeroed() };
+    monitor_info.monitorInfo.cbSize = std::mem::size_of::<MONITORINFOEXW>() as u32;
+    let status = unsafe {
+      GetMonitorInfoW(
+        self.hmonitor,
+        &mut monitor_info as *mut MONITORINFOEXW as *mut MONITORINFO,
+      )
+    };
+
+    if status.as_bool() {
+      Some(monitor_info)
+    } else {
+      None
+    }
+  }
+
+  pub fn position(&self) -> PhysicalPosition {
+    let info = self.monitor_info();
+    info
+      .map(|info| {
+        let rect = info.monitorInfo.rcMonitor;
+        PhysicalPosition {
+          x: rect.left,
+          y: rect.top,
+        }
+      })
+      .unwrap_or_default()
+  }
+
+  pub fn size(&self) -> PhysicalSize {
+    let info = self.monitor_info();
+    info
+      .map(|info| {
+        let rect = info.monitorInfo.rcMonitor;
+        PhysicalSize {
+          width: (rect.right - rect.left) as u32,
+          height: (rect.bottom - rect.top) as u32,
+        }
+      })
+      .unwrap_or_default()
+  }
+
+  pub fn scale_factor(&self) -> f64 {
+    let mut dpi_x = 0;
+    let mut _dpi_y = 0;
+    unsafe {
+      GetDpiForMonitor(self.hmonitor, HiDpi::MDT_EFFECTIVE_DPI, &mut dpi_x, &mut _dpi_y)
+    }
+    .unwrap();
+
+    dpi_to_scale_factor(dpi_x)
+  }
 }
