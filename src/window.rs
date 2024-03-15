@@ -1,10 +1,5 @@
 use std::{
-  sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
-    Condvar,
-    Mutex,
-  },
+  sync::{Arc, Condvar, Mutex},
   thread::JoinHandle,
 };
 

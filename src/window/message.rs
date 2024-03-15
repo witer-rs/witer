@@ -1,5 +1,4 @@
 use windows::Win32::{
-  Devices::HumanInterfaceDevice,
   Foundation::{HINSTANCE, HWND, LPARAM, RECT, WPARAM},
   System::SystemServices::{
     MK_LBUTTON,
@@ -21,14 +20,16 @@ use windows::Win32::{
 };
 
 use super::{
-  input::mouse::{mouse_button_states, Mouse},
+  input::{
+    mouse::{mouse_button_states, Mouse},
+    state::RawKeyState,
+  },
   state::{PhysicalPosition, PhysicalSize, Position, Size},
 };
 use crate::{
   utilities::{
     dpi_to_scale_factor,
     hi_word,
-    is_flag_set,
     lo_byte,
     lo_word,
     read_raw_input,
@@ -85,20 +86,12 @@ pub enum LoopMessage {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum RawInputMessage {
-  Keyboard { key: Key, state: KeyState },
+  Keyboard { key: Key, state: RawKeyState },
   MouseButton { button: Mouse, state: ButtonState },
   MouseMotion { delta_x: f32, delta_y: f32 },
 }
 
 impl Message {
-  // pub fn take(&mut self) -> Message {
-  //   std::mem::take(self)
-  // }
-
-  // pub fn replace(&mut self, message: Message) -> Message {
-  //   std::mem::replace(self, message)
-  // }
-
   pub fn collect(
     hwnd: HWND,
     message: u32,
@@ -173,12 +166,24 @@ impl Message {
               }
             }
           }
-          // Input::RIM_TYPEKEYBOARD => {
-          //   out.push(Message::RawInput(RawInputMessage::Keyboard {
-          //     key: Key::Unknown,
-          //     state: KeyState::Pressed,
-          //   }))
-          // }
+          Input::RIM_TYPEKEYBOARD => {
+            let keyboard_data = unsafe { data.data.keyboard };
+
+            let key = Key::from_raw(keyboard_data)?;
+
+            let pressed = matches!(
+              keyboard_data.Message,
+              WindowsAndMessaging::WM_KEYDOWN | WindowsAndMessaging::WM_SYSKEYDOWN
+            );
+            let released = matches!(
+              keyboard_data.Message,
+              WindowsAndMessaging::WM_KEYUP | WindowsAndMessaging::WM_SYSKEYUP
+            );
+
+            if let Some(state) = RawKeyState::from_bools(pressed, released) {
+              out.push(Message::RawInput(RawInputMessage::Keyboard { key, state }))
+            }
+          }
           _ => return None,
         }
       }

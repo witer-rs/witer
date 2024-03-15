@@ -46,12 +46,8 @@ fn main() -> WindowResult<()> {
       }
     }
 
-    let should_sync = matches!(
-      message,
-      Message::Resized(..)
-        | Message::ScaleFactorChanged(..)
-        | Message::Loop(LoopMessage::Wait)
-    );
+    let should_sync =
+      matches!(message, Message::Resized(..) | Message::Loop(LoopMessage::Wait));
 
     if !message.is_empty() {
       message_sender.try_send(message).unwrap();
@@ -287,19 +283,15 @@ fn app_loop(
           _ => (),
         }
 
+        app.update(&window);
+        app.draw(&window);
+
         if matches!(
           message,
-          Some(
-            Message::Resized(..)
-              | Message::ScaleFactorChanged(..)
-              | Message::Loop(LoopMessage::Wait)
-          )
+          Some(Message::Resized(..) | Message::Loop(LoopMessage::Wait))
         ) {
           sync_barrier.wait();
         }
-
-        app.update(&window);
-        app.draw(&window);
       }
     })
     .unwrap()

@@ -1,18 +1,12 @@
 use std::{
   mem::size_of,
-  sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
-    Condvar,
-    Mutex,
-  },
+  sync::{Arc, Condvar, Mutex},
 };
 
 use crossbeam::{
   channel::{Receiver, Sender},
   queue::SegQueue,
 };
-use tracing::info;
 use windows::Win32::{
   Foundation::*,
   Graphics::Gdi::{

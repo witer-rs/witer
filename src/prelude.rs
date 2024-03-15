@@ -5,7 +5,7 @@ pub use crate::{
     input::{
       key::Key,
       mouse::Mouse,
-      state::{ButtonState, KeyState},
+      state::{ButtonState, KeyState, RawKeyState},
       Input,
     },
     message::{LoopMessage, Message, RawInputMessage},
