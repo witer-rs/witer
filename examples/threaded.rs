@@ -74,6 +74,45 @@ fn main() -> WindowResult<()> {
   Ok(())
 }
 
+fn app_loop(
+  window: Arc<Window>,
+  message_receiver: Receiver<Message>,
+  sync_barrier: Arc<Barrier>,
+) -> JoinHandle<()> {
+  std::thread::Builder::new()
+    .name("app".to_owned())
+    .spawn(move || {
+      let mut app = App::new(&window);
+
+      loop {
+        let message = message_receiver.try_recv().ok();
+
+        if let Some(Message::MouseButton { .. } | Message::Key { .. }) = message {
+          info!("{message:?}");
+        }
+
+        match &message {
+          Some(Message::Resized(..) | Message::ScaleFactorChanged(..)) => {
+            app.resize(window.inner_size());
+          }
+          Some(Message::Loop(LoopMessage::Exit)) => break,
+          _ => (),
+        }
+
+        app.update(&window);
+        app.draw(&window);
+
+        if matches!(
+          message,
+          Some(Message::Resized(..) | Message::Loop(LoopMessage::Wait))
+        ) {
+          sync_barrier.wait();
+        }
+      }
+    })
+    .unwrap()
+}
+
 struct App {
   last_render_time: Instant,
   time: Time,
@@ -304,43 +343,4 @@ impl App {
     self.queue.submit(std::iter::once(encoder.finish()));
     output.present();
   }
-}
-
-fn app_loop(
-  window: Arc<Window>,
-  message_receiver: Receiver<Message>,
-  sync_barrier: Arc<Barrier>,
-) -> JoinHandle<()> {
-  std::thread::Builder::new()
-    .name("app".to_owned())
-    .spawn(move || {
-      let mut app = App::new(&window);
-
-      loop {
-        let message = message_receiver.try_recv().ok();
-
-        if let Some(Message::MouseButton { .. } | Message::Key { .. }) = message {
-          info!("{message:?}");
-        }
-
-        match &message {
-          Some(Message::Resized(..) | Message::ScaleFactorChanged(..)) => {
-            app.resize(window.inner_size());
-          }
-          Some(Message::Loop(LoopMessage::Exit)) => break,
-          _ => (),
-        }
-
-        app.update(&window);
-        app.draw(&window);
-
-        if matches!(
-          message,
-          Some(Message::Resized(..) | Message::Loop(LoopMessage::Wait))
-        ) {
-          sync_barrier.wait();
-        }
-      }
-    })
-    .unwrap()
 }

@@ -107,11 +107,7 @@ impl WindowSettings {
     }
   }
 
-  pub fn clamp_position_to_monitors(
-    &mut self,
-    egui_zoom_factor: f32,
-    window: &Window,
-  ) {
+  pub fn clamp_position_to_monitors(&mut self, egui_zoom_factor: f32, window: &Window) {
     // If the app last ran on two monitors and only one is now connected, then
     // the given position is invalid.
     // If this happens on Mac, the window is clamped into valid area.
