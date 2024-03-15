@@ -1,4 +1,20 @@
-// #![feature(c_str_literals)]
+//! ```
+//! use witer::prelude::*;
+//! 
+//! // Configure
+//! let settings = WindowSettings::default();
+//! 
+//! // Build
+//! let window = Window::new(settings).unwrap();
+//! 
+//! // Run
+//! for message in &window {
+//!   if let Message::Window(..) = message {
+//!     println!("{message:?}");
+//!   }
+//! }
+//! ```
+
 #![cfg(target_os = "windows")]
 #![deny(unsafe_op_in_unsafe_fn)]
 
