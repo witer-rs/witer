@@ -1,11 +1,16 @@
 use witer::prelude::*;
 
+/*
+  This example showcases how to open a simple window that
+  only closes when Escape is pressed.
+*/
+
 fn main() {
   let settings = WindowSettings::default()
     .with_close_on_x(false)
     .with_flow(Flow::Wait)
-    .with_size(LogicalSize::new((1280.0, 720.0)))
-    .with_title("Simple Example");
+    .with_size(LogicalSize::new((800.0, 450.0)))
+    .with_title("Press Esc to close!");
 
   let window = Window::new(settings).unwrap();
 

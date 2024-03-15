@@ -9,6 +9,10 @@ use foxy_time::{Time, TimeSettings};
 use wgpu::PresentMode;
 use witer::prelude::*;
 
+/*
+  This example showcases a simple app rendering a blank screen using WGPU.
+*/
+
 fn main() -> WindowResult<()> {
   let settings = WindowSettings::default()
     .with_flow(Flow::Poll)
