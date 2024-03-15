@@ -42,38 +42,56 @@ use crate::{
   },
 };
 
+/// Messages sent by the window, message loop, or attached devices.
 #[derive(Debug, PartialEq, Clone)]
 pub enum Message {
+  /// Artificial window messages sent by the window loop.
   Loop(LoopMessage),
+  /// Messages sent by devices registered for raw input.
   RawInput(RawInputMessage),
+  /// Message sent when window is created.
   Created {
     hwnd: HWND,
     hinstance: HINSTANCE,
   },
+  /// Message sent when window X button is pressed.
   CloseRequested,
+  /// Message sent when Windows requests the window be repainted.
   Paint,
+  /// Message sent when a key is pressed, held, or released.
   Key {
     key: Key,
     state: KeyState,
     scan_code: u16,
     is_extended_key: bool,
   },
+  /// Message sent when a mouse button is pressed or released.
   MouseButton {
     button: Mouse,
     state: ButtonState,
     position: PhysicalPosition,
     is_double_click: bool,
   },
+  /// Message sent when the cursor is moved within the window bounds. Don't
+  /// use this for mouse input in cases such as first-person cameras as it is
+  /// locked to the bounds of the window.
   Cursor(Position),
+  /// Message sent when the scroll wheel is actuated.
   Scroll {
     delta_x: f32,
     delta_y: f32,
   },
+  /// Message sent when the window is resized.
   Resized(Size),
+  /// Message sent when the window is moved.
   Moved(Position),
+  /// Message sent by Windows when certain actions are taken. WIP
   Command,
+  /// Message sent by Windows when certain actions are taken. WIP
   SystemCommand,
+  /// Message sent when the window gains or loses focus.
   Focus(bool),
+  /// Message sent when the scale factor of the window has changed.
   ScaleFactorChanged(f64),
 }
 
@@ -90,8 +108,11 @@ pub enum LoopMessage {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum RawInputMessage {
+  /// Raw keyboard input
   Keyboard { key: Key, state: RawKeyState },
+  /// Raw mouse button input
   MouseButton { button: Mouse, state: ButtonState },
+  /// Raw mouse motion. Use this for mouse input in cases such as first-person cameras.
   MouseMotion { delta_x: f32, delta_y: f32 },
 }
 
@@ -369,14 +390,17 @@ impl Message {
     }
   }
 
+  /// Returns `true` if the message matches the supplied key and key state
   pub fn is_key(&self, key: Key, state: KeyState) -> bool {
     matches!(self, Message::Key { key: k, state: s, .. } if *k == key && *s == state)
   }
 
+  /// Returns `true` if the message matches the supplied mouse button and mouse button state
   pub fn is_mouse_button(&self, button: Mouse, state: ButtonState) -> bool {
     matches!(self, Message::MouseButton { button: b, state: s, .. } if *b == button && *s == state)
   }
 
+  /// Returns `true` if the message is `Message::Loop(LoopMessage::Empty)`
   pub fn is_empty(&self) -> bool {
     matches!(self, Message::Loop(LoopMessage::Empty))
   }

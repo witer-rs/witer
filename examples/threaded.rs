@@ -55,6 +55,8 @@ fn main() -> WindowResult<()> {
       }
     }
 
+    // this is checked here because try_send moves the message, but we want to wait
+    // after the message is sent.
     let should_sync =
       matches!(message, Message::Resized(..) | Message::Loop(LoopMessage::Wait));
 
