@@ -88,7 +88,7 @@ fn app_loop(
         let message = message_receiver.try_recv().ok();
 
         if let Some(Message::MouseButton { .. } | Message::Key { .. }) = message {
-          info!("{message:?}");
+          info!("{:?}", window.current_monitor().scale_factor());
         }
 
         match &message {

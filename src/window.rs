@@ -413,21 +413,18 @@ impl Window {
       );
     }
 
-    monitors
-      .into_iter()
-      .map(|hmonitor| Monitor { hmonitor })
-      .collect()
+    monitors.into_iter().map(Monitor::new).collect()
   }
 
   pub fn current_monitor(&self) -> Monitor {
     let hmonitor = unsafe { MonitorFromWindow(self.hwnd, Gdi::MONITOR_DEFAULTTONEAREST) };
-    Monitor { hmonitor }
+    Monitor::new(hmonitor)
   }
 
   pub fn primary_monitor(&self) -> Monitor {
     const ORIGIN: POINT = POINT { x: 0, y: 0 };
     let hmonitor = unsafe { MonitorFromPoint(ORIGIN, Gdi::MONITOR_DEFAULTTOPRIMARY) };
-    Monitor { hmonitor }
+    Monitor::new(hmonitor)
   }
 
   pub fn key(&self, keycode: Key) -> KeyState {

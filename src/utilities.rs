@@ -309,10 +309,14 @@ pub fn is_flag_set<T: Copy + BitAnd<T, Output = T> + PartialEq<T>>(
 }
 
 pub struct Monitor {
-  pub hmonitor: HMONITOR,
+  hmonitor: HMONITOR,
 }
 
 impl Monitor {
+  pub fn new(hmonitor: HMONITOR) -> Self {
+    Self { hmonitor }
+  }
+
   fn monitor_info(&self) -> Option<MONITORINFOEXW> {
     let mut monitor_info: MONITORINFOEXW = unsafe { std::mem::zeroed() };
     monitor_info.monitorInfo.cbSize = std::mem::size_of::<MONITORINFOEXW>() as u32;
