@@ -1,5 +1,10 @@
 use std::{
-  sync::{Arc, Condvar, Mutex},
+  sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+    Condvar,
+    Mutex,
+  },
   thread::JoinHandle,
 };
 
@@ -101,7 +106,7 @@ pub struct Window {
 impl Drop for Window {
   fn drop(&mut self) {
     self.request(Command::Destroy);
-    let thread = self.state.get_mut().thread.take();
+    let thread = self.state.write_lock().thread.take();
     if let Some(thread) = thread {
       let _ = thread.join();
     }
@@ -141,7 +146,7 @@ impl Window {
 
     let window = window_receiver.recv().unwrap();
 
-    window.state.get_mut().thread = thread;
+    window.state.write_lock().thread = thread;
     if let Some(position) = settings.position {
       window.force_set_outer_position(position);
     }
@@ -238,16 +243,16 @@ impl Window {
     state: &Handle<InternalState>,
   ) -> bool {
     if !message_sender.is_empty() {
-      sync.wait_on_frame(|| state.get().stage == Stage::ExitLoop);
+      sync.wait_on_frame(|| state.read_lock().stage == Stage::ExitLoop);
     }
 
     // pass message to main thread
     if let Err(_e) = message_sender.try_send(Message::Loop(message::LoopMessage::Wait)) {
       tracing::error!("{_e}");
-      state.get_mut().stage = Stage::ExitLoop;
+      state.write_lock().stage = Stage::ExitLoop;
     }
     sync.signal_new_message();
-    sync.wait_on_frame(|| state.get().stage == Stage::ExitLoop);
+    sync.wait_on_frame(|| state.read_lock().stage == Stage::ExitLoop);
 
     let mut msg = MSG::default();
     if unsafe { GetMessageW(&mut msg, None, 0, 0).as_bool() } {
@@ -262,7 +267,7 @@ impl Window {
   }
 
   fn take_message(&self) -> Option<Message> {
-    let flow = self.state.get().flow;
+    let flow = self.state.read_lock().flow;
     if let Flow::Wait = flow {
       let (lock, cvar) = self.sync.new_message.as_ref();
       let mut new = cvar.wait_while(lock.lock().unwrap(), |new| !*new).unwrap();
@@ -280,7 +285,7 @@ impl Window {
   }
 
   pub fn next_message(&self) -> Option<Message> {
-    let current_stage = self.state.get().stage;
+    let current_stage = self.state.read_lock().stage;
 
     self.sync.signal_next_frame();
 
@@ -288,7 +293,7 @@ impl Window {
       Stage::Looping => {
         let message = self.take_message();
         if let Some(Message::CloseRequested) = message {
-          let x = self.state.get().close_on_x;
+          let x = self.state.read_lock().close_on_x;
           if x {
             self.close();
           }
@@ -297,7 +302,7 @@ impl Window {
       }
       Stage::Closing => {
         let _ = self.take_message();
-        self.state.get_mut().stage = Stage::ExitLoop;
+        self.state.write_lock().stage = Stage::ExitLoop;
         Some(Message::Loop(message::LoopMessage::Exit))
       }
       Stage::ExitLoop => None,
@@ -309,23 +314,23 @@ impl Window {
   // GETTERS
 
   pub fn visibility(&self) -> Visibility {
-    self.state.get().style.visibility
+    self.state.read_lock().style.visibility
   }
 
   pub fn theme(&self) -> Theme {
-    self.state.get().theme
+    self.state.read_lock().theme
   }
 
   pub fn flow(&self) -> Flow {
-    self.state.get().flow
+    self.state.read_lock().flow
   }
 
   pub fn title(&self) -> String {
-    self.state.get().title.to_string()
+    self.state.read_lock().title.to_string()
   }
 
   pub fn subtitle(&self) -> String {
-    self.state.get().subtitle.to_string()
+    self.state.read_lock().subtitle.to_string()
   }
 
   pub fn outer_size(&self) -> PhysicalSize {
@@ -365,7 +370,7 @@ impl Window {
   }
 
   pub fn fullscreen(&self) -> Option<Fullscreen> {
-    let state = self.state.get();
+    let state = self.state.read_lock();
     state.style.fullscreen
   }
 
@@ -376,89 +381,89 @@ impl Window {
   }
 
   pub fn scale_factor(&self) -> f64 {
-    self.state.get().scale_factor
+    self.state.read_lock().scale_factor
   }
 
   pub fn key(&self, keycode: Key) -> KeyState {
-    let state = self.state.get();
+    let state = self.state.read_lock();
     state.input.key(keycode)
   }
 
   pub fn mouse(&self, button: Mouse) -> ButtonState {
-    let state = self.state.get();
+    let state = self.state.read_lock();
     state.input.mouse(button)
   }
 
   pub fn shift(&self) -> ButtonState {
-    let state = self.state.get();
+    let state = self.state.read_lock();
     state.input.shift()
   }
 
   pub fn ctrl(&self) -> ButtonState {
-    let state = self.state.get();
+    let state = self.state.read_lock();
     state.input.ctrl()
   }
 
   pub fn alt(&self) -> ButtonState {
-    let state = self.state.get();
+    let state = self.state.read_lock();
     state.input.alt()
   }
 
   pub fn win(&self) -> ButtonState {
-    let state = self.state.get();
+    let state = self.state.read_lock();
     state.input.win()
   }
 
   pub fn is_closing(&self) -> bool {
-    let state = self.state.get();
+    let state = self.state.read_lock();
     state.is_closing()
   }
 
   // SETTERS
 
   fn force_set_outer_position(&self, position: Position) {
-    self.state.get_mut().position = position;
+    self.state.write_lock().position = position;
     self.request(Command::SetPosition(position));
   }
 
   pub fn set_outer_position(&self, position: Position) {
-    if position == self.state.get().position {
+    if position == self.state.read_lock().position {
       return;
     }
     self.force_set_outer_position(position)
   }
 
   fn force_set_inner_size(&self, size: Size) {
-    self.state.get_mut().size = size;
+    self.state.write_lock().size = size;
     self.request(Command::SetSize(size));
   }
 
   pub fn set_inner_size(&self, size: Size) {
-    if size == self.state.get().size {
+    if size == self.state.read_lock().size {
       return;
     }
     self.force_set_inner_size(size)
   }
 
   fn force_set_visibility(&self, visibility: Visibility) {
-    self.state.get_mut().style.visibility = visibility;
+    self.state.write_lock().style.visibility = visibility;
     self.request(Command::SetVisibility(visibility));
   }
 
   pub fn set_visibility(&self, visibility: Visibility) {
-    if visibility == self.state.get().style.visibility {
+    if visibility == self.state.read_lock().style.visibility {
       return;
     }
     self.force_set_visibility(visibility)
   }
 
   fn force_set_decorations(&self, visibility: Visibility) {
-    self.state.get_mut().style.decorations = visibility;
+    self.state.write_lock().style.decorations = visibility;
     self.request(Command::SetDecorations(visibility));
   }
 
   pub fn set_decorations(&self, visibility: Visibility) {
-    if visibility == self.state.get().style.decorations {
+    if visibility == self.state.read_lock().style.decorations {
       return;
     }
     self.force_set_decorations(visibility)
@@ -483,7 +488,7 @@ impl Window {
       Theme::Light => Theme::Light,
     };
 
-    self.state.get_mut().theme = theme;
+    self.state.write_lock().theme = theme;
     let dark_mode = BOOL::from(theme == Theme::Dark);
     if let Err(_error) = unsafe {
       DwmSetWindowAttribute(
@@ -498,84 +503,86 @@ impl Window {
   }
 
   pub fn set_theme(&self, theme: Theme) {
-    if theme == self.state.get().theme {
+    if theme == self.state.read_lock().theme {
       return;
     }
     self.force_set_theme(theme)
   }
 
   fn force_set_fullscreen(&self, fullscreen: Option<Fullscreen>) {
-    self.state.get_mut().style.fullscreen = fullscreen;
+    self.state.write_lock().style.fullscreen = fullscreen;
     self.request(Command::SetFullscreen(fullscreen));
   }
 
   pub fn set_fullscreen(&self, fullscreen: Option<Fullscreen>) {
-    if fullscreen == self.state.get().style.fullscreen {
+    if fullscreen == self.state.read_lock().style.fullscreen {
       return;
     }
     self.force_set_fullscreen(fullscreen)
   }
 
   fn force_set_title(&self, title: impl AsRef<str>) {
-    self.state.get_mut().title = title.as_ref().into();
-    let title = HSTRING::from(format!("{}{}", title.as_ref(), self.state.get().subtitle));
+    self.state.write_lock().title = title.as_ref().into();
+    let title =
+      HSTRING::from(format!("{}{}", title.as_ref(), self.state.read_lock().subtitle));
     self.request(Command::SetWindowText(title));
   }
 
   /// Set the title of the window
   pub fn set_title(&self, title: impl AsRef<str>) {
-    if title.as_ref() == self.state.get().title {
+    if title.as_ref() == self.state.read_lock().title {
       return;
     }
     self.force_set_title(title)
   }
 
   fn force_set_cursor_mode(&self, cursor_mode: CursorMode) {
-    self.state.get_mut().cursor_mode = cursor_mode;
+    self.state.write_lock().cursor_mode = cursor_mode;
     self.request(Command::SetCursorMode(cursor_mode));
   }
 
   pub fn set_cursor_mode(&self, cursor_mode: CursorMode) {
-    if cursor_mode == self.state.get().cursor_mode {
+    if cursor_mode == self.state.read_lock().cursor_mode {
       return;
     }
     self.force_set_cursor_mode(cursor_mode)
   }
 
   fn force_set_cursor_visibility(&self, cursor_visibility: Visibility) {
-    self.state.get_mut().cursor_visibility = cursor_visibility;
+    self.state.write_lock().cursor_visibility = cursor_visibility;
     self.request(Command::SetCursorVisibility(cursor_visibility));
   }
 
   pub fn set_cursor_visibility(&self, cursor_visibility: Visibility) {
-    if cursor_visibility == self.state.get().cursor_visibility {
+    if cursor_visibility == self.state.read_lock().cursor_visibility {
       return;
     }
     self.force_set_cursor_visibility(cursor_visibility)
   }
 
   fn force_set_subtitle(&self, subtitle: impl AsRef<str>) {
-    self.state.get_mut().subtitle = subtitle.as_ref().into();
-    let title = HSTRING::from(format!("{}{}", self.state.get().title, subtitle.as_ref()));
+    self.state.write_lock().subtitle = subtitle.as_ref().into();
+    let title =
+      HSTRING::from(format!("{}{}", self.state.read_lock().title, subtitle.as_ref()));
     self.request(Command::SetWindowText(title));
   }
 
   /// Set text to appear after the title of the window
   pub fn set_subtitle(&self, subtitle: impl AsRef<str>) {
-    if subtitle.as_ref() == self.state.get().subtitle {
+    if subtitle.as_ref() == self.state.read_lock().subtitle {
       return;
     }
     self.force_set_subtitle(subtitle)
   }
 
   fn force_request_redraw(&self) {
-    self.state.get_mut().requested_redraw = true;
+    self.state.write_lock().requested_redraw = true;
     self.request(Command::Redraw);
   }
 
   /// Request a new Draw event
   pub fn request_redraw(&self) {
-    if self.state.get().requested_redraw {
+    if self.state.read_lock().requested_redraw {
       return;
     }
     self.force_request_redraw()
@@ -586,7 +593,7 @@ impl Window {
     if self.is_closing() {
       return; // already closing
     }
-    self.state.get_mut().stage = Stage::Closing;
+    self.state.write_lock().stage = Stage::Closing;
   }
 
   fn request(&self, command: Command) {

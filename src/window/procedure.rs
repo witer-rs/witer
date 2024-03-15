@@ -1,12 +1,18 @@
 use std::{
   mem::size_of,
-  sync::{Arc, Condvar, Mutex},
+  sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+    Condvar,
+    Mutex,
+  },
 };
 
 use crossbeam::{
   channel::{Receiver, Sender},
   queue::SegQueue,
 };
+use tracing::info;
 use windows::Win32::{
   Foundation::*,
   Graphics::Gdi::{
@@ -57,6 +63,7 @@ use crate::{
     get_window_ex_style,
     get_window_style,
     hwnd_dpi,
+    register_all_mice_and_keyboards_for_raw_input,
     set_cursor_clip,
     set_cursor_visibility,
   },
@@ -142,6 +149,8 @@ fn on_nccreate(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESUL
     unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE) }
       .unwrap();
   }
+
+  register_all_mice_and_keyboards_for_raw_input(hwnd);
 
   unsafe { DefWindowProcW(hwnd, msg, w_param, l_param) }
 }
@@ -257,7 +266,7 @@ fn on_message(
   l_param: LPARAM,
   data: &mut SubclassWindowData,
 ) -> LRESULT {
-  let message = Message::new(hwnd, msg, w_param, l_param);
+  let messages = Message::collect(hwnd, msg, w_param, l_param);
   // handle from wndproc
   let result = match msg {
     WindowsAndMessaging::WM_SIZING
@@ -284,18 +293,22 @@ fn on_message(
   if !data.message_sender.is_empty() {
     data
       .sync
-      .wait_on_frame(|| data.state.get().stage == Stage::ExitLoop);
+      .wait_on_frame(|| data.state.read_lock().stage == Stage::ExitLoop);
   }
 
   // pass message to main thread
-  if let Some(message) = message {
-    update_state(hwnd, data, &message);
-    data.message_sender.try_send(message).unwrap();
-    // data.sync.next_message.lock().unwrap().replace(message);
-    data.sync.signal_new_message();
-    data
-      .sync
-      .wait_on_frame(|| data.state.get().stage == Stage::ExitLoop);
+  if let Some(messages) = messages {
+    for message in messages {
+      update_state(hwnd, data, &message);
+
+      data.message_sender.try_send(message).unwrap();
+      data.sync.signal_new_message();
+      // data.sync.next_message.lock().unwrap().replace(message);
+
+      data
+        .sync
+        .wait_on_frame(|| data.state.read_lock().stage == Stage::ExitLoop);
+    }
   }
 
   result
@@ -304,8 +317,8 @@ fn on_message(
 fn update_state(hwnd: HWND, data: &SubclassWindowData, message: &Message) {
   match message {
     &Message::Focus(is_focused) => {
-      let cursor_visibility = data.state.get().cursor_visibility;
-      let cursor_mode = data.state.get().cursor_mode;
+      let cursor_visibility = data.state.read_lock().cursor_visibility;
+      let cursor_mode = data.state.read_lock().cursor_mode;
       if is_focused {
         data.command_queue.push(Command::SetCursorMode(cursor_mode));
         data
@@ -316,30 +329,30 @@ fn update_state(hwnd: HWND, data: &SubclassWindowData, message: &Message) {
       }
     }
     &Message::Resized(size) => {
-      let is_windowed = data.state.get().style.fullscreen.is_none();
-      data.state.get_mut().size = size;
+      let is_windowed = data.state.read_lock().style.fullscreen.is_none();
+      data.state.write_lock().size = size;
       if is_windowed {
-        data.state.get_mut().last_windowed_size = size;
+        data.state.write_lock().last_windowed_size = size;
       }
     }
     &Message::Moved(position) => {
-      let is_windowed = data.state.get().style.fullscreen.is_none();
-      data.state.get_mut().position = position;
+      let is_windowed = data.state.read_lock().style.fullscreen.is_none();
+      data.state.write_lock().position = position;
       if is_windowed {
-        data.state.get_mut().last_windowed_position = position;
+        data.state.write_lock().last_windowed_position = position;
       }
     }
     &Message::Key { key, state, .. } => {
-      data.state.get_mut().input.update_key_state(key, state);
-      data.state.get_mut().input.update_modifiers_state();
+      data.state.write_lock().input.update_key_state(key, state);
+      data.state.write_lock().input.update_modifiers_state();
     }
     &Message::MouseButton { button, state, .. } => data
       .state
-      .get_mut()
+      .write_lock()
       .input
       .update_mouse_button_state(button, state),
     Message::Paint => {
-      data.state.get_mut().requested_redraw = false;
+      data.state.write_lock().requested_redraw = false;
     }
     _ => (),
   }
@@ -368,7 +381,7 @@ fn process_commands(hwnd: HWND, data: &mut SubclassWindowData) -> bool {
         });
       },
       Command::SetDecorations(decorations) => {
-        let style = data.state.get().style;
+        let style = data.state.read_lock().style;
         match decorations {
           Visibility::Shown => {
             unsafe {
@@ -408,7 +421,7 @@ fn process_commands(hwnd: HWND, data: &mut SubclassWindowData) -> bool {
         SetWindowTextW(hwnd, &text).unwrap();
       },
       Command::SetSize(size) => {
-        let physical_size = size.as_physical(data.state.get().scale_factor);
+        let physical_size = size.as_physical(data.state.read_lock().scale_factor);
         unsafe {
           SetWindowPos(
             hwnd,
@@ -428,7 +441,7 @@ fn process_commands(hwnd: HWND, data: &mut SubclassWindowData) -> bool {
         unsafe { InvalidateRgn(hwnd, None, false) };
       }
       Command::SetPosition(position) => {
-        let physical_position = position.as_physical(data.state.get().scale_factor);
+        let physical_position = position.as_physical(data.state.read_lock().scale_factor);
         unsafe {
           SetWindowPos(
             hwnd,
@@ -449,7 +462,7 @@ fn process_commands(hwnd: HWND, data: &mut SubclassWindowData) -> bool {
       }
       Command::SetFullscreen(fullscreen) => {
         // update style
-        let style = data.state.get().style;
+        let style = data.state.read_lock().style;
         unsafe {
           SetWindowLongW(
             hwnd,
@@ -490,15 +503,15 @@ fn process_commands(hwnd: HWND, data: &mut SubclassWindowData) -> bool {
             }
           }
           None => {
-            let scale_factor = data.state.get().scale_factor;
+            let scale_factor = data.state.read_lock().scale_factor;
             let size = data
               .state
-              .get()
+              .read_lock()
               .last_windowed_size
               .as_physical(scale_factor);
             let position = data
               .state
-              .get()
+              .read_lock()
               .last_windowed_position
               .as_physical(scale_factor);
             unsafe {

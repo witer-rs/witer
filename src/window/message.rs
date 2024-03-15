@@ -1,4 +1,5 @@
 use windows::Win32::{
+  Devices::HumanInterfaceDevice,
   Foundation::{HINSTANCE, HWND, LPARAM, RECT, WPARAM},
   System::SystemServices::{
     MK_LBUTTON,
@@ -9,21 +10,28 @@ use windows::Win32::{
     MODIFIERKEYS_FLAGS,
   },
   UI::{
-    Input::KeyboardAndMouse::{MapVirtualKeyW, MAPVK_VSC_TO_VK_EX, VIRTUAL_KEY},
+    Input::{
+      self,
+      KeyboardAndMouse::{MapVirtualKeyW, MAPVK_VSC_TO_VK_EX, VIRTUAL_KEY},
+      HRAWINPUT,
+      RID_DEVICE_INFO_TYPE,
+    },
     WindowsAndMessaging::{self, SetWindowPos, WINDOWPOS},
   },
 };
 
 use super::{
-  input::mouse::Mouse,
+  input::mouse::{mouse_button_states, Mouse},
   state::{PhysicalPosition, PhysicalSize, Position, Size},
 };
 use crate::{
   utilities::{
     dpi_to_scale_factor,
     hi_word,
+    is_flag_set,
     lo_byte,
     lo_word,
+    read_raw_input,
     signed_hi_word,
     signed_lo_word,
   },
@@ -77,10 +85,9 @@ pub enum LoopMessage {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum RawInputMessage {
-  Key { key: Key, state: KeyState },
+  Keyboard { key: Key, state: KeyState },
   MouseButton { button: Mouse, state: ButtonState },
-  Cursor { delta_x: f32, delta_y: f32 },
-  Scroll { delta_x: f32, delta_y: f32 },
+  MouseMotion { delta_x: f32, delta_y: f32 },
 }
 
 impl Message {
@@ -92,25 +99,35 @@ impl Message {
   //   std::mem::replace(self, message)
   // }
 
-  pub fn new(hwnd: HWND, message: u32, w_param: WPARAM, l_param: LPARAM) -> Option<Self> {
-    Some(match message {
-      WindowsAndMessaging::WM_CLOSE => Message::CloseRequested,
-      WindowsAndMessaging::WM_PAINT => Message::Paint,
+  pub fn collect(
+    hwnd: HWND,
+    message: u32,
+    w_param: WPARAM,
+    l_param: LPARAM,
+  ) -> Option<Vec<Self>> {
+    let mut out = Vec::with_capacity(0);
+    out.reserve_exact(1);
+    match message {
+      WindowsAndMessaging::WM_CLOSE => out.push(Message::CloseRequested),
+      WindowsAndMessaging::WM_PAINT => out.push(Message::Paint),
       WindowsAndMessaging::WM_SIZE => {
         let width = lo_word(l_param.0 as u32) as i32;
         let height = hi_word(l_param.0 as u32) as i32;
 
-        Message::Resized(PhysicalSize::new((width as u32, height as u32)).into())
+        out
+          .push(Message::Resized(PhysicalSize::new((width as u32, height as u32)).into()))
       }
       WindowsAndMessaging::WM_WINDOWPOSCHANGED => {
         let window_pos = unsafe { &*(l_param.0 as *const WINDOWPOS) };
 
-        Message::Moved(PhysicalPosition::new((window_pos.x, window_pos.y)).into())
+        out.push(Message::Moved(
+          PhysicalPosition::new((window_pos.x, window_pos.y)).into(),
+        ))
       }
-      WindowsAndMessaging::WM_SETFOCUS => Message::Focus(true),
-      WindowsAndMessaging::WM_KILLFOCUS => Message::Focus(false),
-      WindowsAndMessaging::WM_COMMAND => Message::Command,
-      WindowsAndMessaging::WM_SYSCOMMAND => Message::SystemCommand,
+      WindowsAndMessaging::WM_SETFOCUS => out.push(Message::Focus(true)),
+      WindowsAndMessaging::WM_KILLFOCUS => out.push(Message::Focus(false)),
+      WindowsAndMessaging::WM_COMMAND => out.push(Message::Command),
+      WindowsAndMessaging::WM_SYSCOMMAND => out.push(Message::SystemCommand),
       WindowsAndMessaging::WM_DPICHANGED => {
         let dpi = lo_word(w_param.0 as u32) as u32;
         let suggested_rect = unsafe { *(l_param.0 as *const RECT) };
@@ -126,50 +143,82 @@ impl Message {
           )
         }
         .unwrap();
-        Message::ScaleFactorChanged(dpi_to_scale_factor(dpi))
+        out.push(Message::ScaleFactorChanged(dpi_to_scale_factor(dpi)))
       }
       WindowsAndMessaging::WM_INPUT => {
-        let _x = 0;
-        Message::RawInput(RawInputMessage::MouseButton {
-          button: Mouse::Unknown,
-          state: ButtonState::Pressed,
-        })
+        let data = read_raw_input(HRAWINPUT(l_param.0))?;
+
+        match RID_DEVICE_INFO_TYPE(data.header.dwType) {
+          Input::RIM_TYPEMOUSE => {
+            let mouse_data = unsafe { data.data.mouse };
+            let button_flags = unsafe { mouse_data.Anonymous.Anonymous.usButtonFlags };
+
+            if mouse_data.usFlags == Input::MOUSE_MOVE_RELATIVE {
+              let x = mouse_data.lLastX as f32;
+              let y = mouse_data.lLastY as f32;
+
+              if x != 0.0 || y != 0.0 {
+                out.push(Message::RawInput(RawInputMessage::MouseMotion {
+                  delta_x: x,
+                  delta_y: y,
+                }));
+              }
+            }
+
+            for (id, state) in mouse_button_states(button_flags).iter().enumerate() {
+              if let Some(state) = *state {
+                let button = Mouse::from_state(id);
+                out
+                  .push(Message::RawInput(RawInputMessage::MouseButton { button, state }))
+              }
+            }
+          }
+          // Input::RIM_TYPEKEYBOARD => {
+          //   out.push(Message::RawInput(RawInputMessage::Keyboard {
+          //     key: Key::Unknown,
+          //     state: KeyState::Pressed,
+          //   }))
+          // }
+          _ => return None,
+        }
       }
       WindowsAndMessaging::WM_KEYDOWN
       | WindowsAndMessaging::WM_SYSKEYDOWN
       | WindowsAndMessaging::WM_KEYUP
-      | WindowsAndMessaging::WM_SYSKEYUP => Self::new_keyboard_message(l_param),
+      | WindowsAndMessaging::WM_SYSKEYUP => out.push(Self::new_keyboard_message(l_param)),
       WindowsAndMessaging::WM_MOUSEMOVE => {
         let x = signed_lo_word(l_param.0 as i32) as i32;
         let y = signed_hi_word(l_param.0 as i32) as i32;
 
-        Message::Cursor(PhysicalPosition::new((x, y)).into())
+        out.push(Message::Cursor(PhysicalPosition::new((x, y)).into()));
       }
       WindowsAndMessaging::WM_MOUSEWHEEL => {
         let delta = signed_hi_word(w_param.0 as i32) as f32
           / WindowsAndMessaging::WHEEL_DELTA as f32;
-        Message::Scroll {
+        out.push(Message::Scroll {
           delta_x: 0.0,
           delta_y: delta,
-        }
+        });
       }
       WindowsAndMessaging::WM_MOUSEHWHEEL => {
         let delta = signed_hi_word(w_param.0 as i32) as f32
           / WindowsAndMessaging::WHEEL_DELTA as f32;
-        Message::Scroll {
+        out.push(Message::Scroll {
           delta_x: delta,
           delta_y: 0.0,
-        }
+        });
       }
       msg
         if (WindowsAndMessaging::WM_MOUSEFIRST..=WindowsAndMessaging::WM_MOUSELAST)
           .contains(&msg) =>
       {
         // mouse move / wheels will match earlier
-        Self::new_mouse_button_message(message, w_param, l_param)
+        out.push(Self::new_mouse_button_message(message, w_param, l_param));
       }
       _ => return None,
-    })
+    }
+
+    Some(out)
   }
 
   fn new_keyboard_message(l_param: LPARAM) -> Message {

@@ -17,11 +17,11 @@ impl<T> Handle<T> {
     Self(Arc::new(RwLock::new(t)))
   }
 
-  pub fn get(&self) -> RwLockReadGuard<'_, T> {
+  pub fn read_lock(&self) -> RwLockReadGuard<'_, T> {
     self.0.read().expect("lock was poisoned")
   }
 
-  pub fn get_mut(&self) -> RwLockWriteGuard<'_, T> {
+  pub fn write_lock(&self) -> RwLockWriteGuard<'_, T> {
     self.0.write().expect("lock was poisoned")
   }
 }

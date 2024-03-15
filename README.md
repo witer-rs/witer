@@ -31,9 +31,6 @@ a window quickly, easily, and idiomatically. I aim to have feature-parity with `
 
 Cross-platform support is highly unlikely, but pull requests are welcomed if anyone else wants to tackle it.
 
-I would like to eventually transition from using `windows` to `windows-sys` to benefit from better compile times,
-as the wrappers included in the former are redundant for this crate.
-
 ## Documentation
 
 Documentation is a work-in-progress as the crate evolves. Don't expect much here yet, so if you have any

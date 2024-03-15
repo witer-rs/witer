@@ -1,11 +1,15 @@
-use std::sync::{
-  atomic::{AtomicBool, Ordering},
-  OnceLock,
+use std::{
+  ops::BitAnd,
+  sync::{
+    atomic::{AtomicBool, Ordering},
+    OnceLock,
+  },
 };
 
 use windows::{
   core::PCSTR,
   Win32::{
+    Devices::HumanInterfaceDevice,
     Foundation::{HWND, NTSTATUS, RECT},
     Graphics::Gdi::GetDC,
     System::{
@@ -14,6 +18,15 @@ use windows::{
     },
     UI::{
       HiDpi::GetDpiForWindow,
+      Input::{
+        self,
+        GetRawInputData,
+        RegisterRawInputDevices,
+        HRAWINPUT,
+        RAWINPUT,
+        RAWINPUTDEVICE,
+        RAWINPUTHEADER,
+      },
       WindowsAndMessaging::{
         self,
         ClipCursor,
@@ -231,4 +244,63 @@ pub fn hwnd_dpi(hwnd: HWND) -> u32 {
     0 => BASE_DPI, // 0 is returned if hwnd is invalid
     dpi => dpi,
   }
+}
+
+pub fn register_all_mice_and_keyboards_for_raw_input(hwnd: HWND) -> bool {
+  // RIDEV_DEVNOTIFY: receive hotplug events
+  // RIDEV_INPUTSINK: receive events even if we're not in the foreground
+  // RIDEV_REMOVE: don't receive device events (requires NULL hwndTarget)
+  let flags = Input::RIDEV_DEVNOTIFY;
+
+  let devices: [RAWINPUTDEVICE; 2] = [
+    RAWINPUTDEVICE {
+      usUsagePage: HumanInterfaceDevice::HID_USAGE_PAGE_GENERIC,
+      usUsage: HumanInterfaceDevice::HID_USAGE_GENERIC_MOUSE,
+      dwFlags: flags,
+      hwndTarget: hwnd,
+    },
+    RAWINPUTDEVICE {
+      usUsagePage: HumanInterfaceDevice::HID_USAGE_PAGE_GENERIC,
+      usUsage: HumanInterfaceDevice::HID_USAGE_GENERIC_KEYBOARD,
+      dwFlags: flags,
+      hwndTarget: hwnd,
+    },
+  ];
+
+  register_raw_input_devices(&devices)
+}
+
+pub fn register_raw_input_devices(devices: &[RAWINPUTDEVICE]) -> bool {
+  let device_size = std::mem::size_of::<RAWINPUTDEVICE>() as u32;
+
+  unsafe { RegisterRawInputDevices(devices, device_size) }.is_err()
+}
+
+pub fn read_raw_input(handle: HRAWINPUT) -> Option<RAWINPUT> {
+  let mut data: RAWINPUT = unsafe { std::mem::zeroed() };
+  let mut data_size = std::mem::size_of::<RAWINPUT>() as u32;
+  let header_size = std::mem::size_of::<RAWINPUTHEADER>() as u32;
+
+  let status = unsafe {
+    GetRawInputData(
+      handle,
+      Input::RID_INPUT,
+      Some(&mut data as *mut _ as _),
+      &mut data_size,
+      header_size,
+    )
+  };
+
+  if status == u32::MAX || status == 0 {
+    return None;
+  }
+
+  Some(data)
+}
+
+pub fn is_flag_set<T: Copy + BitAnd<T, Output = T> + PartialEq<T>>(
+  var: T,
+  flag: T,
+) -> bool {
+  (var & flag) == flag
 }
