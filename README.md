@@ -10,7 +10,9 @@ use witer::prelude::*;
 
 fn main() {
   // Configure
-  let settings = WindowSettings::default();
+  let settings = WindowSettings::default()
+    .with_title("My App")
+    .with_outer_size(LogicalSize::new(800.0, 600.0));
 
   // Build
   let window = Window::new(settings).unwrap();
