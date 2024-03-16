@@ -61,7 +61,7 @@ impl WindowSettings {
     self
   }
 
-  pub fn with_size(mut self, size: impl Into<Size>) -> Self {
+  pub fn with_outer_size(mut self, size: impl Into<Size>) -> Self {
     self.size = size.into();
     self
   }

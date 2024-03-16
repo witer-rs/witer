@@ -30,7 +30,7 @@ fn main() -> WindowResult<()> {
     .with_flow(Flow::Poll)
     .with_visibility(Visibility::Hidden)
     .with_title("Threaded Example")
-    .with_size(PhysicalSize::new((800, 600)));
+    .with_outer_size(PhysicalSize::new((800, 600)));
 
   let window = Arc::new(Window::new(settings)?);
 
@@ -81,12 +81,26 @@ fn app_loop(
         let message = message_receiver.try_recv().ok();
 
         if let Some(Message::MouseButton { .. } | Message::Key { .. }) = message {
-          info!("{:?}", window.current_monitor().size());
+          info!(
+            "Window Inner Size: {:?} | Window outer size {:?}",
+            window.inner_size(),
+            window.outer_size()
+          );
         }
 
         match &message {
-          Some(Message::Resized(..) | Message::ScaleFactorChanged(..)) => {
-            app.resize(window.inner_size());
+          Some(Message::BoundsChanged {
+            outer_position: _,
+            outer_size: _,
+          }) => {
+            let new_size = window.inner_size();
+            // info!("Resized: {outer_size:?} | window.inner_size: {new_size:?}");
+            app.resize(new_size);
+          }
+          Some(Message::ScaleFactorChanged(..)) => {
+            let new_size = window.inner_size();
+            // info!("ScaleFactorChanged window.inner_size: {new_size:?}");
+            app.resize(new_size);
           }
           Some(Message::Loop(LoopMessage::Exit)) => break,
           _ => (),
@@ -104,7 +118,6 @@ fn app_loop(
 struct App {
   last_render_time: Instant,
   time: Time,
-  render_time: Time,
 
   frame_count: u32,
   is_revealed: bool,
@@ -122,7 +135,6 @@ impl App {
     pollster::block_on(async {
       let last_render_time = Instant::now();
       let time = TimeSettings::default().build();
-      let render_time = TimeSettings::default().build();
       let size = window.inner_size();
 
       let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
@@ -226,7 +238,6 @@ impl App {
       Self {
         last_render_time,
         time,
-        render_time,
         frame_count: 0,
         is_revealed: false,
         surface,
@@ -251,6 +262,7 @@ impl App {
   }
 
   fn update(&mut self, _window: &Window) {
+    // info!("update");
     self.time.update();
     while self.time.should_do_tick_unchecked() {
       self.time.tick();
@@ -262,15 +274,10 @@ impl App {
       return;
     }
 
-    self.render_time.update();
-    while self.render_time.should_do_tick_unchecked() {
-      self.render_time.tick();
-    }
-
     let now = Instant::now();
     let elapsed = now.duration_since(self.last_render_time);
     if elapsed >= Duration::from_secs_f64(0.20) {
-      let fps = format!(" | Avg FPS: {:.0}", 1.0 / self.render_time.average_delta_secs());
+      let fps = format!(" | Avg FPS: {:.0}", 1.0 / self.time.average_delta_secs());
       window.set_subtitle(fps);
       self.last_render_time = now;
     }
@@ -288,6 +295,7 @@ impl App {
     let output = match self.surface.get_current_texture() {
       Ok(output) => output,
       Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
+        // info!("wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated");
         self.resize(window.inner_size());
         return;
       }
@@ -296,6 +304,8 @@ impl App {
         return;
       }
     };
+
+    // info!("draw");
 
     let view = output
       .texture

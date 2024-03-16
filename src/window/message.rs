@@ -24,7 +24,7 @@ use super::{
     mouse::{mouse_button_states, Mouse},
     state::RawKeyState,
   },
-  state::{PhysicalPosition, PhysicalSize, Position, Size},
+  state::{PhysicalPosition, PhysicalSize},
 };
 use crate::{
   utilities::{
@@ -72,13 +72,18 @@ pub enum Message {
   /// Message sent when the cursor is moved within the window bounds. Don't
   /// use this for mouse input in cases such as first-person cameras as it is
   /// locked to the bounds of the window.
-  Cursor(Position),
+  Cursor(PhysicalPosition),
   /// Message sent when the scroll wheel is actuated.
   Scroll { delta_x: f32, delta_y: f32 },
-  /// Message sent when the window is resized.
-  Resized(Size),
-  /// Message sent when the window is moved.
-  Moved(Position),
+  /// Message sent when the window is resized. Sent after [`BoundsChanged`]
+  Resized(PhysicalSize),
+  /// Message sent when the window is moved. Sent after [`BoundsChanged`]
+  Moved(PhysicalPosition),
+  /// Message sent first when the window is moved or resized.
+  BoundsChanged {
+    outer_position: PhysicalPosition,
+    outer_size: PhysicalSize,
+  },
   /// Message sent by Windows when certain actions are taken. WIP
   Command,
   /// Message sent by Windows when certain actions are taken. WIP
@@ -124,18 +129,24 @@ impl Message {
       WindowsAndMessaging::WM_CLOSE => out.push(Message::CloseRequested),
       WindowsAndMessaging::WM_PAINT => out.push(Message::Paint),
       WindowsAndMessaging::WM_SIZE => {
-        let width = lo_word(l_param.0 as u32) as i32;
-        let height = hi_word(l_param.0 as u32) as i32;
+        let width = lo_word(l_param.0 as u32) as u32;
+        let height = hi_word(l_param.0 as u32) as u32;
 
-        out
-          .push(Message::Resized(PhysicalSize::new((width as u32, height as u32)).into()))
+        out.push(Message::Resized(PhysicalSize::new((width, height))))
+      }
+      WindowsAndMessaging::WM_MOVE => {
+        let x = lo_word(l_param.0 as u32) as i32;
+        let y = hi_word(l_param.0 as u32) as i32;
+
+        out.push(Message::Moved(PhysicalPosition::new((x, y))))
       }
       WindowsAndMessaging::WM_WINDOWPOSCHANGED => {
         let window_pos = unsafe { &*(l_param.0 as *const WINDOWPOS) };
 
-        out.push(Message::Moved(
-          PhysicalPosition::new((window_pos.x, window_pos.y)).into(),
-        ))
+        out.push(Message::BoundsChanged {
+          outer_position: PhysicalPosition::new((window_pos.x, window_pos.y)),
+          outer_size: PhysicalSize::new((window_pos.cx as u32, window_pos.cy as u32)),
+        })
       }
       WindowsAndMessaging::WM_SETFOCUS => out.push(Message::Focus(true)),
       WindowsAndMessaging::WM_KILLFOCUS => out.push(Message::Focus(false)),
@@ -215,7 +226,7 @@ impl Message {
         let x = signed_lo_word(l_param.0 as i32) as i32;
         let y = signed_hi_word(l_param.0 as i32) as i32;
 
-        out.push(Message::Cursor(PhysicalPosition::new((x, y)).into()));
+        out.push(Message::Cursor(PhysicalPosition::new((x, y))));
       }
       WindowsAndMessaging::WM_MOUSEWHEEL => {
         let delta = signed_hi_word(w_param.0 as i32) as f32

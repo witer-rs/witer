@@ -17,7 +17,7 @@ use witer::{opengl::DisplayBuilder, prelude::*};
 fn main() {
   let settings = WindowSettings::default()
     .with_flow(Flow::Wait)
-    .with_size((1280, 720))
+    .with_outer_size((1280, 720))
     .with_title("Simple Example");
 
   let template = ConfigTemplateBuilder::new()

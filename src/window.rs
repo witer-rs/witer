@@ -465,24 +465,26 @@ impl Window {
   // SETTERS
 
   fn force_set_outer_position(&self, position: Position) {
-    self.state.write_lock().position = position;
+    // self.state.write_lock().position = position;
     self.request(Command::SetPosition(position));
   }
 
   pub fn set_outer_position(&self, position: Position) {
-    if position == self.state.read_lock().position {
+    let scale_factor = self.state.read_lock().scale_factor;
+    if position.as_physical(scale_factor) == self.outer_position() {
       return;
     }
     self.force_set_outer_position(position)
   }
 
   fn force_set_inner_size(&self, size: Size) {
-    self.state.write_lock().size = size;
+    // self.state.write_lock().size = size;
     self.request(Command::SetSize(size));
   }
 
   pub fn set_inner_size(&self, size: Size) {
-    if size == self.state.read_lock().size {
+    let scale_factor = self.state.read_lock().scale_factor;
+    if size.as_physical(scale_factor) == self.outer_size() {
       return;
     }
     self.force_set_inner_size(size)

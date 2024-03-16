@@ -3,6 +3,11 @@ use std::{
   thread::JoinHandle,
 };
 
+use windows::Win32::{
+  Foundation::{HWND, RECT},
+  UI::WindowsAndMessaging::GetWindowRect,
+};
+
 use super::stage::Stage;
 use crate::{debug::WindowResult, window::Input};
 
@@ -20,8 +25,8 @@ pub struct InternalState {
   pub subtitle: String,
   pub theme: Theme,
   pub style: StyleInfo,
-  pub position: Position,
-  pub size: Size,
+  // pub position: Position,
+  // pub size: Size,
   pub last_windowed_position: Position,
   pub last_windowed_size: Size,
   pub cursor_mode: CursorMode,
@@ -37,6 +42,21 @@ pub struct InternalState {
 impl InternalState {
   pub fn is_closing(&self) -> bool {
     matches!(self.stage, Stage::Closing | Stage::ExitLoop)
+  }
+
+  pub(crate) fn update_last_windowed_pos_size(&mut self, hwnd: HWND) {
+    let mut window_rect = RECT::default();
+    let _ = unsafe { GetWindowRect(hwnd, &mut window_rect) };
+    let size = PhysicalSize {
+      width: (window_rect.right - window_rect.left) as u32,
+      height: (window_rect.bottom - window_rect.top) as u32,
+    };
+    self.last_windowed_size = size.into();
+    let position = PhysicalPosition {
+      x: window_rect.left,
+      y: window_rect.top,
+    };
+    self.last_windowed_position = position.into();
   }
 }
 

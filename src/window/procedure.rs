@@ -176,8 +176,8 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
     theme: Default::default(),
     style: create_info.style,
     scale_factor,
-    position,
-    size,
+    // position,
+    // size,
     last_windowed_position: position,
     last_windowed_size: size,
     cursor_mode: create_info.settings.cursor_mode,
@@ -261,27 +261,6 @@ fn on_message(
   data: &mut SubclassWindowData,
 ) -> LRESULT {
   let messages = Message::collect(hwnd, msg, w_param, l_param);
-  // handle from wndproc
-  let result = match msg {
-    WindowsAndMessaging::WM_SIZING
-    | WindowsAndMessaging::WM_MOVING
-    | WindowsAndMessaging::WM_MOVE => {
-      // ignore certain messages
-      return unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) };
-    }
-    WindowsAndMessaging::WM_DESTROY => {
-      unsafe { PostQuitMessage(0) };
-      return unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) };
-    }
-    WindowsAndMessaging::WM_CLOSE => LRESULT(0),
-    _ => unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) },
-  };
-
-  // handle command requests
-  if process_commands(hwnd, data) {
-    // process commands returns true to interrupt
-    return result;
-  }
 
   // Wait for previous message to be handled
   if !data.message_sender.is_empty() {
@@ -305,6 +284,26 @@ fn on_message(
     }
   }
 
+  // handle from wndproc
+  let result = match msg {
+    WindowsAndMessaging::WM_SIZING | WindowsAndMessaging::WM_MOVING => {
+      // ignore certain messages
+      return unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) };
+    }
+    WindowsAndMessaging::WM_DESTROY => {
+      unsafe { PostQuitMessage(0) };
+      return unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) };
+    }
+    WindowsAndMessaging::WM_CLOSE => LRESULT(0),
+    _ => unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) },
+  };
+
+  // handle command requests
+  if process_commands(hwnd, data) {
+    // process commands returns true to interrupt
+    return result;
+  }
+
   result
 }
 
@@ -322,18 +321,23 @@ fn update_state(hwnd: HWND, data: &SubclassWindowData, message: &Message) {
           .unwrap();
       }
     }
-    &Message::Resized(size) => {
+    &Message::Resized(_size) => {
+      // info!("RESIZED: {_size:?}");
       let is_windowed = data.state.read_lock().style.fullscreen.is_none();
-      data.state.write_lock().size = size;
+      // // data.state.write_lock().size = size;
       if is_windowed {
-        data.state.write_lock().last_windowed_size = size;
+        data.state.write_lock().update_last_windowed_pos_size(hwnd);
       }
     }
-    &Message::Moved(position) => {
+    &Message::BoundsChanged {
+      outer_position: _,
+      outer_size: _,
+    } => {
+      // info!("BOUNDSCHANGED: {outer_position:?}, {outer_size:?}");
       let is_windowed = data.state.read_lock().style.fullscreen.is_none();
-      data.state.write_lock().position = position;
+      // // data.state.write_lock().position = position;
       if is_windowed {
-        data.state.write_lock().last_windowed_position = position;
+        data.state.write_lock().update_last_windowed_pos_size(hwnd);
       }
     }
     &Message::Key { key, state, .. } => {
@@ -410,6 +414,22 @@ fn process_commands(hwnd: HWND, data: &mut SubclassWindowData) -> bool {
             };
           }
         }
+        unsafe {
+          SetWindowPos(
+            hwnd,
+            None,
+            0,
+            0,
+            0,
+            0,
+            WindowsAndMessaging::SWP_NOZORDER
+              | WindowsAndMessaging::SWP_NOMOVE
+              | WindowsAndMessaging::SWP_NOSIZE
+              | WindowsAndMessaging::SWP_NOACTIVATE
+              | WindowsAndMessaging::SWP_FRAMECHANGED,
+          )
+          .expect("Failed to set window size");
+        }
       }
       Command::SetWindowText(text) => unsafe {
         SetWindowTextW(hwnd, &text).unwrap();
@@ -424,8 +444,7 @@ fn process_commands(hwnd: HWND, data: &mut SubclassWindowData) -> bool {
             0,
             physical_size.width as i32,
             physical_size.height as i32,
-            WindowsAndMessaging::SWP_ASYNCWINDOWPOS
-              | WindowsAndMessaging::SWP_NOZORDER
+            WindowsAndMessaging::SWP_NOZORDER
               | WindowsAndMessaging::SWP_NOMOVE
               | WindowsAndMessaging::SWP_NOREPOSITION
               | WindowsAndMessaging::SWP_NOACTIVATE,
@@ -444,8 +463,7 @@ fn process_commands(hwnd: HWND, data: &mut SubclassWindowData) -> bool {
             physical_position.y,
             0,
             0,
-            WindowsAndMessaging::SWP_ASYNCWINDOWPOS
-              | WindowsAndMessaging::SWP_NOZORDER
+            WindowsAndMessaging::SWP_NOZORDER
               | WindowsAndMessaging::SWP_NOSIZE
               | WindowsAndMessaging::SWP_NOREPOSITION
               | WindowsAndMessaging::SWP_NOACTIVATE,
@@ -455,6 +473,7 @@ fn process_commands(hwnd: HWND, data: &mut SubclassWindowData) -> bool {
         unsafe { InvalidateRgn(hwnd, None, false) };
       }
       Command::SetFullscreen(fullscreen) => {
+        // info!("Fullscreen: {fullscreen:?}");
         // update style
         let style = data.state.read_lock().style;
         unsafe {
@@ -489,7 +508,9 @@ fn process_commands(hwnd: HWND, data: &mut SubclassWindowData) -> bool {
                   info.rcMonitor.top,
                   info.rcMonitor.right - info.rcMonitor.left,
                   info.rcMonitor.bottom - info.rcMonitor.top,
-                  WindowsAndMessaging::SWP_NOZORDER,
+                  WindowsAndMessaging::SWP_ASYNCWINDOWPOS
+                    | WindowsAndMessaging::SWP_NOZORDER
+                    | WindowsAndMessaging::SWP_FRAMECHANGED,
                 )
                 .expect("Failed to set window to fullscreen");
               }
@@ -516,7 +537,9 @@ fn process_commands(hwnd: HWND, data: &mut SubclassWindowData) -> bool {
                 position.y,
                 size.width as i32,
                 size.height as i32,
-                WindowsAndMessaging::SWP_NOZORDER,
+                WindowsAndMessaging::SWP_ASYNCWINDOWPOS
+                  | WindowsAndMessaging::SWP_NOZORDER
+                  | WindowsAndMessaging::SWP_FRAMECHANGED,
               )
               .expect("Failed to set window to windowed");
             };
