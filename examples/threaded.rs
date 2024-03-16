@@ -55,18 +55,11 @@ fn main() -> WindowResult<()> {
       }
     }
 
-    // this is checked here because try_send moves the message, but we want to wait
-    // after the message is sent.
-    let should_sync =
-      matches!(message, Message::Resized(..) | Message::Loop(LoopMessage::Wait));
-
     if !message.is_empty() {
       message_sender.try_send(message).unwrap();
     }
 
-    if should_sync {
-      sync_barrier.wait();
-    }
+    sync_barrier.wait();
   }
 
   handle.join().unwrap();
@@ -102,12 +95,7 @@ fn app_loop(
         app.update(&window);
         app.draw(&window);
 
-        if matches!(
-          message,
-          Some(Message::Resized(..) | Message::Loop(LoopMessage::Wait))
-        ) {
-          sync_barrier.wait();
-        }
+        sync_barrier.wait();
       }
     })
     .unwrap()
@@ -252,12 +240,14 @@ impl App {
   }
 
   fn resize(&mut self, new_size: PhysicalSize) {
-    if !new_size.is_any_zero() {
-      self.size = new_size;
-      self.config.width = new_size.width;
-      self.config.height = new_size.height;
-      self.surface.configure(&self.device, &self.config);
+    if new_size.is_any_zero() {
+      return;
     }
+
+    self.size = new_size;
+    self.config.width = new_size.width;
+    self.config.height = new_size.height;
+    self.surface.configure(&self.device, &self.config);
   }
 
   fn update(&mut self, _window: &Window) {
@@ -268,8 +258,7 @@ impl App {
   }
 
   fn draw(&mut self, window: &Window) {
-    let size = window.inner_size();
-    if size.width <= 1 || size.height <= 1 {
+    if window.inner_size().is_any_zero() {
       return;
     }
 
@@ -289,6 +278,7 @@ impl App {
     match (self.is_revealed, self.frame_count) {
       (false, 10) => {
         window.set_visibility(Visibility::Shown);
+        Self::center_window(window);
         self.is_revealed = true;
       }
       (false, _) => self.frame_count = self.frame_count.wrapping_add(1),
@@ -342,5 +332,20 @@ impl App {
 
     self.queue.submit(std::iter::once(encoder.finish()));
     output.present();
+  }
+
+  fn center_window(window: &Window) {
+    let window_size = window.outer_size();
+    let monitor_pos = window.current_monitor().position();
+    let monitor_size = window.current_monitor().size();
+    let monitor_center = PhysicalPosition {
+      x: monitor_pos.x + (monitor_size.width as f32 * 0.5) as i32,
+      y: monitor_pos.y + (monitor_size.height as f32 * 0.5) as i32,
+    };
+    let adjusted_position = PhysicalPosition {
+      x: monitor_center.x - (window_size.width as f32 * 0.5) as i32,
+      y: monitor_center.y - (window_size.height as f32 * 0.5) as i32,
+    };
+    window.set_outer_position(adjusted_position.into());
   }
 }
