@@ -149,7 +149,7 @@ impl<S> WindowSettings<NoTitle, S> {
 }
 
 impl<T> WindowSettings<T, NoSize> {
-  /// You can only pick either `with_inner_size` or `with_outer_size`
+  /// You must pick either `with_inner_size` or `with_outer_size`
   pub fn with_inner_size(self, size: impl Into<Size>) -> WindowSettings<T, HasSize> {
     WindowSettings {
       size: HasSize(SizeType::Inner(size.into())),
@@ -166,7 +166,7 @@ impl<T> WindowSettings<T, NoSize> {
     }
   }
 
-  /// You can only pick either `with_inner_size` or `with_outer_size`
+  /// You must pick either `with_inner_size` or `with_outer_size`
   pub fn with_outer_size(self, size: impl Into<Size>) -> WindowSettings<T, HasSize> {
     WindowSettings {
       size: HasSize(SizeType::Outer(size.into())),
