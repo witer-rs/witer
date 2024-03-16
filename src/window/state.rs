@@ -129,12 +129,12 @@ pub struct LogicalPosition {
 }
 
 impl LogicalPosition {
-  pub fn new(position: impl Into<Self>) -> Self {
-    position.into()
+  pub fn new(x: f64, y: f64) -> Self {
+    Self { x, y }
   }
 
   pub fn as_physical(&self, scale_factor: f64) -> PhysicalPosition {
-    PhysicalPosition::new((self.x.round() as i32, self.y.round() as i32)) * scale_factor
+    PhysicalPosition::new(self.x.round() as i32, self.y.round() as i32) * scale_factor
   }
 
   pub fn is_positive(&self) -> bool {
@@ -209,12 +209,12 @@ pub struct PhysicalPosition {
 }
 
 impl PhysicalPosition {
-  pub fn new(position: impl Into<Self>) -> Self {
-    position.into()
+  pub fn new(x: i32, y: i32) -> Self {
+    Self { x, y }
   }
 
   pub fn as_logical(&self, scale_factor: f64) -> LogicalPosition {
-    LogicalPosition::new((self.x as f64, self.y as f64)) / scale_factor
+    LogicalPosition::new(self.x as f64, self.y as f64) / scale_factor
   }
 
   pub fn is_positive(&self) -> bool {
@@ -339,12 +339,12 @@ pub struct LogicalSize {
 }
 
 impl LogicalSize {
-  pub fn new(size: impl Into<Self>) -> Self {
-    size.into()
+  pub fn new(width: f64, height: f64) -> Self {
+    Self { width, height }
   }
 
   pub fn as_physical(&self, scale_factor: f64) -> PhysicalSize {
-    PhysicalSize::new((self.width.round() as u32, self.height.round() as u32))
+    PhysicalSize::new(self.width.round() as u32, self.height.round() as u32)
       * scale_factor
   }
 
@@ -432,12 +432,12 @@ pub struct PhysicalSize {
 }
 
 impl PhysicalSize {
-  pub fn new(size: impl Into<Self>) -> Self {
-    size.into()
+  pub fn new(width: u32, height: u32) -> Self {
+    Self { width, height }
   }
 
   pub fn as_logical(&self, scale_factor: f64) -> LogicalSize {
-    LogicalSize::new((self.width as f64, self.height as f64)) / scale_factor
+    LogicalSize::new(self.width as f64, self.height as f64) / scale_factor
   }
 
   pub fn is_any_zero(&self) -> bool {

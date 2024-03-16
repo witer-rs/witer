@@ -45,7 +45,7 @@ use windows::Win32::{
 use super::message::Message;
 use super::{
   command::Command,
-  settings::WindowSettings,
+  settings::{HasSize, WindowSettings},
   state::{CursorMode, Fullscreen, StyleInfo, Visibility},
   Window,
 };
@@ -68,7 +68,7 @@ use crate::{
 };
 
 pub struct CreateInfo {
-  pub settings: WindowSettings,
+  pub settings: WindowSettings<HasSize>,
   pub window: Option<(Window, Handle<InternalState>)>,
   pub sync: SyncData,
   pub command_queue: Arc<SegQueue<Command>>,
@@ -158,12 +158,12 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
   };
 
   let scale_factor = dpi_to_scale_factor(hwnd_dpi(hwnd));
-  let size = create_info.settings.size;
+  let size = create_info.settings.size.0.size();
   let position = create_info.settings.position.unwrap_or(
-    PhysicalPosition::new((
+    PhysicalPosition::new(
       WindowsAndMessaging::CW_USEDEFAULT,
       WindowsAndMessaging::CW_USEDEFAULT,
-    ))
+    )
     .into(),
   );
 

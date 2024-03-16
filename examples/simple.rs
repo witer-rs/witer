@@ -9,7 +9,7 @@ fn main() {
   let settings = WindowSettings::default()
     .with_close_on_x(false)
     .with_flow(Flow::Wait)
-    .with_outer_size(LogicalSize::new((800.0, 450.0)))
+    .with_outer_size(LogicalSize::new(800.0, 450.0))
     .with_title("Press Esc to close!");
 
   let window = Window::new(settings).unwrap();

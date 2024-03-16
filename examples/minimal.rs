@@ -2,6 +2,8 @@
   This contrived example showcases the minimal amount to code required to open a window.
 */
 
+use witer::prelude::*;
+
 fn main() {
-  for _ in &witer::window::Window::new(Default::default()).unwrap() {}
+  for _ in &Window::new(WindowSettings::default_size()).unwrap() {}
 }

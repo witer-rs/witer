@@ -45,20 +45,23 @@ use windows::{
       },
     },
     System::LibraryLoader::GetModuleHandleW,
-    UI::WindowsAndMessaging::{
-      self,
-      CreateWindowExW,
-      DispatchMessageW,
-      GetClientRect,
-      GetCursorPos,
-      GetMessageW,
-      GetWindowRect,
-      LoadCursorW,
-      PostMessageW,
-      RegisterClassExW,
-      TranslateMessage,
-      MSG,
-      WNDCLASSEXW,
+    UI::{
+      HiDpi::AdjustWindowRectExForDpi,
+      WindowsAndMessaging::{
+        self,
+        CreateWindowExW,
+        DispatchMessageW,
+        GetClientRect,
+        GetCursorPos,
+        GetMessageW,
+        GetWindowRect,
+        LoadCursorW,
+        PostMessageW,
+        RegisterClassExW,
+        TranslateMessage,
+        MSG,
+        WNDCLASSEXW,
+      },
     },
   },
 };
@@ -67,6 +70,7 @@ use self::{
   command::Command,
   message::LoopMessage,
   procedure::SyncData,
+  settings::{HasSize, SizeType},
   stage::Stage,
   state::{CursorMode, Fullscreen, PhysicalSize, Position, StyleInfo},
 };
@@ -77,6 +81,7 @@ use crate::{
   utilities::{
     get_window_ex_style,
     get_window_style,
+    hwnd_dpi,
     is_dark_mode_supported,
     is_system_dark_mode_enabled,
     Monitor,
@@ -124,7 +129,7 @@ impl Window {
   pub const WINDOW_SUBCLASS_ID: usize = 0;
 
   /// Create a new window based on the settings provided.
-  pub fn new(settings: WindowSettings) -> Result<Self, WindowError> {
+  pub fn new(settings: WindowSettings<HasSize>) -> Result<Self, WindowError> {
     let (message_sender, message_receiver) = crossbeam::channel::unbounded();
 
     let sync = SyncData {
@@ -157,7 +162,10 @@ impl Window {
     if let Some(position) = settings.position {
       window.force_set_outer_position(position);
     }
-    window.force_set_inner_size(settings.size);
+    match settings.size.0 {
+      SizeType::Outer(size) => window.force_set_outer_size(size),
+      SizeType::Inner(size) => window.force_set_inner_size(size),
+    }
     window.force_set_decorations(settings.decorations);
     window.force_set_theme(settings.theme);
     window.force_set_visibility(settings.visibility);
@@ -477,9 +485,46 @@ impl Window {
     self.force_set_outer_position(position)
   }
 
-  fn force_set_inner_size(&self, size: Size) {
+  fn force_set_outer_size(&self, size: Size) {
     // self.state.write_lock().size = size;
     self.request(Command::SetSize(size));
+  }
+
+  pub fn set_outer_size(&self, size: Size) {
+    let scale_factor = self.state.read_lock().scale_factor;
+    if size.as_physical(scale_factor) == self.inner_size() {
+      return;
+    }
+    self.force_set_outer_size(size)
+  }
+
+  fn force_set_inner_size(&self, size: Size) {
+    let scale_factor = self.state.read_lock().scale_factor;
+    let physical_size = size.as_physical(scale_factor);
+    let style = self.state.read_lock().style;
+    let mut window_rect = RECT {
+      top: 0,
+      left: 0,
+      right: physical_size.width as i32,
+      bottom: physical_size.height as i32,
+    };
+    unsafe {
+      AdjustWindowRectExForDpi(
+        &mut window_rect,
+        get_window_style(&style),
+        false,
+        get_window_ex_style(&style),
+        hwnd_dpi(self.hwnd),
+      )
+    }
+    .unwrap();
+
+    let adjusted_size = PhysicalSize {
+      width: (window_rect.right - window_rect.left) as u32,
+      height: (window_rect.bottom - window_rect.top) as u32,
+    };
+
+    self.request(Command::SetSize(adjusted_size.into()));
   }
 
   pub fn set_inner_size(&self, size: Size) {

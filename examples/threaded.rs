@@ -30,7 +30,7 @@ fn main() -> WindowResult<()> {
     .with_flow(Flow::Poll)
     .with_visibility(Visibility::Hidden)
     .with_title("Threaded Example")
-    .with_outer_size(PhysicalSize::new((800, 600)));
+    .with_outer_size(LogicalSize::new(800.0, 600.0));
 
   let window = Arc::new(Window::new(settings)?);
 

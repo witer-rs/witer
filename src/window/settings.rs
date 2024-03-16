@@ -9,11 +9,41 @@ use super::state::{
   Visibility,
 };
 
+#[derive(Debug, Clone)]
+pub enum SizeType {
+  /// Size of the entire window including borders.
+  Outer(Size),
+  /// Size of the client area of the window.
+  Inner(Size),
+}
+
+impl SizeType {
+  pub fn size(&self) -> Size {
+    match *self {
+      Self::Outer(s) => s,
+      Self::Inner(s) => s,
+    }
+  }
+
+  pub fn outer(size: impl Into<Size>) -> Self {
+    Self::Outer(size.into())
+  }
+
+  pub fn inner(size: impl Into<Size>) -> Self {
+    Self::Inner(size.into())
+  }
+}
+
+#[derive(Debug, Clone)]
+pub struct NoSize;
+#[derive(Debug, Clone)]
+pub struct HasSize(pub SizeType);
+
 /// Configures the window to be built.
 #[derive(Debug, Clone)]
-pub struct WindowSettings {
+pub struct WindowSettings<S> {
   pub title: String,
-  pub size: Size,
+  pub size: S,
   pub position: Option<Position>,
   pub flow: Flow,
   pub theme: Theme,
@@ -25,10 +55,10 @@ pub struct WindowSettings {
   pub close_on_x: bool,
 }
 
-impl Default for WindowSettings {
+impl Default for WindowSettings<NoSize> {
   fn default() -> Self {
     let title: String = "Window".into();
-    let size = LogicalSize::new((800.0, 600.0)).into();
+    let size = NoSize;
     let position = None;
     let flow = Flow::default();
     let theme = Theme::default();
@@ -55,14 +85,9 @@ impl Default for WindowSettings {
   }
 }
 
-impl WindowSettings {
+impl<S> WindowSettings<S> {
   pub fn with_title(mut self, title: impl Into<String>) -> Self {
     self.title = title.into();
-    self
-  }
-
-  pub fn with_outer_size(mut self, size: impl Into<Size>) -> Self {
-    self.size = size.into();
     self
   }
 
@@ -110,5 +135,46 @@ impl WindowSettings {
   pub fn with_resizeable(mut self, resizeable: bool) -> Self {
     self.resizeable = resizeable;
     self
+  }
+}
+
+impl WindowSettings<NoSize> {
+  /// Uses `with_outer_size` set to `LogicalSize::new(800.0, 600.0)`
+  pub fn default_size() -> WindowSettings<HasSize> {
+    WindowSettings::default().with_outer_size(LogicalSize::new(800.0, 600.0))
+  }
+
+  /// You can only pick either `with_inner_size` or `with_outer_size`
+  pub fn with_inner_size(self, size: impl Into<Size>) -> WindowSettings<HasSize> {
+    WindowSettings {
+      size: HasSize(SizeType::Inner(size.into())),
+      title: self.title,
+      position: self.position,
+      flow: self.flow,
+      theme: self.theme,
+      visibility: self.visibility,
+      decorations: self.decorations,
+      resizeable: self.resizeable,
+      fullscreen: self.fullscreen,
+      cursor_mode: self.cursor_mode,
+      close_on_x: self.close_on_x,
+    }
+  }
+
+  /// You can only pick either `with_inner_size` or `with_outer_size`
+  pub fn with_outer_size(self, size: impl Into<Size>) -> WindowSettings<HasSize> {
+    WindowSettings {
+      size: HasSize(SizeType::Outer(size.into())),
+      title: self.title,
+      position: self.position,
+      flow: self.flow,
+      theme: self.theme,
+      visibility: self.visibility,
+      decorations: self.decorations,
+      resizeable: self.resizeable,
+      fullscreen: self.fullscreen,
+      cursor_mode: self.cursor_mode,
+      close_on_x: self.close_on_x,
+    }
   }
 }

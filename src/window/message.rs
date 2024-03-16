@@ -132,13 +132,13 @@ impl Message {
         let width = lo_word(l_param.0 as u32) as u32;
         let height = hi_word(l_param.0 as u32) as u32;
 
-        out.push(Message::Resized(PhysicalSize::new((width, height))))
+        out.push(Message::Resized(PhysicalSize::new(width, height)))
       }
       WindowsAndMessaging::WM_MOVE => {
         let x = lo_word(l_param.0 as u32) as i32;
         let y = hi_word(l_param.0 as u32) as i32;
 
-        out.push(Message::Moved(PhysicalPosition::new((x, y))))
+        out.push(Message::Moved(PhysicalPosition::new(x, y)))
       }
       WindowsAndMessaging::WM_WINDOWPOSCHANGED => {
         let window_pos = unsafe { &*(l_param.0 as *const WINDOWPOS) };
@@ -148,8 +148,8 @@ impl Message {
         // }
 
         out.push(Message::BoundsChanged {
-          outer_position: PhysicalPosition::new((window_pos.x, window_pos.y)),
-          outer_size: PhysicalSize::new((window_pos.cx as u32, window_pos.cy as u32)),
+          outer_position: PhysicalPosition::new(window_pos.x, window_pos.y),
+          outer_size: PhysicalSize::new(window_pos.cx as u32, window_pos.cy as u32),
         })
       }
       WindowsAndMessaging::WM_SETFOCUS => out.push(Message::Focus(true)),
@@ -230,7 +230,7 @@ impl Message {
         let x = signed_lo_word(l_param.0 as i32) as i32;
         let y = signed_hi_word(l_param.0 as i32) as i32;
 
-        out.push(Message::Cursor(PhysicalPosition::new((x, y))));
+        out.push(Message::Cursor(PhysicalPosition::new(x, y)));
       }
       WindowsAndMessaging::WM_MOUSEWHEEL => {
         let delta = signed_hi_word(w_param.0 as i32) as f32
@@ -390,7 +390,7 @@ impl Message {
 
     let (x, y) = (signed_lo_word(l_param.0 as i32), signed_hi_word(l_param.0 as i32));
 
-    let position = PhysicalPosition::new((x as i32, y as i32));
+    let position = PhysicalPosition::new(x as i32, y as i32);
 
     Message::MouseButton {
       button: mouse_code,
