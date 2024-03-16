@@ -93,14 +93,7 @@ fn app_loop(
             outer_position: _,
             outer_size: _,
           }) => {
-            let new_size = window.inner_size();
-            // info!("Resized: {outer_size:?} | window.inner_size: {new_size:?}");
-            app.resize(new_size);
-          }
-          Some(Message::ScaleFactorChanged(..)) => {
-            let new_size = window.inner_size();
-            // info!("ScaleFactorChanged window.inner_size: {new_size:?}");
-            app.resize(new_size);
+            app.resize(window.inner_size());
           }
           Some(Message::Loop(LoopMessage::Exit)) => break,
           _ => (),
