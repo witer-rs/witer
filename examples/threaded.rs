@@ -30,7 +30,7 @@ fn main() -> WindowResult<()> {
     .with_flow(Flow::Poll)
     .with_visibility(Visibility::Hidden)
     .with_title("Threaded Example")
-    .with_size(LogicalSize::new((800.0, 600.0)));
+    .with_size(PhysicalSize::new((800, 600)));
 
   let window = Arc::new(Window::new(settings)?);
 
@@ -252,7 +252,7 @@ impl App {
   }
 
   fn resize(&mut self, new_size: PhysicalSize) {
-    if !new_size.is_zero() {
+    if !new_size.is_any_zero() {
       self.size = new_size;
       self.config.width = new_size.width;
       self.config.height = new_size.height;

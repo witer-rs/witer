@@ -328,15 +328,27 @@ impl LogicalSize {
       * scale_factor
   }
 
-  pub fn is_positive(&self) -> bool {
+  pub fn is_any_positive(&self) -> bool {
+    self.width > 0.0 || self.height > 0.0
+  }
+
+  pub fn is_all_positive(&self) -> bool {
     self.width > 0.0 && self.height > 0.0
   }
 
-  pub fn is_negative(&self) -> bool {
+  pub fn is_any_negative(&self) -> bool {
+    self.width < 0.0 || self.height < 0.0
+  }
+
+  pub fn is_all_negative(&self) -> bool {
     self.width < 0.0 && self.height < 0.0
   }
 
-  pub fn is_zero(&self) -> bool {
+  pub fn is_any_zero(&self) -> bool {
+    self.width == 0.0 || self.height == 0.0
+  }
+
+  pub fn is_all_zero(&self) -> bool {
     self.width == 0.0 && self.height == 0.0
   }
 }
@@ -408,7 +420,11 @@ impl PhysicalSize {
     LogicalSize::new((self.width as f64, self.height as f64)) / scale_factor
   }
 
-  pub fn is_zero(&self) -> bool {
+  pub fn is_any_zero(&self) -> bool {
+    self.width == 0 || self.height == 0
+  }
+
+  pub fn is_all_zero(&self) -> bool {
     self.width == 0 && self.height == 0
   }
 }
