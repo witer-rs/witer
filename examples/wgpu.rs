@@ -15,8 +15,8 @@ use witer::prelude::*;
 
 fn main() -> WindowResult<()> {
   let settings = WindowSettings::default()
-    .with_outer_size(LogicalSize::new(800.0, 600.0))
     .with_title("wgpu Example")
+    .with_outer_size(LogicalSize::new(800.0, 600.0))
     .with_flow(Flow::Poll)
     .with_visibility(Visibility::Hidden); // start hidden to prevent first frame white flash;
 

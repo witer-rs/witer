@@ -7,8 +7,8 @@ use witer::prelude::*;
 
 fn main() {
   let settings = WindowSettings::default()
-    .with_outer_size(LogicalSize::new(800.0, 450.0))
     .with_title("Press Esc to close!")
+    .with_outer_size(LogicalSize::new(800.0, 450.0))
     .with_close_on_x(false)
     .with_flow(Flow::Wait);
 
