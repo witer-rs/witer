@@ -142,6 +142,10 @@ impl Message {
       }
       WindowsAndMessaging::WM_WINDOWPOSCHANGED => {
         let window_pos = unsafe { &*(l_param.0 as *const WINDOWPOS) };
+        // if (window_pos.flags & WindowsAndMessaging::SWP_NOMOVE) !=
+        // WindowsAndMessaging::SWP_NOMOVE {
+        //   out.push(Message::Moved(PhysicalPosition::new((x, y))))
+        // }
 
         out.push(Message::BoundsChanged {
           outer_position: PhysicalPosition::new((window_pos.x, window_pos.y)),

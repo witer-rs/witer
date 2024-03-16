@@ -89,11 +89,8 @@ fn app_loop(
         }
 
         match &message {
-          Some(Message::BoundsChanged {
-            outer_position: _,
-            outer_size: _,
-          }) => {
-            app.resize(window.inner_size());
+          Some(Message::Resized(new_size)) => {
+            app.resize(*new_size);
           }
           Some(Message::Loop(LoopMessage::Exit)) => break,
           _ => (),
