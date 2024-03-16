@@ -1,13 +1,4 @@
-use super::state::{
-  CursorMode,
-  Flow,
-  Fullscreen,
-  LogicalSize,
-  Position,
-  Size,
-  Theme,
-  Visibility,
-};
+use super::state::{CursorMode, Flow, Fullscreen, Position, Size, Theme, Visibility};
 
 #[derive(Debug, Clone)]
 pub enum SizeType {
@@ -35,14 +26,19 @@ impl SizeType {
 }
 
 #[derive(Debug, Clone)]
+pub struct NoTitle;
+#[derive(Debug, Clone)]
+pub struct HasTitle(pub String);
+
+#[derive(Debug, Clone)]
 pub struct NoSize;
 #[derive(Debug, Clone)]
 pub struct HasSize(pub SizeType);
 
 /// Configures the window to be built.
 #[derive(Debug, Clone)]
-pub struct WindowSettings<S> {
-  pub title: String,
+pub struct WindowSettings<T, S> {
+  pub title: T,
   pub size: S,
   pub position: Option<Position>,
   pub flow: Flow,
@@ -55,9 +51,9 @@ pub struct WindowSettings<S> {
   pub close_on_x: bool,
 }
 
-impl Default for WindowSettings<NoSize> {
+impl Default for WindowSettings<NoTitle, NoSize> {
   fn default() -> Self {
-    let title: String = "Window".into();
+    let title = NoTitle;
     let size = NoSize;
     let position = None;
     let flow = Flow::default();
@@ -85,12 +81,7 @@ impl Default for WindowSettings<NoSize> {
   }
 }
 
-impl<S> WindowSettings<S> {
-  pub fn with_title(mut self, title: impl Into<String>) -> Self {
-    self.title = title.into();
-    self
-  }
-
+impl<T, S> WindowSettings<T, S> {
   pub fn with_position(mut self, position: Option<impl Into<Position>>) -> Self {
     self.position = position.map(|p| p.into());
     self
@@ -138,14 +129,28 @@ impl<S> WindowSettings<S> {
   }
 }
 
-impl WindowSettings<NoSize> {
-  /// Uses `with_outer_size` set to `LogicalSize::new(800.0, 600.0)`
-  pub fn default_size() -> WindowSettings<HasSize> {
-    WindowSettings::default().with_outer_size(LogicalSize::new(800.0, 600.0))
+impl<S> WindowSettings<NoTitle, S> {
+  /// You must declare a title
+  pub fn with_title(self, title: impl Into<String>) -> WindowSettings<HasTitle, S> {
+    WindowSettings {
+      size: self.size,
+      title: HasTitle(title.into()),
+      position: self.position,
+      flow: self.flow,
+      theme: self.theme,
+      visibility: self.visibility,
+      decorations: self.decorations,
+      resizeable: self.resizeable,
+      fullscreen: self.fullscreen,
+      cursor_mode: self.cursor_mode,
+      close_on_x: self.close_on_x,
+    }
   }
+}
 
+impl<T> WindowSettings<T, NoSize> {
   /// You can only pick either `with_inner_size` or `with_outer_size`
-  pub fn with_inner_size(self, size: impl Into<Size>) -> WindowSettings<HasSize> {
+  pub fn with_inner_size(self, size: impl Into<Size>) -> WindowSettings<T, HasSize> {
     WindowSettings {
       size: HasSize(SizeType::Inner(size.into())),
       title: self.title,
@@ -162,7 +167,7 @@ impl WindowSettings<NoSize> {
   }
 
   /// You can only pick either `with_inner_size` or `with_outer_size`
-  pub fn with_outer_size(self, size: impl Into<Size>) -> WindowSettings<HasSize> {
+  pub fn with_outer_size(self, size: impl Into<Size>) -> WindowSettings<T, HasSize> {
     WindowSettings {
       size: HasSize(SizeType::Outer(size.into())),
       title: self.title,

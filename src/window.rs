@@ -70,7 +70,7 @@ use self::{
   command::Command,
   message::LoopMessage,
   procedure::SyncData,
-  settings::{HasSize, SizeType},
+  settings::{HasSize, HasTitle, SizeType},
   stage::Stage,
   state::{CursorMode, Fullscreen, PhysicalSize, Position, StyleInfo},
 };
@@ -129,7 +129,7 @@ impl Window {
   pub const WINDOW_SUBCLASS_ID: usize = 0;
 
   /// Create a new window based on the settings provided.
-  pub fn new(settings: WindowSettings<HasSize>) -> Result<Self, WindowError> {
+  pub fn new(settings: WindowSettings<HasTitle, HasSize>) -> Result<Self, WindowError> {
     let (message_sender, message_receiver) = crossbeam::channel::unbounded();
 
     let sync = SyncData {
@@ -204,7 +204,7 @@ impl Window {
     debug_assert_ne!(hinstance.0, 0);
     // let size = create_info.settings.size;
     // let position = create_info.settings.position;
-    let title = HSTRING::from(create_info.settings.title.clone());
+    let title = HSTRING::from(create_info.settings.title.0.clone());
     let window_class = title.clone();
 
     let wc = WNDCLASSEXW {

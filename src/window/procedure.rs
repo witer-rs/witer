@@ -45,7 +45,7 @@ use windows::Win32::{
 use super::message::Message;
 use super::{
   command::Command,
-  settings::{HasSize, WindowSettings},
+  settings::{HasSize, HasTitle, WindowSettings},
   state::{CursorMode, Fullscreen, StyleInfo, Visibility},
   Window,
 };
@@ -68,7 +68,7 @@ use crate::{
 };
 
 pub struct CreateInfo {
-  pub settings: WindowSettings<HasSize>,
+  pub settings: WindowSettings<HasTitle, HasSize>,
   pub window: Option<(Window, Handle<InternalState>)>,
   pub sync: SyncData,
   pub command_queue: Arc<SegQueue<Command>>,
@@ -171,7 +171,7 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
   let input = Input::new();
   let state = Handle::new(InternalState {
     thread: None,
-    title: create_info.settings.title.clone(),
+    title: create_info.settings.title.0.clone(),
     subtitle: Default::default(),
     theme: Default::default(),
     style: create_info.style,
