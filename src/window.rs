@@ -492,7 +492,7 @@ impl Window {
 
   pub fn set_outer_size(&self, size: Size) {
     let scale_factor = self.state.read_lock().scale_factor;
-    if size.as_physical(scale_factor) == self.inner_size() {
+    if size.as_physical(scale_factor) == self.outer_size() {
       return;
     }
     self.force_set_outer_size(size)
@@ -529,7 +529,7 @@ impl Window {
 
   pub fn set_inner_size(&self, size: Size) {
     let scale_factor = self.state.read_lock().scale_factor;
-    if size.as_physical(scale_factor) == self.outer_size() {
+    if size.as_physical(scale_factor) == self.inner_size() {
       return;
     }
     self.force_set_inner_size(size)
