@@ -8,7 +8,7 @@ use std::{
 
 use crossbeam::channel::Receiver;
 use foxy_time::{Time, TimeSettings};
-use tracing::{error, info, Level};
+use tracing::{error, Level};
 use witer::{error::*, prelude::*};
 
 /*
@@ -82,14 +82,6 @@ fn app_loop(
 
       loop {
         let message = message_receiver.try_recv().ok();
-
-        if let Some(Message::MouseButton { .. } | Message::Key { .. }) = message {
-          info!(
-            "Window Inner Size: {:?} | Window outer size {:?}",
-            window.inner_size(),
-            window.outer_size()
-          );
-        }
 
         match &message {
           Some(Message::Resized(new_size)) => {
