@@ -295,6 +295,7 @@ fn on_message(
     }
     WindowsAndMessaging::WM_DESTROY => {
       unsafe { PostQuitMessage(0) };
+      unsafe { drop(Box::from_raw(data)) };
       return unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) };
     }
     WindowsAndMessaging::WM_CLOSE => LRESULT(0),
