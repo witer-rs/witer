@@ -32,7 +32,7 @@ fn main() -> WindowResult<()> {
 
   let window = Arc::new(Window::new(
     "Threaded Example",
-    LogicalSize::new(800.0, 600.0),
+    LogicalSize::new(800.0, 500.0),
     None,
     settings,
   )?);
@@ -277,8 +277,8 @@ impl App {
 
     match (self.is_revealed, self.frame_count) {
       (false, 10) => {
-        window.set_visibility(Visibility::Shown);
         Self::center_window(window);
+        window.set_visibility(Visibility::Shown);
         self.is_revealed = true;
       }
       (false, _) => self.frame_count = self.frame_count.wrapping_add(1),

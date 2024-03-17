@@ -128,9 +128,11 @@ impl Window {
   pub const WINDOW_SUBCLASS_ID: usize = 0;
 
   /// Create a new window based on the settings provided.
-  /// 
-  /// The size variable is relative to the whole window frame, 
-  /// not just the client area.
+  ///
+  /// The size variable is relative to the whole window frame,
+  /// not just the client area. I recommend spawning the window
+  /// hidden and using `window.set_inner_size()` if you need a
+  /// specific size for the client area.
   pub fn new(
     title: impl Into<String>,
     size: impl Into<Size>,
@@ -501,7 +503,8 @@ impl Window {
     self.request(Command::SetSize(size));
   }
 
-  pub fn set_outer_size(&self, size: Size) {
+  pub fn set_outer_size(&self, size: impl Into<Size>) {
+    let size = size.into();
     let scale_factor = self.state.read_lock().scale_factor;
     if size.as_physical(scale_factor) == self.outer_size() {
       return;
@@ -538,7 +541,8 @@ impl Window {
     self.request(Command::SetSize(adjusted_size.into()));
   }
 
-  pub fn set_inner_size(&self, size: Size) {
+  pub fn set_inner_size(&self, size: impl Into<Size>) {
+    let size = size.into();
     let scale_factor = self.state.read_lock().scale_factor;
     if size.as_physical(scale_factor) == self.inner_size() {
       return;
