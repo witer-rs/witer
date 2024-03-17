@@ -7,7 +7,7 @@ use std::{
 
 use foxy_time::{Time, TimeSettings};
 use wgpu::PresentMode;
-use witer::prelude::*;
+use witer::{error::*, prelude::*};
 
 /*
   This example showcases a simple app rendering a blank screen using WGPU.

@@ -9,7 +9,7 @@ use windows::Win32::{
 };
 
 use super::stage::Stage;
-use crate::{debug::WindowResult, window::Input};
+use crate::{error::WindowResult, window::Input};
 
 #[derive(Debug, Clone, Copy)]
 pub struct StyleInfo {

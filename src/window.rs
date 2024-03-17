@@ -74,7 +74,7 @@ use self::{
   state::{CursorMode, Fullscreen, PhysicalSize, Position, StyleInfo},
 };
 use crate::{
-  debug::{error::WindowError, WindowResult},
+  error::{WindowError, WindowResult},
   handle::Handle,
   prelude::{ButtonState, Key, KeyState, Mouse},
   utilities::{
@@ -128,6 +128,9 @@ impl Window {
   pub const WINDOW_SUBCLASS_ID: usize = 0;
 
   /// Create a new window based on the settings provided.
+  /// 
+  /// The size variable is relative to the whole window frame, 
+  /// not just the client area.
   pub fn new(
     title: impl Into<String>,
     size: impl Into<Size>,

@@ -9,7 +9,7 @@ use std::{
 use crossbeam::channel::Receiver;
 use foxy_time::{Time, TimeSettings};
 use tracing::{error, info, Level};
-use witer::prelude::*;
+use witer::{error::*, prelude::*};
 
 /*
   This example showcases how to render a triangle using WGPU on a separate thread while
