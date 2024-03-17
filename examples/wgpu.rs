@@ -15,12 +15,15 @@ use witer::prelude::*;
 
 fn main() -> WindowResult<()> {
   let settings = WindowSettings::default()
-    .with_title("wgpu Example")
-    .with_outer_size(LogicalSize::new(800.0, 600.0))
     .with_flow(Flow::Poll)
     .with_visibility(Visibility::Hidden); // start hidden to prevent first frame white flash;
 
-  let window = Arc::new(Window::new(settings)?);
+  let window = Arc::new(Window::new(
+    "wgpu Example",
+    LogicalSize::new(640.0, 480.0),
+    None,
+    settings,
+  )?);
 
   let mut app = App::new(&window);
 

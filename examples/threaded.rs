@@ -27,12 +27,15 @@ fn main() -> WindowResult<()> {
     .init();
 
   let settings = WindowSettings::default()
-    .with_outer_size(LogicalSize::new(800.0, 600.0))
-    .with_title("Threaded Example")
     .with_flow(Flow::Poll)
     .with_visibility(Visibility::Hidden);
 
-  let window = Arc::new(Window::new(settings)?);
+  let window = Arc::new(Window::new(
+    "Threaded Example",
+    LogicalSize::new(800.0, 600.0),
+    None,
+    settings,
+  )?);
 
   let (message_sender, message_receiver) = crossbeam::channel::unbounded();
   let sync_barrier = Arc::new(Barrier::new(2));

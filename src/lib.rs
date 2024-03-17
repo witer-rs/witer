@@ -8,7 +8,7 @@
   /// Configure
   let settings = WindowSettings::default()
     .with_title("My App")
-    .with_outer_size(LogicalSize::new(800.0, 600.0));
+    .with_size(LogicalSize::new(800.0, 600.0), SizeFlag::Outer);
   /// Build
   let window = Window::new(settings)?;
   /// Run

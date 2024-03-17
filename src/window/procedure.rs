@@ -45,8 +45,8 @@ use windows::Win32::{
 use super::message::Message;
 use super::{
   command::Command,
-  settings::{HasSize, HasTitle, WindowSettings},
-  state::{CursorMode, Fullscreen, StyleInfo, Visibility},
+  settings::WindowSettings,
+  state::{CursorMode, Fullscreen, Position, Size, StyleInfo, Visibility},
   Window,
 };
 use crate::{
@@ -68,7 +68,10 @@ use crate::{
 };
 
 pub struct CreateInfo {
-  pub settings: WindowSettings<HasTitle, HasSize>,
+  pub title: String,
+  pub size: Size,
+  pub position: Option<Position>,
+  pub settings: WindowSettings,
   pub window: Option<(Window, Handle<InternalState>)>,
   pub sync: SyncData,
   pub command_queue: Arc<SegQueue<Command>>,
@@ -158,8 +161,8 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
   };
 
   let scale_factor = dpi_to_scale_factor(hwnd_dpi(hwnd));
-  let size = create_info.settings.size.0.size();
-  let position = create_info.settings.position.unwrap_or(
+  let size = create_info.size;
+  let position = create_info.position.unwrap_or(
     PhysicalPosition::new(
       WindowsAndMessaging::CW_USEDEFAULT,
       WindowsAndMessaging::CW_USEDEFAULT,
@@ -171,7 +174,7 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
   let input = Input::new();
   let state = Handle::new(InternalState {
     thread: None,
-    title: create_info.settings.title.0.clone(),
+    title: create_info.title.clone(),
     subtitle: Default::default(),
     theme: Default::default(),
     style: create_info.style,

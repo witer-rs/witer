@@ -5,8 +5,12 @@
 use witer::prelude::*;
 
 fn main() {
-  let s = WindowSettings::default()
-    .with_title("Minimal")
-    .with_outer_size(LogicalSize::new(800.0, 600.0));
-  for _ in &Window::new(s).unwrap() {}
+  for _ in &Window::new(
+    "Minimal",
+    LogicalSize::new(640.0, 480.0),
+    None,
+    WindowSettings::default(),
+  )
+  .unwrap()
+  {}
 }

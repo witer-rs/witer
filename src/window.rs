@@ -70,7 +70,6 @@ use self::{
   command::Command,
   message::LoopMessage,
   procedure::SyncData,
-  settings::{HasSize, HasTitle, SizeType},
   stage::Stage,
   state::{CursorMode, Fullscreen, PhysicalSize, Position, StyleInfo},
 };
@@ -129,7 +128,12 @@ impl Window {
   pub const WINDOW_SUBCLASS_ID: usize = 0;
 
   /// Create a new window based on the settings provided.
-  pub fn new(settings: WindowSettings<HasTitle, HasSize>) -> Result<Self, WindowError> {
+  pub fn new(
+    title: impl Into<String>,
+    size: impl Into<Size>,
+    position: impl Into<Option<Position>>,
+    settings: WindowSettings,
+  ) -> Result<Self, WindowError> {
     let (message_sender, message_receiver) = crossbeam::channel::unbounded();
 
     let sync = SyncData {
@@ -137,7 +141,14 @@ impl Window {
       next_frame: Arc::new((Mutex::new(false), Condvar::new())),
     };
 
+    let title: String = title.into();
+    let size: Size = size.into();
+    let position: Option<Position> = position.into();
+
     let create_info = CreateInfo {
+      title,
+      size,
+      position,
       settings: settings.clone(),
       window: None,
       sync: sync.clone(),
@@ -159,13 +170,10 @@ impl Window {
     let window = window_receiver.recv().unwrap();
 
     window.state.write_lock().thread = thread;
-    if let Some(position) = settings.position {
+    if let Some(position) = position {
       window.force_set_outer_position(position);
     }
-    match settings.size.0 {
-      SizeType::Outer(size) => window.force_set_outer_size(size),
-      SizeType::Inner(size) => window.force_set_inner_size(size),
-    }
+    window.force_set_outer_size(size);
     window.force_set_decorations(settings.decorations);
     window.force_set_theme(settings.theme);
     window.force_set_visibility(settings.visibility);
@@ -204,7 +212,7 @@ impl Window {
     debug_assert_ne!(hinstance.0, 0);
     // let size = create_info.settings.size;
     // let position = create_info.settings.position;
-    let title = HSTRING::from(create_info.settings.title.0.clone());
+    let title = HSTRING::from(create_info.title.clone());
     let window_class = title.clone();
 
     let wc = WNDCLASSEXW {
