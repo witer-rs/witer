@@ -1,9 +1,8 @@
-# `witer`
+# `witer` [![Crates.io Version](https://img.shields.io/crates/v/witer)](https://crates.io/crates/witer) [![Discord](https://img.shields.io/discord/1215348294105169940?logo=discord&label=discord&color=5865F2)](https://discord.gg/KEtfte9xWZ)
 
 ## An iterator-based Win32 window library built in Rust
 
-[![Crates.io Version](https://img.shields.io/crates/v/witer)](https://crates.io/crates/witer)
-[![Discord](https://img.shields.io/discord/1215348294105169940?logo=discord&label=discord&color=5865F2)](https://discord.gg/KEtfte9xWZ)
+
 
 ```rust
 use witer::prelude::*;
