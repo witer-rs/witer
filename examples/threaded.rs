@@ -82,7 +82,12 @@ fn app_loop(
 
         if !matches!(
           message,
-          Some(Message::Paint | Message::Loop(..) | Message::RawInput(..)) | None
+          Some(
+            Message::Paint
+              | Message::Loop(..)
+              | Message::RawInput(..)
+              | Message::CursorMove { .. }
+          ) | None
         ) {
           println!("{message:?}");
         }
