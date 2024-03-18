@@ -39,6 +39,7 @@ use crate::{
   utilities::{
     dpi_to_scale_factor,
     hi_word,
+    is_flag_set,
     lo_byte,
     lo_word,
     read_raw_input,
@@ -344,8 +345,7 @@ impl Message {
   fn new_keyboard_message(l_param: LPARAM) -> Message {
     let flags = hi_word(unsafe { std::mem::transmute::<i32, u32>(l_param.0 as i32) });
 
-    let is_extended_key = (flags & WindowsAndMessaging::KF_EXTENDED as u16)
-      == WindowsAndMessaging::KF_EXTENDED as u16;
+    let is_extended_key = is_flag_set(flags, WindowsAndMessaging::KF_EXTENDED as u16);
 
     let mut scan_code = lo_byte(flags) as u16;
 
@@ -370,18 +370,13 @@ impl Message {
 
     let state = {
       let repeat_count = lo_word(l_param.0 as u32);
+      let was_key_down = is_flag_set(flags, WindowsAndMessaging::KF_REPEAT as u16);
+      let is_key_up = is_flag_set(flags, WindowsAndMessaging::KF_UP as u16);
 
-      let was_key_down = (flags & WindowsAndMessaging::KF_REPEAT as u16)
-        == WindowsAndMessaging::KF_REPEAT as u16;
-      let is_key_up =
-        (flags & WindowsAndMessaging::KF_UP as u16) == WindowsAndMessaging::KF_UP as u16;
-
-      if is_key_up {
-        KeyState::Released
-      } else if was_key_down {
-        KeyState::Held(repeat_count)
-      } else {
-        KeyState::Pressed
+      match (is_key_up, was_key_down) {
+        (true, _) => KeyState::Released,
+        (false, true) => KeyState::Held(repeat_count),
+        (..) => KeyState::Pressed,
       }
     };
 
