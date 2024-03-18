@@ -42,6 +42,9 @@ questions, either:
 * Send a message over Discord
 * Dive into the codebase yourself
 
+In the future, when the API settles down, I plan to make migration guides between releases. For now, I recommend
+referencing the examples if there are any doubts.
+
 ## Cargo Features
 
 * **`rwh_05` / `rwh_06`:** use the appropriate version of `raw-window-handle`. `rwh_06` is the default.
