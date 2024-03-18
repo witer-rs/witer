@@ -70,6 +70,7 @@ use self::{
   command::Command,
   message::LoopMessage,
   procedure::SyncData,
+  settings::WindowBuilder,
   stage::Stage,
   state::{CursorMode, Fullscreen, PhysicalSize, Position, StyleInfo},
 };
@@ -126,6 +127,12 @@ impl Drop for Window {
 
 impl Window {
   pub const WINDOW_SUBCLASS_ID: usize = 0;
+
+  /// See [`Self::new`]. This just uses [`WindowBuilder`] to help with the
+  /// creation.
+  pub fn builder() -> WindowBuilder {
+    WindowBuilder::default()
+  }
 
   /// Create a new window based on the settings provided.
   ///

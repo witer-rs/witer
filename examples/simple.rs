@@ -7,13 +7,11 @@ use witer::prelude::*;
 */
 
 fn main() {
-  let window = Window::new(
-    "Press Esc to close!",
-    LogicalSize::new(0.0, 0.0), // starting outer size
-    None,
-    WindowSettings::default().with_visibility(Visibility::Hidden),
-  )
-  .unwrap();
+  let window = Window::builder()
+    .with_title("Press Esc to close!")
+    .with_visibility(Visibility::Hidden)
+    .build()
+    .unwrap();
 
   window.set_inner_size(LogicalSize::new(1280.0, 720.0));
   window.set_visibility(Visibility::Shown);

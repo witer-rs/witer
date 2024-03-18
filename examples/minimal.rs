@@ -5,12 +5,5 @@
 use witer::prelude::*;
 
 fn main() {
-  for _ in &Window::new(
-    "Minimal",
-    LogicalSize::new(640.0, 480.0),
-    None,
-    WindowSettings::default(),
-  )
-  .unwrap()
-  {}
+  for _ in &Window::builder().build().unwrap() {}
 }

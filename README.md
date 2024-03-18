@@ -12,12 +12,11 @@ fn main() {
   /* 
     Build 
   */
-  let window = Window::new(
-    "My App", // Title
-    LogicalSize::new(800.0, 600.0), // Size
-    None, // Optional position (None lets Windows decide)
-    WindowSettings::default() // Extra settings
-  ).unwrap();
+  let window = Window::builder()
+    .with_title("My App")
+    .with_size(LogicalSize::new(800.0, 500.0))
+    .build()
+    .unwrap();
 
   /* 
     Run

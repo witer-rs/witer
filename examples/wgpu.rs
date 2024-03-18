@@ -14,16 +14,14 @@ use witer::{error::*, prelude::*};
 */
 
 fn main() -> WindowResult<()> {
-  let settings = WindowSettings::default()
-    .with_flow(Flow::Poll)
-    .with_visibility(Visibility::Hidden); // start hidden to prevent first frame white flash;
-
-  let window = Arc::new(Window::new(
-    "wgpu Example",
-    LogicalSize::new(640.0, 480.0),
-    None,
-    settings,
-  )?);
+  // start hidden to prevent first frame white flash
+  let window = Arc::new(
+    Window::builder()
+      .with_title("wgpu Example")
+      .with_flow(Flow::Poll)
+      .with_visibility(Visibility::Hidden)
+      .build()?,
+  );
 
   let mut app = App::new(&window);
 

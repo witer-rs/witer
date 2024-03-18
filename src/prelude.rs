@@ -7,7 +7,7 @@ pub use crate::window::{
     Input,
   },
   message::{LoopMessage, Message, RawInputMessage},
-  settings::WindowSettings,
+  settings::{WindowBuilder, WindowSettings},
   state::{
     CursorMode,
     Flow,
