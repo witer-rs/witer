@@ -2,7 +2,7 @@ pub use crate::window::{
   self,
   input::{
     key::Key,
-    mouse::Mouse,
+    mouse::MouseButton,
     state::{ButtonState, KeyState, RawKeyState},
     Input,
   },

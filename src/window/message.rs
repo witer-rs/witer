@@ -29,7 +29,7 @@ use windows::Win32::{
 
 use super::{
   input::{
-    mouse::{mouse_button_states, Mouse},
+    mouse::{mouse_button_states, MouseButton},
     state::RawKeyState,
   },
   state::{InternalState, PhysicalPosition, PhysicalSize},
@@ -77,9 +77,15 @@ pub enum Message {
     scan_code: u16,
     is_extended_key: bool,
   },
+  ModifiersChanged {
+    shift: ButtonState,
+    ctrl: ButtonState,
+    alt: ButtonState,
+    win: ButtonState,
+  },
   /// Message sent when a mouse button is pressed or released.
   MouseButton {
-    button: Mouse,
+    button: MouseButton,
     state: ButtonState,
     position: PhysicalPosition,
     is_double_click: bool,
@@ -128,7 +134,10 @@ pub enum RawInputMessage {
   /// Raw keyboard input
   Keyboard { key: Key, state: RawKeyState },
   /// Raw mouse button input
-  MouseButton { button: Mouse, state: ButtonState },
+  MouseButton {
+    button: MouseButton,
+    state: ButtonState,
+  },
   /// Raw mouse motion. Use this for mouse input in cases such as first-person
   /// cameras.
   MouseMove { delta_x: f32, delta_y: f32 },
@@ -214,7 +223,7 @@ impl Message {
 
             for (id, state) in mouse_button_states(button_flags).iter().enumerate() {
               if let Some(state) = *state {
-                let button = Mouse::from_state(id);
+                let button = MouseButton::from_state(id);
                 out
                   .push(Message::RawInput(RawInputMessage::MouseButton { button, state }))
               }
@@ -244,7 +253,19 @@ impl Message {
       WindowsAndMessaging::WM_KEYDOWN
       | WindowsAndMessaging::WM_SYSKEYDOWN
       | WindowsAndMessaging::WM_KEYUP
-      | WindowsAndMessaging::WM_SYSKEYUP => out.push(Self::new_keyboard_message(l_param)),
+      | WindowsAndMessaging::WM_SYSKEYUP => {
+        let (changed, shift, ctrl, alt, win) =
+          state.write_lock().input.update_modifiers_state();
+        if changed {
+          out.push(Message::ModifiersChanged {
+            shift,
+            ctrl,
+            alt,
+            win,
+          });
+        }
+        out.push(Self::new_keyboard_message(l_param))
+      }
       WindowsAndMessaging::WM_MOUSEMOVE => {
         let x = signed_lo_word(l_param.0 as i32) as i32;
         let y = signed_hi_word(l_param.0 as i32) as i32;
@@ -375,28 +396,28 @@ impl Message {
   fn new_mouse_button_message(message: u32, w_param: WPARAM, l_param: LPARAM) -> Message {
     let flags = w_param.0 as u32;
 
-    let mouse_code: Mouse = {
+    let mouse_code: MouseButton = {
       match message {
         WindowsAndMessaging::WM_LBUTTONDBLCLK
         | WindowsAndMessaging::WM_LBUTTONDOWN
-        | WindowsAndMessaging::WM_LBUTTONUP => Mouse::Left,
+        | WindowsAndMessaging::WM_LBUTTONUP => MouseButton::Left,
         WindowsAndMessaging::WM_MBUTTONDBLCLK
         | WindowsAndMessaging::WM_MBUTTONDOWN
-        | WindowsAndMessaging::WM_MBUTTONUP => Mouse::Middle,
+        | WindowsAndMessaging::WM_MBUTTONUP => MouseButton::Middle,
         WindowsAndMessaging::WM_RBUTTONDBLCLK
         | WindowsAndMessaging::WM_RBUTTONDOWN
-        | WindowsAndMessaging::WM_RBUTTONUP => Mouse::Right,
+        | WindowsAndMessaging::WM_RBUTTONUP => MouseButton::Right,
         WindowsAndMessaging::WM_XBUTTONDBLCLK
         | WindowsAndMessaging::WM_XBUTTONDOWN
         | WindowsAndMessaging::WM_XBUTTONUP => {
           let hi_flags = hi_word(flags);
           if (hi_flags & WindowsAndMessaging::XBUTTON1) == WindowsAndMessaging::XBUTTON1 {
-            Mouse::Back
+            MouseButton::Back
           } else {
-            Mouse::Forward
+            MouseButton::Forward
           }
         }
-        _ => Mouse::Unknown,
+        _ => MouseButton::Unknown,
       }
     };
 
@@ -466,7 +487,7 @@ impl Message {
 
   /// Returns `true` if the message matches the supplied mouse button and mouse
   /// button state
-  pub fn is_mouse_button(&self, button: Mouse, state: ButtonState) -> bool {
+  pub fn is_mouse_button(&self, button: MouseButton, state: ButtonState) -> bool {
     matches!(self, Message::MouseButton { button: b, state: s, .. } if *b == button && *s == state)
   }
 

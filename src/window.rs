@@ -76,7 +76,7 @@ use self::{
 use crate::{
   error::{WindowError, WindowResult},
   handle::Handle,
-  prelude::{ButtonState, Key, KeyState, Mouse},
+  prelude::{ButtonState, Key, KeyState, MouseButton},
   utilities::{
     get_window_ex_style,
     get_window_style,
@@ -453,7 +453,7 @@ impl Window {
     state.input.key(keycode)
   }
 
-  pub fn mouse(&self, button: Mouse) -> ButtonState {
+  pub fn mouse(&self, button: MouseButton) -> ButtonState {
     let state = self.state.read_lock();
     state.input.mouse(button)
   }

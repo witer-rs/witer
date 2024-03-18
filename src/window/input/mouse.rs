@@ -4,7 +4,7 @@ use super::state::ButtonState;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 #[repr(u16)]
-pub enum Mouse {
+pub enum MouseButton {
   Unknown = 0,
   Left = 1,
   Right = 2,
@@ -13,8 +13,8 @@ pub enum Mouse {
   Forward = 5,
 }
 
-impl Mouse {
-  pub(crate) fn from_state(id: usize) -> Mouse {
+impl MouseButton {
+  pub(crate) fn from_state(id: usize) -> MouseButton {
     match id {
       0 => Self::Left,
       1 => Self::Right,

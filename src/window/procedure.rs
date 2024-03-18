@@ -351,7 +351,6 @@ fn update_state(hwnd: HWND, data: &SubclassWindowData, message: &Message) {
     }
     &Message::Key { key, state, .. } => {
       data.state.write_lock().input.update_key_state(key, state);
-      data.state.write_lock().input.update_modifiers_state();
     }
     &Message::MouseButton { button, state, .. } => data
       .state

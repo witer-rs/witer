@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use self::state::KeyState;
-use crate::window::input::{key::Key, mouse::Mouse, state::ButtonState};
+use crate::window::input::{key::Key, mouse::MouseButton, state::ButtonState};
 
 pub mod key;
 pub mod mouse;
@@ -14,7 +14,7 @@ impl InputState {}
 
 #[derive(Debug)]
 pub struct Input {
-  mouse_buttons: HashMap<Mouse, ButtonState>,
+  mouse_buttons: HashMap<MouseButton, ButtonState>,
   keys: HashMap<Key, KeyState>,
   shift: ButtonState,
   ctrl: ButtonState,
@@ -43,13 +43,19 @@ impl Input {
     }
   }
 
-  pub fn update_mouse_button_state(&mut self, button: Mouse, new_state: ButtonState) {
+  pub fn update_mouse_button_state(
+    &mut self,
+    button: MouseButton,
+    new_state: ButtonState,
+  ) {
     if let Some(old_state) = self.mouse_buttons.get_mut(&button) {
       *old_state = new_state;
     }
   }
 
-  pub fn update_modifiers_state(&mut self) {
+  pub fn update_modifiers_state(
+    &mut self,
+  ) -> (bool, ButtonState, ButtonState, ButtonState, ButtonState) {
     let key = |keycode: Key| -> KeyState {
       self
         .keys
@@ -58,31 +64,43 @@ impl Input {
         .unwrap_or(KeyState::Released)
     };
 
+    let mut changed = false;
+
+    let old_value = self.shift;
     self.shift = if key(Key::LeftShift).is_pressed() || key(Key::RightShift).is_pressed()
     {
       ButtonState::Pressed
     } else {
       ButtonState::Released
     };
+    changed |= self.shift != old_value;
 
+    let old_value = self.ctrl;
     self.ctrl =
       if key(Key::LeftControl).is_pressed() || key(Key::RightControl).is_pressed() {
         ButtonState::Pressed
       } else {
         ButtonState::Released
       };
+    changed |= self.ctrl != old_value;
 
+    let old_value = self.alt;
     self.alt = if key(Key::LeftAlt).is_pressed() || key(Key::RightAlt).is_pressed() {
       ButtonState::Pressed
     } else {
       ButtonState::Released
     };
+    changed |= self.alt != old_value;
 
+    let old_value = self.win;
     self.win = if key(Key::LeftSuper).is_pressed() || key(Key::RightSuper).is_pressed() {
       ButtonState::Pressed
     } else {
       ButtonState::Released
     };
+    changed |= self.win != old_value;
+
+    (changed, self.shift, self.ctrl, self.alt, self.win)
   }
 
   // KEYBOARD
@@ -97,7 +115,7 @@ impl Input {
 
   // MOUSE
 
-  pub fn mouse(&self, button: Mouse) -> ButtonState {
+  pub fn mouse(&self, button: MouseButton) -> ButtonState {
     self
       .mouse_buttons
       .get(&button)
