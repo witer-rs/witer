@@ -9,13 +9,21 @@ use windows::Win32::{
     MODIFIERKEYS_FLAGS,
   },
   UI::{
+    Controls,
     Input::{
       self,
-      KeyboardAndMouse::{MapVirtualKeyW, MAPVK_VSC_TO_VK_EX, VIRTUAL_KEY},
+      KeyboardAndMouse::{
+        self,
+        MapVirtualKeyW,
+        TrackMouseEvent,
+        MAPVK_VSC_TO_VK_EX,
+        TRACKMOUSEEVENT,
+        VIRTUAL_KEY,
+      },
       HRAWINPUT,
       RID_DEVICE_INFO_TYPE,
     },
-    WindowsAndMessaging::{self, SetWindowPos, WINDOWPOS},
+    WindowsAndMessaging::{self, GetClientRect, SetWindowPos, WINDOWPOS},
   },
 };
 
@@ -24,9 +32,10 @@ use super::{
     mouse::{mouse_button_states, Mouse},
     state::RawKeyState,
   },
-  state::{PhysicalPosition, PhysicalSize},
+  state::{InternalState, PhysicalPosition, PhysicalSize},
 };
 use crate::{
+  handle::Handle,
   utilities::{
     dpi_to_scale_factor,
     hi_word,
@@ -41,6 +50,12 @@ use crate::{
     state::{ButtonState, KeyState},
   },
 };
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum Focus {
+  Gained,
+  Lost,
+}
 
 /// Messages sent by the window, message loop, or attached devices.
 #[derive(Debug, PartialEq, Clone)]
@@ -69,12 +84,15 @@ pub enum Message {
     position: PhysicalPosition,
     is_double_click: bool,
   },
+  /// Message sent when the scroll wheel is actuated.
+  MouseWheel { delta_x: f32, delta_y: f32 },
   /// Message sent when the cursor is moved within the window bounds. Don't
   /// use this for mouse input in cases such as first-person cameras as it is
   /// locked to the bounds of the window.
-  Cursor(PhysicalPosition),
-  /// Message sent when the scroll wheel is actuated.
-  Scroll { delta_x: f32, delta_y: f32 },
+  CursorMove {
+    position: PhysicalPosition,
+    kind: CursorMoveKind,
+  },
   /// Message sent when the window is resized. Sent after [`BoundsChanged`]
   Resized(PhysicalSize),
   /// Message sent when the window is moved. Sent after [`BoundsChanged`]
@@ -89,7 +107,7 @@ pub enum Message {
   /// Message sent by Windows when certain actions are taken. WIP
   SystemCommand,
   /// Message sent when the window gains or loses focus.
-  Focus(bool),
+  Focus(Focus),
   /// Message sent when the scale factor of the window has changed.
   ScaleFactorChanged(f64),
 }
@@ -113,7 +131,7 @@ pub enum RawInputMessage {
   MouseButton { button: Mouse, state: ButtonState },
   /// Raw mouse motion. Use this for mouse input in cases such as first-person
   /// cameras.
-  MouseMotion { delta_x: f32, delta_y: f32 },
+  MouseMove { delta_x: f32, delta_y: f32 },
 }
 
 impl Message {
@@ -122,6 +140,7 @@ impl Message {
     message: u32,
     w_param: WPARAM,
     l_param: LPARAM,
+    state: &Handle<InternalState>,
   ) -> Option<Vec<Self>> {
     let mut out = Vec::with_capacity(0);
     out.reserve_exact(1);
@@ -152,8 +171,8 @@ impl Message {
           outer_size: PhysicalSize::new(window_pos.cx as u32, window_pos.cy as u32),
         })
       }
-      WindowsAndMessaging::WM_SETFOCUS => out.push(Message::Focus(true)),
-      WindowsAndMessaging::WM_KILLFOCUS => out.push(Message::Focus(false)),
+      WindowsAndMessaging::WM_SETFOCUS => out.push(Message::Focus(Focus::Gained)),
+      WindowsAndMessaging::WM_KILLFOCUS => out.push(Message::Focus(Focus::Lost)),
       WindowsAndMessaging::WM_COMMAND => out.push(Message::Command),
       WindowsAndMessaging::WM_SYSCOMMAND => out.push(Message::SystemCommand),
       WindowsAndMessaging::WM_DPICHANGED => {
@@ -186,7 +205,7 @@ impl Message {
               let y = mouse_data.lLastY as f32;
 
               if x != 0.0 || y != 0.0 {
-                out.push(Message::RawInput(RawInputMessage::MouseMotion {
+                out.push(Message::RawInput(RawInputMessage::MouseMove {
                   delta_x: x,
                   delta_y: y,
                 }));
@@ -229,13 +248,53 @@ impl Message {
       WindowsAndMessaging::WM_MOUSEMOVE => {
         let x = signed_lo_word(l_param.0 as i32) as i32;
         let y = signed_hi_word(l_param.0 as i32) as i32;
+        let position = PhysicalPosition::new(x, y);
 
-        out.push(Message::Cursor(PhysicalPosition::new(x, y)));
+        let kind =
+          get_cursor_move_kind(hwnd, state.read_lock().cursor.inside_window, x, y);
+
+        let send_message = {
+          match kind {
+            CursorMoveKind::Entered => {
+              state.write_lock().cursor.inside_window = true;
+
+              unsafe {
+                TrackMouseEvent(&mut TRACKMOUSEEVENT {
+                  cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
+                  dwFlags: KeyboardAndMouse::TME_LEAVE,
+                  hwndTrack: hwnd,
+                  dwHoverTime: Controls::HOVER_DEFAULT,
+                })
+              }
+              .unwrap();
+
+              true
+            }
+            CursorMoveKind::Left => {
+              state.write_lock().cursor.inside_window = false;
+
+              true
+            }
+            CursorMoveKind::Inside => state.read_lock().cursor.last_position != position,
+          }
+        };
+
+        if send_message {
+          out.push(Message::CursorMove { position, kind });
+          state.write_lock().cursor.last_position = position;
+        }
+      }
+      Controls::WM_MOUSELEAVE => {
+        state.write_lock().cursor.inside_window = false;
+        out.push(Message::CursorMove {
+          position: state.read_lock().cursor.last_position,
+          kind: CursorMoveKind::Left,
+        });
       }
       WindowsAndMessaging::WM_MOUSEWHEEL => {
         let delta = signed_hi_word(w_param.0 as i32) as f32
           / WindowsAndMessaging::WHEEL_DELTA as f32;
-        out.push(Message::Scroll {
+        out.push(Message::MouseWheel {
           delta_x: 0.0,
           delta_y: delta,
         });
@@ -243,7 +302,7 @@ impl Message {
       WindowsAndMessaging::WM_MOUSEHWHEEL => {
         let delta = signed_hi_word(w_param.0 as i32) as f32
           / WindowsAndMessaging::WHEEL_DELTA as f32;
-        out.push(Message::Scroll {
+        out.push(Message::MouseWheel {
           delta_x: delta,
           delta_y: 0.0,
         });
@@ -414,5 +473,45 @@ impl Message {
   /// Returns `true` if the message is `Message::Loop(LoopMessage::Empty)`
   pub fn is_empty(&self) -> bool {
     matches!(self, Message::Loop(LoopMessage::Empty))
+  }
+}
+
+/*
+  Adapted from `winit` according to Apache-2.0 license. (https://github.com/rust-windowing/winit/blob/master/src/platform_impl/windows/event_loop.rs#L2568)
+  Adapted for windows crate.
+*/
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum CursorMoveKind {
+  /// Cursor entered to the window.
+  Entered,
+  /// Cursor left the window client area.
+  Left,
+  /// Cursor is inside the window or `GetClientRect` failed.
+  Inside,
+}
+
+fn get_cursor_move_kind(
+  hwnd: HWND,
+  mouse_was_inside_window: bool,
+  x: i32,
+  y: i32,
+) -> CursorMoveKind {
+  let rect: RECT = {
+    let mut rect = RECT::default();
+    if unsafe { GetClientRect(hwnd, &mut rect) }.is_err() {
+      return CursorMoveKind::Inside; // exit early if GetClientRect failed
+    }
+    rect
+  };
+
+  let x = (rect.left..rect.right).contains(&x);
+  let y = (rect.top..rect.bottom).contains(&y);
+
+  if !mouse_was_inside_window && x && y {
+    CursorMoveKind::Entered
+  } else if mouse_was_inside_window && !(x && y) {
+    CursorMoveKind::Left
+  } else {
+    CursorMoveKind::Inside
   }
 }

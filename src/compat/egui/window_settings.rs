@@ -1,5 +1,3 @@
-#![cfg(feature = "egui")]
-
 use egui::ViewportBuilder;
 
 use crate::prelude::*;

@@ -83,6 +83,13 @@ fn app_loop(
       loop {
         let message = message_receiver.try_recv().ok();
 
+        if !matches!(
+          message,
+          Some(Message::Paint | Message::Loop(..) | Message::RawInput(..)) | None
+        ) {
+          println!("{message:?}");
+        }
+
         match &message {
           Some(Message::Resized(new_size)) => {
             app.resize(*new_size);

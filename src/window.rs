@@ -642,24 +642,24 @@ impl Window {
   }
 
   fn force_set_cursor_mode(&self, cursor_mode: CursorMode) {
-    self.state.write_lock().cursor_mode = cursor_mode;
+    self.state.write_lock().cursor.mode = cursor_mode;
     self.request(Command::SetCursorMode(cursor_mode));
   }
 
   pub fn set_cursor_mode(&self, cursor_mode: CursorMode) {
-    if cursor_mode == self.state.read_lock().cursor_mode {
+    if cursor_mode == self.state.read_lock().cursor.mode {
       return;
     }
     self.force_set_cursor_mode(cursor_mode)
   }
 
   fn force_set_cursor_visibility(&self, cursor_visibility: Visibility) {
-    self.state.write_lock().cursor_visibility = cursor_visibility;
+    self.state.write_lock().cursor.visibility = cursor_visibility;
     self.request(Command::SetCursorVisibility(cursor_visibility));
   }
 
   pub fn set_cursor_visibility(&self, cursor_visibility: Visibility) {
-    if cursor_visibility == self.state.read_lock().cursor_visibility {
+    if cursor_visibility == self.state.read_lock().cursor.visibility {
       return;
     }
     self.force_set_cursor_visibility(cursor_visibility)

@@ -28,7 +28,8 @@ fn main() -> WindowResult<()> {
   let mut app = App::new(&window);
 
   for message in window.as_ref() {
-    if !matches!(message, Message::Paint | Message::Cursor { .. } | Message::Loop(..)) {
+    if !matches!(message, Message::Paint | Message::CursorMove { .. } | Message::Loop(..))
+    {
       println!("WINDOW: {message:?}");
     }
 

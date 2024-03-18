@@ -19,6 +19,13 @@ pub struct StyleInfo {
   pub resizeable: bool,
 }
 
+pub struct CursorInfo {
+  pub mode: CursorMode,
+  pub visibility: Visibility,
+  pub inside_window: bool,
+  pub last_position: PhysicalPosition,
+}
+
 pub struct InternalState {
   pub thread: Option<JoinHandle<WindowResult<()>>>,
   pub title: String,
@@ -29,8 +36,7 @@ pub struct InternalState {
   // pub size: Size,
   pub last_windowed_position: Position,
   pub last_windowed_size: Size,
-  pub cursor_mode: CursorMode,
-  pub cursor_visibility: Visibility,
+  pub cursor: CursorInfo,
   pub scale_factor: f64,
   pub flow: Flow,
   pub close_on_x: bool,

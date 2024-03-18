@@ -35,12 +35,9 @@ pub use rwh_05 as raw_window_handle;
 #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
 pub use rwh_06 as raw_window_handle;
 
-#[cfg(feature = "egui")]
-pub mod egui;
+pub mod compat;
 pub mod error;
 mod handle;
-#[cfg(feature = "opengl")]
-pub mod opengl;
 pub mod prelude;
 pub mod utilities;
 pub mod window;
@@ -48,3 +45,6 @@ pub mod window;
 #[cfg(doctest)]
 #[doc = include_str!("../README.md")]
 struct ReadMe;
+
+#[cfg(feature = "egui")]
+pub use egui;

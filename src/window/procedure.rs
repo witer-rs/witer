@@ -45,6 +45,7 @@ use windows::Win32::{
 use super::message::Message;
 use super::{
   command::Command,
+  message::Focus,
   settings::WindowSettings,
   state::{CursorMode, Fullscreen, Position, Size, StyleInfo, Visibility},
   Window,
@@ -63,7 +64,7 @@ use crate::{
   },
   window::{
     stage::Stage,
-    state::{InternalState, PhysicalPosition},
+    state::{CursorInfo, InternalState, PhysicalPosition},
   },
 };
 
@@ -183,8 +184,12 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
     // size,
     last_windowed_position: position,
     last_windowed_size: size,
-    cursor_mode: create_info.settings.cursor_mode,
-    cursor_visibility: Visibility::Shown,
+    cursor: CursorInfo {
+      mode: create_info.settings.cursor_mode,
+      visibility: Visibility::Shown,
+      inside_window: false,
+      last_position: PhysicalPosition::default(),
+    },
     flow: create_info.settings.flow,
     close_on_x: create_info.settings.close_on_x,
     stage: Stage::Looping,
@@ -263,7 +268,7 @@ fn on_message(
   l_param: LPARAM,
   data: &mut SubclassWindowData,
 ) -> LRESULT {
-  let messages = Message::collect(hwnd, msg, w_param, l_param);
+  let messages = Message::collect(hwnd, msg, w_param, l_param, &data.state);
 
   // Wait for previous message to be handled
   if !data.message_sender.is_empty() {
@@ -313,10 +318,10 @@ fn on_message(
 
 fn update_state(hwnd: HWND, data: &SubclassWindowData, message: &Message) {
   match message {
-    &Message::Focus(is_focused) => {
-      let cursor_visibility = data.state.read_lock().cursor_visibility;
-      let cursor_mode = data.state.read_lock().cursor_mode;
-      if is_focused {
+    &Message::Focus(focus) => {
+      let cursor_visibility = data.state.read_lock().cursor.visibility;
+      let cursor_mode = data.state.read_lock().cursor.mode;
+      if focus == Focus::Gained {
         data.command_queue.push(Command::SetCursorMode(cursor_mode));
         data
           .command_queue
