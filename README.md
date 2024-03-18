@@ -1,4 +1,4 @@
-# `witer` [![Crates.io Version](https://img.shields.io/crates/v/witer)](https://crates.io/crates/witer) [![Discord](https://img.shields.io/discord/1215348294105169940?logo=discord&label=discord&color=5865F2)](https://discord.gg/KEtfte9xWZ) [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/R6R8PGIU6)
+# `witer` [![Crates.io Version](https://img.shields.io/crates/v/witer)](https://crates.io/crates/witer) [![Discord](https://img.shields.io/discord/1215348294105169940?logo=discord&label=discord&color=5865F2)](https://discord.gg/KEtfte9xWZ)
 
 ## An iterator-based Win32 window library built in Rust
 
@@ -34,6 +34,10 @@ The main goal of `witer` is to have a simple, easy-to-use API. The target audien
 a window quickly, easily, and idiomatically. I aim to have feature-parity with `winit` eventually as a secondary goal.
 
 Cross-platform support is highly unlikely, but pull requests are welcomed if anyone else wants to tackle it.
+
+⚠️ Warning ⚠️ This project is still hilariously incomplete. I am only one student, after all.
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/R6R8PGIU6)
 
 ## Documentation
 
@@ -74,6 +78,4 @@ looks and feels. If you are perfectly satisfied with what `winit` offers, then I
 to pull the project back to `v0.x.y` to reflect its volatile nature. This isn't currently possible with Crates.io (ignoring
 yanking). Furthermore, the `v3.x.y` could be seen as confusing for those who didn't understand why they existed.
 
-## ⚠️ Warning ⚠️
-
-This project is still hilariously incomplete. I am only one student, after all.
+## 
