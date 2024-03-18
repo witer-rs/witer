@@ -270,13 +270,6 @@ fn on_message(
 ) -> LRESULT {
   let messages = Message::collect(hwnd, msg, w_param, l_param, &data.state);
 
-  // Wait for previous message to be handled
-  if !data.message_sender.is_empty() {
-    data
-      .sync
-      .wait_on_frame(|| data.state.read_lock().stage == Stage::ExitLoop);
-  }
-
   // handle from wndproc
   let result = match msg {
     WindowsAndMessaging::WM_SIZING | WindowsAndMessaging::WM_MOVING => {
@@ -296,6 +289,13 @@ fn on_message(
   if process_commands(hwnd, data) {
     // process commands returns true to interrupt
     return result;
+  }
+
+  // Wait for previous message to be handled
+  if !data.message_sender.is_empty() {
+    data
+      .sync
+      .wait_on_frame(|| data.state.read_lock().stage == Stage::ExitLoop);
   }
 
   // pass message to main thread
