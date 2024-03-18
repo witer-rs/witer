@@ -532,16 +532,15 @@ pub enum CursorMode {
   Confined,
 }
 
-/// Flow is the wait behaviour of the windowd.
-/// 
-/// Wait: Window will block if there are no new messages.
-/// 
-/// Poll: Window will send an artificial [`LoopMessage::Empty`](`crate::LoopMessage::Empty`)
-/// when there are no new messages and will not block.
+/// The wait behaviour of the window.
 #[derive(Default, Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum Flow {
+  /// Window will block if there are no new messages.
   #[default]
   Wait,
+  /// Window will send an artificial
+  /// [`LoopMessage::Empty`](`crate::LoopMessage::Empty`) when there are no
+  /// new messages and will not block.
   Poll,
 }
 
