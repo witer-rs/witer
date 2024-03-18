@@ -111,6 +111,7 @@ impl WindowBuilder {
     self
   }
 
+  /// Relative to the whole window frame, not just the client area
   pub fn with_size(mut self, size: impl Into<Size>) -> Self {
     self.size = size.into();
     self

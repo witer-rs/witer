@@ -128,19 +128,17 @@ impl Drop for Window {
 impl Window {
   pub const WINDOW_SUBCLASS_ID: usize = 0;
 
-  /// See [`Self::new`]. This just uses [`WindowBuilder`] to help with the
-  /// creation.
+  /// Create a new [`WindowBuilder`] to set up a [`Window`].
+  ///
+  /// [`WindowBuilder::with_size`] is relative to the whole window frame,
+  /// not just the client area. I recommend spawning the window
+  /// hidden and using [`Window::set_inner_size`] if you need a
+  /// specific size for the client area.
   pub fn builder() -> WindowBuilder {
     WindowBuilder::default()
   }
 
-  /// Create a new window based on the settings provided.
-  ///
-  /// The size variable is relative to the whole window frame,
-  /// not just the client area. I recommend spawning the window
-  /// hidden and using `window.set_inner_size()` if you need a
-  /// specific size for the client area.
-  pub fn new(
+  pub(crate) fn new(
     title: impl Into<String>,
     size: impl Into<Size>,
     position: impl Into<Option<Position>>,
