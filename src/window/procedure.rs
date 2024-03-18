@@ -277,21 +277,6 @@ fn on_message(
       .wait_on_frame(|| data.state.read_lock().stage == Stage::ExitLoop);
   }
 
-  // pass message to main thread
-  if let Some(messages) = messages {
-    for message in messages {
-      update_state(hwnd, data, &message);
-
-      data.message_sender.try_send(message).unwrap();
-      data.sync.signal_new_message();
-      // data.sync.next_message.lock().unwrap().replace(message);
-
-      data
-        .sync
-        .wait_on_frame(|| data.state.read_lock().stage == Stage::ExitLoop);
-    }
-  }
-
   // handle from wndproc
   let result = match msg {
     WindowsAndMessaging::WM_SIZING | WindowsAndMessaging::WM_MOVING => {
@@ -311,6 +296,21 @@ fn on_message(
   if process_commands(hwnd, data) {
     // process commands returns true to interrupt
     return result;
+  }
+
+  // pass message to main thread
+  if let Some(messages) = messages {
+    for message in messages {
+      update_state(hwnd, data, &message);
+
+      data.message_sender.try_send(message).unwrap();
+      data.sync.signal_new_message();
+      // data.sync.next_message.lock().unwrap().replace(message);
+
+      data
+        .sync
+        .wait_on_frame(|| data.state.read_lock().stage == Stage::ExitLoop);
+    }
   }
 
   result
