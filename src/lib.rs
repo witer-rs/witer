@@ -69,6 +69,3 @@ pub use window::{
 #[cfg(doctest)]
 #[doc = include_str!("../README.md")]
 struct ReadMe;
-
-#[cfg(feature = "egui")]
-pub use egui;
