@@ -2,8 +2,6 @@
 
 ## An iterator-based Win32 window library built in Rust
 
-
-
 ```rust
 use witer::prelude::*;
 
@@ -73,5 +71,3 @@ looks and feels. If you are perfectly satisfied with what `winit` offers, then I
 **A:** I wanted a name that was more inline with the ideas and goals behind the project. Additionally, I wanted a chance
 to pull the project back to `v0.x.y` to reflect its volatile nature. This isn't currently possible with Crates.io (ignoring
 yanking). Furthermore, the `v3.x.y` could be seen as confusing for those who didn't understand why they existed.
-
-## 
