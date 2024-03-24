@@ -56,6 +56,7 @@ pub enum Message {
     scan_code: u16,
     is_extended_key: bool,
   },
+  /// Message sent when a text character is typed containing that character.
   Char(char),
   ModifiersChanged {
     shift: ButtonState,
