@@ -1,13 +1,9 @@
 use std::{
   collections::VecDeque,
-  sync::{Arc, Condvar, Mutex},
+  sync::{mpsc::SyncSender, Arc, Condvar, Mutex},
   thread::JoinHandle,
 };
 
-use crossbeam::{
-  channel::{Receiver, Sender, TryRecvError},
-  queue::SegQueue,
-};
 #[cfg(all(feature = "rwh_05", not(feature = "rwh_06")))]
 use rwh_05::{
   HasRawDisplayHandle,
@@ -109,8 +105,7 @@ pub struct Window {
   hwnd: HWND,
   state: Handle<InternalState>,
   sync: SyncData,
-  command_queue: Arc<SegQueue<Command>>,
-  message_receiver: Receiver<Message>,
+  message: Arc<Mutex<Option<Message>>>,
 }
 
 /// Window is destroyed on drop.
@@ -143,7 +138,7 @@ impl Window {
     position: impl Into<Option<Position>>,
     settings: WindowSettings,
   ) -> Result<Self, WindowError> {
-    let (message_sender, message_receiver) = crossbeam::channel::unbounded();
+    // let (message_sender, message_receiver) = crossbeam::channel::unbounded();
 
     let sync = SyncData {
       new_message: Arc::new((Mutex::new(false), Condvar::new())),
@@ -161,9 +156,7 @@ impl Window {
       settings: settings.clone(),
       window: None,
       sync: sync.clone(),
-      command_queue: Arc::new(SegQueue::new()),
-      message_sender,
-      message_receiver,
+      message: Arc::new(Mutex::new(None)),
       style: StyleInfo {
         visibility: settings.visibility,
         decorations: settings.decorations,
@@ -172,7 +165,7 @@ impl Window {
       },
     };
 
-    let (window_sender, window_receiver) = crossbeam::channel::bounded(0);
+    let (window_sender, window_receiver) = std::sync::mpsc::sync_channel(0);
 
     let thread = Some(Self::window_loop(window_sender, create_info)?);
 
@@ -192,20 +185,20 @@ impl Window {
   }
 
   fn window_loop(
-    window_sender: Sender<Self>,
+    window_sender: SyncSender<Self>,
     create_info: CreateInfo,
   ) -> Result<JoinHandle<Result<(), WindowError>>, WindowError> {
     let thread_handle = std::thread::Builder::new().name("win32".to_owned()).spawn(
       move || -> Result<(), WindowError> {
         let sync = create_info.sync.clone();
-        let message_sender = create_info.message_sender.clone();
+        let message = create_info.message.clone();
         let (window, state) = Self::create_hwnd(create_info)?;
 
         window_sender
           .send(window)
           .expect("failed to send opened message");
 
-        while Self::message_pump(&sync, &message_sender, &state) {}
+        while Self::message_pump(&sync, &message, &state) {}
 
         Ok(())
       },
@@ -271,18 +264,20 @@ impl Window {
 
   fn message_pump(
     sync: &SyncData,
-    message_sender: &Sender<Message>,
+    // message_sender: &SyncSender<Message>,
+    message: &Arc<Mutex<Option<Message>>>,
     state: &Handle<InternalState>,
   ) -> bool {
-    if !message_sender.is_empty() {
+    let should_wait = message.lock().unwrap().is_some();
+    if should_wait {
       sync.wait_on_frame(|| state.read_lock().stage == Stage::ExitLoop);
     }
 
     // pass message to main thread
-    if let Err(_e) = message_sender.try_send(Message::Loop(message::LoopMessage::Wait)) {
-      tracing::error!("{_e}");
-      state.write_lock().stage = Stage::ExitLoop;
-    }
+    message
+      .lock()
+      .unwrap()
+      .replace(Message::Loop(message::LoopMessage::Wait));
     sync.signal_new_message();
     sync.wait_on_frame(|| state.read_lock().stage == Stage::ExitLoop);
 
@@ -307,13 +302,12 @@ impl Window {
     }
 
     // let msg = self.sync.next_message.lock().unwrap().take();
-    self.message_receiver.try_recv().map_or_else(
-      |e| match e {
-        TryRecvError::Empty => Some(Message::Loop(LoopMessage::Empty)),
-        TryRecvError::Disconnected => None,
-      },
-      Some,
-    )
+    self
+      .message
+      .lock()
+      .unwrap()
+      .take()
+      .or(Some(Message::Loop(LoopMessage::Empty)))
   }
 
   pub fn next_message(&self) -> Option<Message> {

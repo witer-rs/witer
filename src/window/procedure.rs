@@ -3,10 +3,7 @@ use std::{
   sync::{Arc, Condvar, Mutex},
 };
 
-use crossbeam::{
-  channel::{Receiver, Sender},
-  queue::SegQueue,
-};
+// use crossbeam::channel::{Receiver, Sender};
 use windows::Win32::{
   Foundation::*,
   Graphics::Gdi::{
@@ -94,9 +91,9 @@ pub struct CreateInfo {
   pub settings: WindowSettings,
   pub window: Option<(Window, Handle<InternalState>)>,
   pub sync: SyncData,
-  pub command_queue: Arc<SegQueue<Command>>,
-  pub message_sender: Sender<Message>,
-  pub message_receiver: Receiver<Message>,
+  pub message: Arc<Mutex<Option<Message>>>,
+  // pub message_sender: Sender<Message>,
+  // pub message_receiver: Receiver<Message>,
   pub style: StyleInfo,
 }
 
@@ -133,8 +130,8 @@ impl SyncData {
 pub struct SubclassWindowData {
   pub state: Handle<InternalState>,
   pub sync: SyncData,
-  pub command_queue: Arc<SegQueue<Command>>,
-  pub message_sender: Sender<Message>,
+  pub message: Arc<Mutex<Option<Message>>>,
+  // pub message_sender: Sender<Message>,
   pub processing_command: bool, // required to prevent re-entrant commands
 }
 
@@ -216,13 +213,14 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
     requested_redraw: false,
   });
 
-  if let Err(_e) = create_info.message_sender.try_send(Message::Created {
-    hwnd,
-    hinstance: create_struct.hInstance,
-  }) {
-    tracing::error!("{_e}");
-    return LRESULT(-1);
-  }
+  create_info
+    .message
+    .lock()
+    .unwrap()
+    .replace(Message::Created {
+      hwnd,
+      hinstance: create_struct.hInstance,
+    });
 
   create_info.sync.signal_new_message();
 
@@ -231,8 +229,7 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
     hwnd,
     state: state.clone(),
     sync: create_info.sync.clone(),
-    command_queue: create_info.command_queue.clone(),
-    message_receiver: create_info.message_receiver.clone(),
+    message: create_info.message.clone(),
   };
 
   create_info.window = Some((window, state.clone()));
@@ -240,8 +237,7 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
   let subclass_data = SubclassWindowData {
     state: state.clone(),
     sync: create_info.sync.clone(),
-    command_queue: create_info.command_queue.clone(),
-    message_sender: create_info.message_sender.clone(),
+    message: create_info.message.clone(),
     processing_command: false,
   };
 
@@ -740,7 +736,8 @@ fn on_message(
   };
 
   // Wait for previous message to be handled
-  if !data.message_sender.is_empty() {
+  let should_wait = data.message.lock().unwrap().is_some();
+  if should_wait {
     data
       .sync
       .wait_on_frame(|| data.state.read_lock().stage == Stage::ExitLoop);
@@ -751,7 +748,8 @@ fn on_message(
     for message in messages {
       update_state(hwnd, data, &message);
 
-      data.message_sender.try_send(message).unwrap();
+      // data.message_sender.try_send(message).unwrap();
+      data.message.lock().unwrap().replace(message);
       data.sync.signal_new_message();
 
       data
@@ -769,10 +767,8 @@ fn update_state(hwnd: HWND, data: &SubclassWindowData, message: &Message) {
       let cursor_visibility = data.state.read_lock().cursor.visibility;
       let cursor_mode = data.state.read_lock().cursor.mode;
       if focus == Focus::Gained {
-        data.command_queue.push(Command::SetCursorMode(cursor_mode));
-        data
-          .command_queue
-          .push(Command::SetCursorVisibility(cursor_visibility));
+        Command::SetCursorMode(cursor_mode).post(hwnd);
+        Command::SetCursorVisibility(cursor_visibility).post(hwnd);
         unsafe { PostMessageW(hwnd, WindowsAndMessaging::WM_APP, WPARAM(0), LPARAM(0)) }
           .unwrap();
       }

@@ -32,8 +32,6 @@ pub struct InternalState {
   pub subtitle: String,
   pub theme: Theme,
   pub style: StyleInfo,
-  // pub position: Position,
-  // pub size: Size,
   pub last_windowed_position: Position,
   pub last_windowed_size: Size,
   pub cursor: CursorInfo,

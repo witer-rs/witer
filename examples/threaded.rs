@@ -1,12 +1,11 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 use std::{
-  sync::{Arc, Barrier},
+  sync::{mpsc::Receiver, Arc, Barrier},
   thread::JoinHandle,
   time::{Duration, Instant},
 };
 
-use crossbeam::channel::Receiver;
 use foxy_time::{Time, TimeSettings};
 use tracing::Level;
 use witer::{error::*, prelude::*};
@@ -34,7 +33,7 @@ fn main() -> Result<(), WindowError> {
       .build()?,
   );
 
-  let (message_sender, message_receiver) = crossbeam::channel::unbounded();
+  let (message_sender, message_receiver) = std::sync::mpsc::channel();
   let sync_barrier = Arc::new(Barrier::new(2));
   let handle = app_loop(window.clone(), message_receiver, sync_barrier.clone());
 
@@ -56,7 +55,7 @@ fn main() -> Result<(), WindowError> {
     }
 
     if !message.is_empty() {
-      message_sender.try_send(message).unwrap();
+      message_sender.send(message).unwrap();
     }
 
     sync_barrier.wait();
