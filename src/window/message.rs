@@ -106,7 +106,7 @@ pub enum Message {
 pub enum LoopMessage {
   /// Sent when the message pump is polled, but there are no messages.
   Empty,
-  /// Sent when the window receives a command.
+  /// Sent when the window receives a command request.
   Command(Command),
   /// Sent when the message pump is about to do GetMessageW.
   Wait,
