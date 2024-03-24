@@ -13,6 +13,7 @@ fn main() {
 
   let window = Window::builder()
     .with_title("Press Esc to close!")
+    // .with_size(size) <-- this would set the outer size, not the inner size
     .with_visibility(Visibility::Hidden)
     .build()
     .unwrap();
