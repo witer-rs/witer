@@ -782,15 +782,33 @@ unsafe impl HasRawDisplayHandle for Window {
 }
 
 impl Window {
-  pub fn iter(&self) -> MessageIterator {
-    tracing::trace!("Preparing to immutably iterate over messages");
-    self.state.write_lock().stage = Stage::Looping;
+  fn iter(&self) -> MessageIterator {
+    let current_stage = self.state.read_lock().stage;
+    match current_stage {
+      Stage::Ready => {
+        tracing::trace!("Preparing to immutably iterate over messages");
+        self.state.write_lock().stage = Stage::Looping;
+      }
+      Stage::ExitLoop => {
+        tracing::error!("Attempted to iterate over window already in the ExitLoop stage")
+      }
+      _ => tracing::warn!("Iterating over window which wasn't in the Ready stage"),
+    }
     MessageIterator { window: self }
   }
 
-  pub fn iter_mut(&mut self) -> MessageIteratorMut {
-    tracing::trace!("Preparing to mutably iterate over messages");
-    self.state.write_lock().stage = Stage::Looping;
+  fn iter_mut(&mut self) -> MessageIteratorMut {
+    let current_stage = self.state.read_lock().stage;
+    match current_stage {
+      Stage::Ready => {
+        tracing::trace!("Preparing to mutably iterate over messages");
+        self.state.write_lock().stage = Stage::Looping;
+      }
+      Stage::ExitLoop => {
+        tracing::error!("Attempted to iterate over window already in the ExitLoop stage")
+      }
+      _ => tracing::warn!("Iterating over window which wasn't in the Ready stage"),
+    }
     MessageIteratorMut { window: self }
   }
 }
