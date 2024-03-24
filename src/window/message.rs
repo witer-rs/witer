@@ -129,23 +129,6 @@ pub enum RawInputMessage {
 }
 
 impl Message {
-  // pub fn collect(
-  //   hwnd: HWND,
-  //   message: u32,
-  //   w_param: WPARAM,
-  //   l_param: LPARAM,
-  //   state: &Handle<InternalState>,
-  // ) -> Option<Vec<Self>> {
-  //   let mut out = Vec::with_capacity(0);
-  //   out.reserve_exact(1);
-
-  //   match message {
-  //     _ => return None,
-  //   }
-
-  //   Some(out)
-  // }
-
   pub(crate) fn new_keyboard_message(l_param: LPARAM) -> Message {
     let flags = hi_word(unsafe { std::mem::transmute::<i32, u32>(l_param.0 as i32) });
 
