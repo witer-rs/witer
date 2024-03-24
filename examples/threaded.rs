@@ -9,7 +9,11 @@ use std::{
 use crossbeam::channel::Receiver;
 use foxy_time::{Time, TimeSettings};
 use tracing::{error, Level};
-use witer::{error::*, prelude::*};
+use winit::{
+  dpi::{PhysicalPosition, PhysicalSize},
+  event::{Event, StartCause, WindowEvent},
+};
+use witer::{error::*, prelude::*, window::WiterEvent};
 
 /*
   This example showcases how to render a triangle using WGPU on a separate thread while
@@ -29,8 +33,8 @@ fn main() -> WindowResult<()> {
   let window = Arc::new(
     Window::builder()
       .with_title("Threaded Example")
-      .with_flow(Flow::Poll)
-      .with_visibility(Visibility::Hidden)
+      .with_flow(winit::event_loop::ControlFlow::Poll)
+      .with_visible(false)
       .build()?,
   );
 
@@ -39,23 +43,27 @@ fn main() -> WindowResult<()> {
   let handle = app_loop(window.clone(), message_receiver, sync_barrier.clone());
 
   for message in window.as_ref() {
-    if message.is_key(Key::F11, KeyState::Pressed) {
-      let fullscreen = window.fullscreen();
-      match fullscreen {
-        Some(Fullscreen::Borderless) => {
-          window.set_fullscreen(None);
-          window.set_cursor_mode(CursorMode::Normal);
-          window.set_cursor_visibility(Visibility::Shown);
-        }
-        None => {
-          window.set_fullscreen(Some(Fullscreen::Borderless));
-          window.set_cursor_mode(CursorMode::Confined);
-          window.set_cursor_visibility(Visibility::Hidden);
-        }
-      }
-    }
+    // if message.is_key(Key::F11, KeyState::Pressed) {
+    //   let fullscreen = window.fullscreen();
+    //   match fullscreen {
+    //     Some(Fullscreen::Borderless) => {
+    //       window.set_fullscreen(None);
+    //       window.set_cursor_mode(CursorMode::Normal);
+    //       window.set_cursor_visibility(Visibility::Shown);
+    //     }
+    //     None => {
+    //       window.set_fullscreen(Some(Fullscreen::Borderless));
+    //       window.set_cursor_mode(CursorMode::Confined);
+    //       window.set_cursor_visibility(Visibility::Hidden);
+    //     }
+    //   }
+    // }
 
-    if !message.is_empty() {
+    // if !message.is_empty() {
+    //   message_sender.try_send(message).unwrap();
+    // }
+
+    if !matches!(message, Event::NewEvents(StartCause::Poll) | Event::AboutToWait) {
       message_sender.try_send(message).unwrap();
     }
 
@@ -69,7 +77,7 @@ fn main() -> WindowResult<()> {
 
 fn app_loop(
   window: Arc<Window>,
-  message_receiver: Receiver<Message>,
+  message_receiver: Receiver<Event<WiterEvent<()>>>,
   sync_barrier: Arc<Barrier>,
 ) -> JoinHandle<()> {
   std::thread::Builder::new()
@@ -80,23 +88,29 @@ fn app_loop(
       loop {
         let message = message_receiver.try_recv().ok();
 
-        if !matches!(
-          message,
-          Some(
-            Message::Paint
-              | Message::Loop(..)
-              | Message::RawInput(..)
-              | Message::CursorMove { .. }
-          ) | None
-        ) {
-          println!("{message:?}");
+        if let Some(message) = &message {
+          tracing::info!("{message:?}");
         }
+        // if !matches!(
+        //   message,
+        //   Some(
+        //     Message::Paint
+        //       | Message::Loop(..)
+        //       | Message::RawInput(..)
+        //       | Message::CursorMove { .. }
+        //   ) | None
+        // ) {
+        //   println!("{message:?}");
+        // }
 
         match &message {
-          Some(Message::Resized(new_size)) => {
+          Some(Event::WindowEvent {
+            event: WindowEvent::Resized(new_size),
+            ..
+          }) => {
             app.resize(*new_size);
           }
-          Some(Message::Loop(LoopMessage::Exit)) => break,
+          Some(Event::LoopExiting) => break,
           _ => (),
         }
 
@@ -120,7 +134,7 @@ struct App {
   device: wgpu::Device,
   queue: wgpu::Queue,
   config: wgpu::SurfaceConfiguration,
-  size: PhysicalSize,
+  size: PhysicalSize<u32>,
   render_pipeline: wgpu::RenderPipeline,
 }
 
@@ -244,8 +258,8 @@ impl App {
     })
   }
 
-  fn resize(&mut self, new_size: PhysicalSize) {
-    if new_size.is_any_zero() {
+  fn resize(&mut self, new_size: PhysicalSize<u32>) {
+    if new_size.width == 0 || new_size.height == 0 {
       return;
     }
 
@@ -264,7 +278,7 @@ impl App {
   }
 
   fn draw(&mut self, window: &Window) {
-    if window.inner_size().is_any_zero() {
+    if window.inner_size().width == 0 || window.inner_size().height == 0 {
       return;
     }
 
@@ -272,14 +286,15 @@ impl App {
     let elapsed = now.duration_since(self.last_render_time);
     if elapsed >= Duration::from_secs_f64(0.20) {
       let fps = format!(" | Avg FPS: {:.0}", 1.0 / self.time.average_delta_secs());
-      window.set_subtitle(fps);
+      // window.set_subtitle(fps);
+      tracing::info!("{fps}");
       self.last_render_time = now;
     }
 
     match (self.is_revealed, self.frame_count) {
       (false, 10) => {
         Self::center_window(window);
-        window.set_visibility(Visibility::Shown);
+        window.set_visible(true);
         self.is_revealed = true;
       }
       (false, _) => self.frame_count = self.frame_count.wrapping_add(1),
@@ -340,8 +355,8 @@ impl App {
 
   fn center_window(window: &Window) {
     let window_size = window.outer_size();
-    let monitor_pos = window.current_monitor().position();
-    let monitor_size = window.current_monitor().size();
+    let monitor_pos = window.current_monitor().unwrap().position();
+    let monitor_size = window.current_monitor().unwrap().size();
     let monitor_center = PhysicalPosition {
       x: monitor_pos.x + (monitor_size.width as f32 * 0.5) as i32,
       y: monitor_pos.y + (monitor_size.height as f32 * 0.5) as i32,

@@ -42,29 +42,30 @@ pub mod window;
 
 // re-exports
 pub use window::{
-  input::{
-    key::Key,
-    mouse::MouseButton,
-    state::{ButtonState, KeyState, RawKeyState},
-    Input,
-  },
-  message::{LoopMessage, Message, RawInputMessage},
+  // input::{
+  //   key::Key,
+  //   mouse::MouseButton,
+  //   state::{ButtonState, KeyState, RawKeyState},
+  //   Input,
+  // },
+  // message::{LoopMessage, Message, RawInputMessage},
   settings::{WindowBuilder, WindowSettings},
-  state::{
-    CursorMode,
-    Flow,
-    Fullscreen,
-    LogicalPosition,
-    LogicalSize,
-    PhysicalPosition,
-    PhysicalSize,
-    Position,
-    Size,
-    Theme,
-    Visibility,
-  },
+  // state::{
+  //   CursorMode,
+  //   Flow,
+  //   Fullscreen,
+  //   LogicalPosition,
+  //   LogicalSize,
+  //   PhysicalPosition,
+  //   PhysicalSize,
+  //   Position,
+  //   Size,
+  //   Theme,
+  //   Visibility,
+  // },
   Window,
 };
+pub use winit;
 
 #[cfg(doctest)]
 #[doc = include_str!("../README.md")]

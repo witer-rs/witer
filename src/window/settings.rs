@@ -1,5 +1,12 @@
+use winit::{
+  dpi::{LogicalSize, Position, Size},
+  event_loop::ControlFlow,
+  window::{CursorGrabMode, Fullscreen, Theme},
+};
+
 use super::{
-  state::{CursorMode, Flow, Fullscreen, LogicalSize, Position, Size, Theme, Visibility},
+  // state::{CursorMode, Flow, Fullscreen, LogicalSize, Position, Size, Theme,
+  // Visibility},
   Window,
 };
 use crate::error::WindowResult;
@@ -7,31 +14,31 @@ use crate::error::WindowResult;
 /// Optional onfiguration for the window to be built.
 #[derive(Debug, Clone)]
 pub struct WindowSettings {
-  pub flow: Flow,
-  pub theme: Theme,
-  pub visibility: Visibility,
-  pub decorations: Visibility,
+  pub flow: ControlFlow,
+  pub theme: Option<Theme>,
+  pub visible: bool,
+  pub decorations: bool,
   pub resizeable: bool,
   pub fullscreen: Option<Fullscreen>,
-  pub cursor_mode: CursorMode,
+  pub cursor_mode: CursorGrabMode,
   pub close_on_x: bool,
 }
 
 impl Default for WindowSettings {
   fn default() -> Self {
-    let flow = Flow::default();
-    let theme = Theme::default();
+    let flow = ControlFlow::default();
+    let theme = None;
     let fullscreen = None;
-    let cursor_mode = CursorMode::default();
-    let visibility = Visibility::default();
-    let decorations = Visibility::default();
+    let cursor_mode = CursorGrabMode::None;
+    let visible = true;
+    let decorations = true;
     let resizeable = true;
     let close_on_x = true;
 
     Self {
       flow,
       theme,
-      visibility,
+      visible,
       decorations,
       close_on_x,
       fullscreen,
@@ -42,23 +49,23 @@ impl Default for WindowSettings {
 }
 
 impl WindowSettings {
-  pub fn with_flow(mut self, flow: Flow) -> Self {
+  pub fn with_flow(mut self, flow: ControlFlow) -> Self {
     self.flow = flow;
     self
   }
 
-  pub fn with_theme(mut self, theme: Theme) -> Self {
+  pub fn with_theme(mut self, theme: Option<Theme>) -> Self {
     self.theme = theme;
     self
   }
 
-  pub fn with_visibility(mut self, visibility: Visibility) -> Self {
-    self.visibility = visibility;
+  pub fn with_visible(mut self, visible: bool) -> Self {
+    self.visible = visible;
     self
   }
 
-  pub fn with_decorations(mut self, visibility: Visibility) -> Self {
-    self.decorations = visibility;
+  pub fn with_decorations(mut self, decorated: bool) -> Self {
+    self.decorations = decorated;
     self
   }
 
@@ -68,7 +75,7 @@ impl WindowSettings {
     self
   }
 
-  pub fn with_cursor_mode(mut self, cursor_mode: CursorMode) -> Self {
+  pub fn with_cursor_mode(mut self, cursor_mode: CursorGrabMode) -> Self {
     self.cursor_mode = cursor_mode;
     self
   }
@@ -122,23 +129,23 @@ impl WindowBuilder {
     self
   }
 
-  pub fn with_flow(mut self, flow: Flow) -> Self {
+  pub fn with_flow(mut self, flow: ControlFlow) -> Self {
     self.settings = self.settings.with_flow(flow);
     self
   }
 
-  pub fn with_theme(mut self, theme: Theme) -> Self {
+  pub fn with_theme(mut self, theme: Option<Theme>) -> Self {
     self.settings = self.settings.with_theme(theme);
     self
   }
 
-  pub fn with_visibility(mut self, visibility: Visibility) -> Self {
-    self.settings = self.settings.with_visibility(visibility);
+  pub fn with_visible(mut self, visible: bool) -> Self {
+    self.settings = self.settings.with_visible(visible);
     self
   }
 
-  pub fn with_decorations(mut self, visibility: Visibility) -> Self {
-    self.settings = self.settings.with_decorations(visibility);
+  pub fn with_decorations(mut self, decorated: bool) -> Self {
+    self.settings = self.settings.with_decorations(decorated);
     self
   }
 
@@ -148,7 +155,7 @@ impl WindowBuilder {
     self
   }
 
-  pub fn with_cursor_mode(mut self, cursor_mode: CursorMode) -> Self {
+  pub fn with_cursor_mode(mut self, cursor_mode: CursorGrabMode) -> Self {
     self.settings = self.settings.with_cursor_mode(cursor_mode);
     self
   }

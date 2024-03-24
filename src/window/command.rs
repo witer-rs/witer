@@ -1,18 +1,19 @@
-use windows::core::HSTRING;
-
-use super::state::{CursorMode, Fullscreen, Position, Size, Visibility};
+use winit::{
+  dpi::{Position, Size},
+  window::{CursorGrabMode, Fullscreen},
+};
 
 #[repr(u32)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Command {
-  Destroy,
+  Close,
   Redraw,
-  SetVisibility(Visibility),
-  SetDecorations(Visibility),
-  SetWindowText(HSTRING),
+  SetVisibility(bool),
+  SetDecorations(bool),
+  SetWindowText(String),
   SetSize(Size),
   SetPosition(Position),
   SetFullscreen(Option<Fullscreen>),
-  SetCursorMode(CursorMode),
-  SetCursorVisibility(Visibility),
+  SetCursorMode(CursorGrabMode),
+  SetCursorVisibility(bool),
 }
