@@ -8,7 +8,7 @@ use std::{
 
 use crossbeam::channel::Receiver;
 use foxy_time::{Time, TimeSettings};
-use tracing::{error, Level};
+use tracing::Level;
 use witer::{error::*, prelude::*};
 
 /*
@@ -20,7 +20,7 @@ use witer::{error::*, prelude::*};
   from the window message pump, which is vital for updating while moving/resizing.
 */
 
-fn main() -> WindowResult<()> {
+fn main() -> Result<(), WindowError> {
   tracing_subscriber::fmt()
     .with_max_level(Level::INFO)
     .with_thread_names(true)
@@ -89,7 +89,7 @@ fn app_loop(
               | Message::CursorMove { .. }
           ) | None
         ) {
-          println!("{message:?}");
+          tracing::info!("{message:?}");
         }
 
         match &message {
@@ -294,7 +294,7 @@ impl App {
         return;
       }
       Err(error) => {
-        error!("{error}");
+        tracing::error!("{error}");
         return;
       }
     };

@@ -2,7 +2,7 @@ use std::io;
 
 use thiserror::Error;
 
-pub type WindowResult<T> = Result<T, WindowError>;
+// pub type WindowResult<T> = Result<T, WindowError>;
 
 #[derive(Error, Debug)]
 pub enum WindowError {

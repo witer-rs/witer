@@ -23,6 +23,10 @@
   }
   # Ok::<(), witer::error::WindowError>(())
   ```
+
+  Please note that the window will wait to process new messages until the end of each cycle of the loop, despite
+  being on a separate thread. This keeps the window in sync with the main thread to prevent things such as input
+  lag.
 */
 
 #![cfg(any(target_os = "windows", doc))]

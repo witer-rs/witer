@@ -56,7 +56,6 @@ use windows::{
         GetMessageW,
         GetWindowRect,
         LoadCursorW,
-        PostMessageW,
         RegisterClassExW,
         TranslateMessage,
         MSG,
@@ -75,7 +74,7 @@ use self::{
   state::{CursorMode, Fullscreen, PhysicalSize, Position, StyleInfo},
 };
 use crate::{
-  error::{WindowError, WindowResult},
+  error::WindowError,
   handle::Handle,
   prelude::{ButtonState, Key, KeyState, MouseButton},
   utilities::{
@@ -195,9 +194,9 @@ impl Window {
   fn window_loop(
     window_sender: Sender<Self>,
     create_info: CreateInfo,
-  ) -> WindowResult<JoinHandle<WindowResult<()>>> {
+  ) -> Result<JoinHandle<Result<(), WindowError>>, WindowError> {
     let thread_handle = std::thread::Builder::new().name("win32".to_owned()).spawn(
-      move || -> WindowResult<()> {
+      move || -> Result<(), WindowError> {
         let sync = create_info.sync.clone();
         let message_sender = create_info.message_sender.clone();
         let (window, state) = Self::create_hwnd(create_info)?;
@@ -217,7 +216,7 @@ impl Window {
 
   fn create_hwnd(
     mut create_info: CreateInfo,
-  ) -> WindowResult<(Self, Handle<InternalState>)> {
+  ) -> Result<(Self, Handle<InternalState>), WindowError> {
     let hinstance: HINSTANCE = unsafe { GetModuleHandleW(None)? }.into();
     debug_assert_ne!(hinstance.0, 0);
     // let size = create_info.settings.size;
@@ -707,12 +706,14 @@ impl Window {
   }
 
   fn request(&self, command: Command) {
-    let err_str = format!("failed to post command `{command:?}`");
+    // let err_str = format!("failed to post command `{command:?}`");
 
-    self.command_queue.push(command);
+    // self.command_queue.push(command);
 
-    unsafe { PostMessageW(self.hwnd, WindowsAndMessaging::WM_APP, WPARAM(0), LPARAM(0)) }
-      .unwrap_or_else(|e| panic!("{}: {e}", err_str));
+    command.post(self.hwnd);
+
+    // unsafe { PostMessageW(self.hwnd, WindowsAndMessaging::WM_APP, WPARAM(0),
+    // LPARAM(0)) }   .unwrap_or_else(|e| panic!("{}: {e}", err_str));
   }
 
   #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]

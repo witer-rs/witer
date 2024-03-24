@@ -2,7 +2,7 @@ use super::{
   state::{CursorMode, Flow, Fullscreen, LogicalSize, Position, Size, Theme, Visibility},
   Window,
 };
-use crate::error::WindowResult;
+use crate::error::WindowError;
 
 /// Optional onfiguration for the window to be built.
 #[derive(Debug, Clone)]
@@ -163,7 +163,7 @@ impl WindowBuilder {
     self
   }
 
-  pub fn build(self) -> WindowResult<Window> {
+  pub fn build(self) -> Result<Window, WindowError> {
     Window::new(self.title, self.size, self.position, self.settings)
   }
 }

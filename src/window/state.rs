@@ -9,7 +9,7 @@ use windows::Win32::{
 };
 
 use super::stage::Stage;
-use crate::{error::WindowResult, window::Input};
+use crate::{error::WindowError, window::Input};
 
 #[derive(Debug, Clone, Copy)]
 pub struct StyleInfo {
@@ -27,7 +27,7 @@ pub struct CursorInfo {
 }
 
 pub struct InternalState {
-  pub thread: Option<JoinHandle<WindowResult<()>>>,
+  pub thread: Option<JoinHandle<Result<(), WindowError>>>,
   pub title: String,
   pub subtitle: String,
   pub theme: Theme,

@@ -13,7 +13,7 @@ use witer::{error::*, prelude::*};
   This example showcases a simple app rendering a blank screen using WGPU.
 */
 
-fn main() -> WindowResult<()> {
+fn main() -> Result<(), WindowError> {
   // start hidden to prevent first frame white flash
   let window = Arc::new(
     Window::builder()

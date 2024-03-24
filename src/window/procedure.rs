@@ -18,10 +18,17 @@ use windows::Win32::{
     MONITORINFO,
   },
   UI::{
+    self,
+    Controls,
     HiDpi::{
       SetProcessDpiAwarenessContext,
       DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE,
       DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+    },
+    Input::{
+      KeyboardAndMouse::{self, TrackMouseEvent, TRACKMOUSEEVENT},
+      HRAWINPUT,
+      RID_DEVICE_INFO_TYPE,
     },
     Shell::{DefSubclassProc, SetWindowSubclass},
     WindowsAndMessaging::{
@@ -37,6 +44,7 @@ use windows::Win32::{
       SetWindowTextW,
       ShowWindow,
       CREATESTRUCTW,
+      WINDOWPOS,
     },
   },
 };
@@ -45,7 +53,8 @@ use windows::Win32::{
 use super::message::Message;
 use super::{
   command::Command,
-  message::Focus,
+  input::mouse::mouse_button_states,
+  message::{get_cursor_move_kind, CursorMoveKind, Focus},
   settings::WindowSettings,
   state::{CursorMode, Fullscreen, Position, Size, StyleInfo, Visibility},
   Window,
@@ -57,15 +66,25 @@ use crate::{
     dpi_to_scale_factor,
     get_window_ex_style,
     get_window_style,
+    hi_word,
     hwnd_dpi,
+    lo_word,
+    read_raw_input,
     register_all_mice_and_keyboards_for_raw_input,
     set_cursor_clip,
     set_cursor_visibility,
+    signed_hi_word,
+    signed_lo_word,
   },
   window::{
     stage::Stage,
     state::{CursorInfo, InternalState, PhysicalPosition},
   },
+  Key,
+  MouseButton,
+  PhysicalSize,
+  RawInputMessage,
+  RawKeyState,
 };
 
 pub struct CreateInfo {
@@ -268,28 +287,463 @@ fn on_message(
   l_param: LPARAM,
   data: &mut SubclassWindowData,
 ) -> LRESULT {
-  let messages = Message::collect(hwnd, msg, w_param, l_param, &data.state);
+  // let messages = Message::collect(hwnd, msg, w_param, l_param, &data.state);
+  let mut messages = Vec::with_capacity(0);
+  messages.reserve_exact(1);
 
   // handle from wndproc
-  let result = match msg {
-    WindowsAndMessaging::WM_SIZING | WindowsAndMessaging::WM_MOVING => {
-      // ignore certain messages
-      return unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) };
+  let result = {
+    match msg {
+      Command::MESSAGE_ID => {
+        let command = unsafe { Box::from_raw(w_param.0 as *mut Command) };
+        match *command {
+          Command::Destroy => {
+            unsafe { DestroyWindow(hwnd) }.unwrap();
+            return LRESULT(0); // hwnd will be invalid
+          }
+          Command::Redraw => unsafe {
+            RedrawWindow(hwnd, None, None, Gdi::RDW_INTERNALPAINT);
+          },
+          Command::SetVisibility(visibility) => unsafe {
+            ShowWindow(hwnd, match visibility {
+              Visibility::Hidden => WindowsAndMessaging::SW_HIDE,
+              Visibility::Shown => WindowsAndMessaging::SW_SHOW,
+            });
+          },
+          Command::SetDecorations(decorations) => {
+            let style = data.state.read_lock().style;
+            match decorations {
+              Visibility::Shown => {
+                unsafe {
+                  SetWindowLongW(
+                    hwnd,
+                    WindowsAndMessaging::GWL_STYLE,
+                    get_window_style(&style).0 as i32,
+                  )
+                };
+                unsafe {
+                  SetWindowLongW(
+                    hwnd,
+                    WindowsAndMessaging::GWL_EXSTYLE,
+                    get_window_ex_style(&style).0 as i32,
+                  )
+                };
+              }
+              Visibility::Hidden => {
+                unsafe {
+                  SetWindowLongW(
+                    hwnd,
+                    WindowsAndMessaging::GWL_STYLE,
+                    get_window_style(&style).0 as i32,
+                  )
+                };
+                unsafe {
+                  SetWindowLongW(
+                    hwnd,
+                    WindowsAndMessaging::GWL_EXSTYLE,
+                    get_window_ex_style(&style).0 as i32,
+                  )
+                };
+              }
+            }
+            unsafe {
+              SetWindowPos(
+                hwnd,
+                None,
+                0,
+                0,
+                0,
+                0,
+                WindowsAndMessaging::SWP_NOZORDER
+                  | WindowsAndMessaging::SWP_NOMOVE
+                  | WindowsAndMessaging::SWP_NOSIZE
+                  | WindowsAndMessaging::SWP_NOACTIVATE
+                  | WindowsAndMessaging::SWP_FRAMECHANGED,
+              )
+              .expect("Failed to set window size");
+            }
+          }
+          Command::SetWindowText(text) => unsafe {
+            SetWindowTextW(hwnd, &text).unwrap();
+          },
+          Command::SetSize(size) => {
+            let physical_size = size.as_physical(data.state.read_lock().scale_factor);
+            unsafe {
+              SetWindowPos(
+                hwnd,
+                None,
+                0,
+                0,
+                physical_size.width as i32,
+                physical_size.height as i32,
+                WindowsAndMessaging::SWP_NOZORDER
+                  | WindowsAndMessaging::SWP_NOMOVE
+                  | WindowsAndMessaging::SWP_NOREPOSITION
+                  | WindowsAndMessaging::SWP_NOACTIVATE,
+              )
+              .expect("Failed to set window size");
+            }
+            unsafe { InvalidateRgn(hwnd, None, false) };
+          }
+          Command::SetPosition(position) => {
+            let physical_position =
+              position.as_physical(data.state.read_lock().scale_factor);
+            unsafe {
+              SetWindowPos(
+                hwnd,
+                None,
+                physical_position.x,
+                physical_position.y,
+                0,
+                0,
+                WindowsAndMessaging::SWP_NOZORDER
+                  | WindowsAndMessaging::SWP_NOSIZE
+                  | WindowsAndMessaging::SWP_NOREPOSITION
+                  | WindowsAndMessaging::SWP_NOACTIVATE,
+              )
+              .expect("Failed to set window position");
+            }
+            unsafe { InvalidateRgn(hwnd, None, false) };
+          }
+          Command::SetFullscreen(fullscreen) => {
+            // info!("Fullscreen: {fullscreen:?}");
+            // update style
+            let style = data.state.read_lock().style;
+            unsafe {
+              SetWindowLongW(
+                hwnd,
+                WindowsAndMessaging::GWL_STYLE,
+                get_window_style(&style).0 as i32,
+              )
+            };
+            unsafe {
+              SetWindowLongW(
+                hwnd,
+                WindowsAndMessaging::GWL_EXSTYLE,
+                get_window_ex_style(&style).0 as i32,
+              )
+            };
+            // update size
+            match fullscreen {
+              Some(Fullscreen::Borderless) => {
+                let monitor =
+                  unsafe { MonitorFromWindow(hwnd, Gdi::MONITOR_DEFAULTTONEAREST) };
+                let mut info = MONITORINFO {
+                  cbSize: size_of::<MONITORINFO>() as u32,
+                  ..Default::default()
+                };
+                if unsafe { GetMonitorInfoW(monitor, &mut info) }.as_bool() {
+                  unsafe {
+                    SetWindowPos(
+                      hwnd,
+                      None,
+                      info.rcMonitor.left,
+                      info.rcMonitor.top,
+                      info.rcMonitor.right - info.rcMonitor.left,
+                      info.rcMonitor.bottom - info.rcMonitor.top,
+                      WindowsAndMessaging::SWP_ASYNCWINDOWPOS
+                        | WindowsAndMessaging::SWP_NOZORDER
+                        | WindowsAndMessaging::SWP_FRAMECHANGED,
+                    )
+                    .expect("Failed to set window to fullscreen");
+                  }
+                  unsafe { InvalidateRgn(hwnd, None, false) };
+                }
+              }
+              None => {
+                let scale_factor = data.state.read_lock().scale_factor;
+                let size = data
+                  .state
+                  .read_lock()
+                  .last_windowed_size
+                  .as_physical(scale_factor);
+                let position = data
+                  .state
+                  .read_lock()
+                  .last_windowed_position
+                  .as_physical(scale_factor);
+                unsafe {
+                  SetWindowPos(
+                    hwnd,
+                    None,
+                    position.x,
+                    position.y,
+                    size.width as i32,
+                    size.height as i32,
+                    WindowsAndMessaging::SWP_ASYNCWINDOWPOS
+                      | WindowsAndMessaging::SWP_NOZORDER
+                      | WindowsAndMessaging::SWP_FRAMECHANGED,
+                  )
+                  .expect("Failed to set window to windowed");
+                };
+                unsafe { InvalidateRgn(hwnd, None, false) };
+              }
+            }
+          }
+          Command::SetCursorMode(mode) => {
+            match mode {
+              CursorMode::Normal => {
+                set_cursor_clip(None);
+              }
+              CursorMode::Confined => {
+                let mut client_rect = RECT::default();
+                unsafe { GetClientRect(hwnd, &mut client_rect) }.unwrap();
+
+                set_cursor_clip(Some(&client_rect));
+              }
+            };
+          }
+          Command::SetCursorVisibility(visibility) => match visibility {
+            Visibility::Shown => {
+              set_cursor_visibility(Visibility::Shown);
+            }
+            Visibility::Hidden => {
+              set_cursor_visibility(Visibility::Hidden);
+            }
+          },
+        }
+
+        LRESULT(0)
+      }
+      WindowsAndMessaging::WM_SIZING | WindowsAndMessaging::WM_MOVING => {
+        // ignore certain messages
+        return unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) };
+      }
+      WindowsAndMessaging::WM_DESTROY => {
+        unsafe { PostQuitMessage(0) };
+        unsafe { drop(Box::from_raw(data)) };
+        return unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) };
+      }
+      WindowsAndMessaging::WM_CLOSE => {
+        messages.push(Message::CloseRequested);
+        LRESULT(0)
+      }
+      WindowsAndMessaging::WM_PAINT => {
+        messages.push(Message::Paint);
+        unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) }
+      }
+      WindowsAndMessaging::WM_SIZE => {
+        let width = lo_word(l_param.0 as u32) as u32;
+        let height = hi_word(l_param.0 as u32) as u32;
+
+        messages.push(Message::Resized(PhysicalSize::new(width, height)));
+        unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) }
+      }
+      WindowsAndMessaging::WM_MOVE => {
+        let x = lo_word(l_param.0 as u32) as i32;
+        let y = hi_word(l_param.0 as u32) as i32;
+
+        messages.push(Message::Moved(PhysicalPosition::new(x, y)));
+        unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) }
+      }
+      WindowsAndMessaging::WM_WINDOWPOSCHANGED => {
+        let window_pos = unsafe { &*(l_param.0 as *const WINDOWPOS) };
+        // if (window_pos.flags & WindowsAndMessaging::SWP_NOMOVE) !=
+        // WindowsAndMessaging::SWP_NOMOVE {
+        //   out.push(Message::Moved(PhysicalPosition::new((x, y))))
+        // }
+
+        messages.push(Message::BoundsChanged {
+          outer_position: PhysicalPosition::new(window_pos.x, window_pos.y),
+          outer_size: PhysicalSize::new(window_pos.cx as u32, window_pos.cy as u32),
+        });
+        unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) }
+      }
+      WindowsAndMessaging::WM_SETFOCUS => {
+        messages.push(Message::Focus(Focus::Gained));
+        unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) }
+      }
+      WindowsAndMessaging::WM_KILLFOCUS => {
+        messages.push(Message::Focus(Focus::Lost));
+        unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) }
+      }
+      WindowsAndMessaging::WM_COMMAND => {
+        messages.push(Message::Command);
+        unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) }
+      }
+      WindowsAndMessaging::WM_SYSCOMMAND => {
+        messages.push(Message::SystemCommand);
+        unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) }
+      }
+      WindowsAndMessaging::WM_DPICHANGED => {
+        let dpi = lo_word(w_param.0 as u32) as u32;
+        let suggested_rect = unsafe { *(l_param.0 as *const RECT) };
+        unsafe {
+          SetWindowPos(
+            hwnd,
+            None,
+            suggested_rect.left,
+            suggested_rect.top,
+            suggested_rect.right - suggested_rect.left,
+            suggested_rect.bottom - suggested_rect.top,
+            WindowsAndMessaging::SWP_NOZORDER | WindowsAndMessaging::SWP_NOACTIVATE,
+          )
+        }
+        .unwrap();
+        messages.push(Message::ScaleFactorChanged(dpi_to_scale_factor(dpi)));
+        unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) }
+      }
+      WindowsAndMessaging::WM_INPUT => {
+        let Some(data) = read_raw_input(HRAWINPUT(l_param.0)) else {
+          return unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) };
+        };
+
+        match RID_DEVICE_INFO_TYPE(data.header.dwType) {
+          UI::Input::RIM_TYPEMOUSE => {
+            let mouse_data = unsafe { data.data.mouse };
+            let button_flags = unsafe { mouse_data.Anonymous.Anonymous.usButtonFlags };
+
+            if mouse_data.usFlags == UI::Input::MOUSE_MOVE_RELATIVE {
+              let x = mouse_data.lLastX as f32;
+              let y = mouse_data.lLastY as f32;
+
+              if x != 0.0 || y != 0.0 {
+                messages.push(Message::RawInput(RawInputMessage::MouseMove {
+                  delta_x: x,
+                  delta_y: y,
+                }));
+              }
+            }
+
+            for (id, state) in mouse_button_states(button_flags).iter().enumerate() {
+              if let Some(state) = *state {
+                let button = MouseButton::from_state(id);
+                messages
+                  .push(Message::RawInput(RawInputMessage::MouseButton { button, state }))
+              }
+            }
+          }
+          UI::Input::RIM_TYPEKEYBOARD => {
+            let keyboard_data = unsafe { data.data.keyboard };
+
+            let Some(key) = Key::from_raw(keyboard_data) else {
+              return unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) };
+            };
+
+            let pressed = matches!(
+              keyboard_data.Message,
+              WindowsAndMessaging::WM_KEYDOWN | WindowsAndMessaging::WM_SYSKEYDOWN
+            );
+            let released = matches!(
+              keyboard_data.Message,
+              WindowsAndMessaging::WM_KEYUP | WindowsAndMessaging::WM_SYSKEYUP
+            );
+
+            if let Some(state) = RawKeyState::from_bools(pressed, released) {
+              messages.push(Message::RawInput(RawInputMessage::Keyboard { key, state }));
+            }
+          }
+          _ => (),
+        };
+        unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) }
+      }
+      WindowsAndMessaging::WM_CHAR => {
+        let c = char::from_u32(w_param.0 as u32).unwrap_or_default();
+        messages.push(Message::Char(c));
+        unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) }
+      }
+      WindowsAndMessaging::WM_KEYDOWN
+      | WindowsAndMessaging::WM_SYSKEYDOWN
+      | WindowsAndMessaging::WM_KEYUP
+      | WindowsAndMessaging::WM_SYSKEYUP => {
+        let (changed, shift, ctrl, alt, win) =
+          data.state.write_lock().input.update_modifiers_state();
+        if changed {
+          messages.push(Message::ModifiersChanged {
+            shift,
+            ctrl,
+            alt,
+            win,
+          });
+        }
+        messages.push(Message::new_keyboard_message(l_param));
+        unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) }
+      }
+      WindowsAndMessaging::WM_MOUSEMOVE => {
+        let x = signed_lo_word(l_param.0 as i32) as i32;
+        let y = signed_hi_word(l_param.0 as i32) as i32;
+        let position = PhysicalPosition::new(x, y);
+
+        let kind =
+          get_cursor_move_kind(hwnd, data.state.read_lock().cursor.inside_window, x, y);
+
+        let send_message = {
+          match kind {
+            CursorMoveKind::Entered => {
+              data.state.write_lock().cursor.inside_window = true;
+
+              unsafe {
+                TrackMouseEvent(&mut TRACKMOUSEEVENT {
+                  cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
+                  dwFlags: KeyboardAndMouse::TME_LEAVE,
+                  hwndTrack: hwnd,
+                  dwHoverTime: Controls::HOVER_DEFAULT,
+                })
+              }
+              .unwrap();
+
+              true
+            }
+            CursorMoveKind::Left => {
+              data.state.write_lock().cursor.inside_window = false;
+
+              true
+            }
+            CursorMoveKind::Inside => {
+              data.state.read_lock().cursor.last_position != position
+            }
+          }
+        };
+
+        if send_message {
+          messages.push(Message::CursorMove { position, kind });
+          data.state.write_lock().cursor.last_position = position;
+        }
+        unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) }
+      }
+      Controls::WM_MOUSELEAVE => {
+        data.state.write_lock().cursor.inside_window = false;
+        messages.push(Message::CursorMove {
+          position: data.state.read_lock().cursor.last_position,
+          kind: CursorMoveKind::Left,
+        });
+        unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) }
+      }
+      WindowsAndMessaging::WM_MOUSEWHEEL => {
+        let delta = signed_hi_word(w_param.0 as i32) as f32
+          / WindowsAndMessaging::WHEEL_DELTA as f32;
+        messages.push(Message::MouseWheel {
+          delta_x: 0.0,
+          delta_y: delta,
+        });
+        unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) }
+      }
+      WindowsAndMessaging::WM_MOUSEHWHEEL => {
+        let delta = signed_hi_word(w_param.0 as i32) as f32
+          / WindowsAndMessaging::WHEEL_DELTA as f32;
+        messages.push(Message::MouseWheel {
+          delta_x: delta,
+          delta_y: 0.0,
+        });
+        unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) }
+      }
+      msg
+        if (WindowsAndMessaging::WM_MOUSEFIRST..=WindowsAndMessaging::WM_MOUSELAST)
+          .contains(&msg) =>
+      {
+        // mouse move / wheels will match earlier
+        messages.push(Message::new_mouse_button_message(msg, w_param, l_param));
+        unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) }
+      }
+      _ => unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) },
     }
-    WindowsAndMessaging::WM_DESTROY => {
-      unsafe { PostQuitMessage(0) };
-      unsafe { drop(Box::from_raw(data)) };
-      return unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) };
-    }
-    WindowsAndMessaging::WM_CLOSE => LRESULT(0),
-    _ => unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) },
   };
 
-  // handle command requests
-  if process_commands(hwnd, data) {
-    // process commands returns true to interrupt
-    return result;
-  }
+  // // handle command requests
+  // if process_commands(hwnd, data) {
+  //   // process commands returns true to interrupt
+  //   return result;
+  // }
 
   // Wait for previous message to be handled
   if !data.message_sender.is_empty() {
@@ -299,7 +753,7 @@ fn on_message(
   }
 
   // pass message to main thread
-  if let Some(messages) = messages {
+  if !messages.is_empty() {
     for message in messages {
       update_state(hwnd, data, &message);
 
@@ -364,222 +818,222 @@ fn update_state(hwnd: HWND, data: &SubclassWindowData, message: &Message) {
   }
 }
 
-fn process_commands(hwnd: HWND, data: &mut SubclassWindowData) -> bool {
-  if data.processing_command {
-    return false;
-  }
+// fn process_commands(hwnd: HWND, data: &mut SubclassWindowData) -> bool {
+//   if data.processing_command {
+//     return false;
+//   }
 
-  while let Some(command) = data.command_queue.pop() {
-    data.processing_command = true;
+//   while let Some(command) = data.command_queue.pop() {
+//     data.processing_command = true;
 
-    match command {
-      Command::Destroy => {
-        unsafe { DestroyWindow(hwnd) }.unwrap();
-        return true; // hwnd will be invalid
-      }
-      Command::Redraw => unsafe {
-        RedrawWindow(hwnd, None, None, Gdi::RDW_INTERNALPAINT);
-      },
-      Command::SetVisibility(visibility) => unsafe {
-        ShowWindow(hwnd, match visibility {
-          Visibility::Hidden => WindowsAndMessaging::SW_HIDE,
-          Visibility::Shown => WindowsAndMessaging::SW_SHOW,
-        });
-      },
-      Command::SetDecorations(decorations) => {
-        let style = data.state.read_lock().style;
-        match decorations {
-          Visibility::Shown => {
-            unsafe {
-              SetWindowLongW(
-                hwnd,
-                WindowsAndMessaging::GWL_STYLE,
-                get_window_style(&style).0 as i32,
-              )
-            };
-            unsafe {
-              SetWindowLongW(
-                hwnd,
-                WindowsAndMessaging::GWL_EXSTYLE,
-                get_window_ex_style(&style).0 as i32,
-              )
-            };
-          }
-          Visibility::Hidden => {
-            unsafe {
-              SetWindowLongW(
-                hwnd,
-                WindowsAndMessaging::GWL_STYLE,
-                get_window_style(&style).0 as i32,
-              )
-            };
-            unsafe {
-              SetWindowLongW(
-                hwnd,
-                WindowsAndMessaging::GWL_EXSTYLE,
-                get_window_ex_style(&style).0 as i32,
-              )
-            };
-          }
-        }
-        unsafe {
-          SetWindowPos(
-            hwnd,
-            None,
-            0,
-            0,
-            0,
-            0,
-            WindowsAndMessaging::SWP_NOZORDER
-              | WindowsAndMessaging::SWP_NOMOVE
-              | WindowsAndMessaging::SWP_NOSIZE
-              | WindowsAndMessaging::SWP_NOACTIVATE
-              | WindowsAndMessaging::SWP_FRAMECHANGED,
-          )
-          .expect("Failed to set window size");
-        }
-      }
-      Command::SetWindowText(text) => unsafe {
-        SetWindowTextW(hwnd, &text).unwrap();
-      },
-      Command::SetSize(size) => {
-        let physical_size = size.as_physical(data.state.read_lock().scale_factor);
-        unsafe {
-          SetWindowPos(
-            hwnd,
-            None,
-            0,
-            0,
-            physical_size.width as i32,
-            physical_size.height as i32,
-            WindowsAndMessaging::SWP_NOZORDER
-              | WindowsAndMessaging::SWP_NOMOVE
-              | WindowsAndMessaging::SWP_NOREPOSITION
-              | WindowsAndMessaging::SWP_NOACTIVATE,
-          )
-          .expect("Failed to set window size");
-        }
-        unsafe { InvalidateRgn(hwnd, None, false) };
-      }
-      Command::SetPosition(position) => {
-        let physical_position = position.as_physical(data.state.read_lock().scale_factor);
-        unsafe {
-          SetWindowPos(
-            hwnd,
-            None,
-            physical_position.x,
-            physical_position.y,
-            0,
-            0,
-            WindowsAndMessaging::SWP_NOZORDER
-              | WindowsAndMessaging::SWP_NOSIZE
-              | WindowsAndMessaging::SWP_NOREPOSITION
-              | WindowsAndMessaging::SWP_NOACTIVATE,
-          )
-          .expect("Failed to set window position");
-        }
-        unsafe { InvalidateRgn(hwnd, None, false) };
-      }
-      Command::SetFullscreen(fullscreen) => {
-        // info!("Fullscreen: {fullscreen:?}");
-        // update style
-        let style = data.state.read_lock().style;
-        unsafe {
-          SetWindowLongW(
-            hwnd,
-            WindowsAndMessaging::GWL_STYLE,
-            get_window_style(&style).0 as i32,
-          )
-        };
-        unsafe {
-          SetWindowLongW(
-            hwnd,
-            WindowsAndMessaging::GWL_EXSTYLE,
-            get_window_ex_style(&style).0 as i32,
-          )
-        };
-        // update size
-        match fullscreen {
-          Some(Fullscreen::Borderless) => {
-            let monitor =
-              unsafe { MonitorFromWindow(hwnd, Gdi::MONITOR_DEFAULTTONEAREST) };
-            let mut info = MONITORINFO {
-              cbSize: size_of::<MONITORINFO>() as u32,
-              ..Default::default()
-            };
-            if unsafe { GetMonitorInfoW(monitor, &mut info) }.as_bool() {
-              unsafe {
-                SetWindowPos(
-                  hwnd,
-                  None,
-                  info.rcMonitor.left,
-                  info.rcMonitor.top,
-                  info.rcMonitor.right - info.rcMonitor.left,
-                  info.rcMonitor.bottom - info.rcMonitor.top,
-                  WindowsAndMessaging::SWP_ASYNCWINDOWPOS
-                    | WindowsAndMessaging::SWP_NOZORDER
-                    | WindowsAndMessaging::SWP_FRAMECHANGED,
-                )
-                .expect("Failed to set window to fullscreen");
-              }
-              unsafe { InvalidateRgn(hwnd, None, false) };
-            }
-          }
-          None => {
-            let scale_factor = data.state.read_lock().scale_factor;
-            let size = data
-              .state
-              .read_lock()
-              .last_windowed_size
-              .as_physical(scale_factor);
-            let position = data
-              .state
-              .read_lock()
-              .last_windowed_position
-              .as_physical(scale_factor);
-            unsafe {
-              SetWindowPos(
-                hwnd,
-                None,
-                position.x,
-                position.y,
-                size.width as i32,
-                size.height as i32,
-                WindowsAndMessaging::SWP_ASYNCWINDOWPOS
-                  | WindowsAndMessaging::SWP_NOZORDER
-                  | WindowsAndMessaging::SWP_FRAMECHANGED,
-              )
-              .expect("Failed to set window to windowed");
-            };
-            unsafe { InvalidateRgn(hwnd, None, false) };
-          }
-        }
-      }
-      Command::SetCursorMode(mode) => {
-        match mode {
-          CursorMode::Normal => {
-            set_cursor_clip(None);
-          }
-          CursorMode::Confined => {
-            let mut client_rect = RECT::default();
-            unsafe { GetClientRect(hwnd, &mut client_rect) }.unwrap();
+//     match command {
+//       Command::Destroy => {
+//         unsafe { DestroyWindow(hwnd) }.unwrap();
+//         return true; // hwnd will be invalid
+//       }
+//       Command::Redraw => unsafe {
+//         RedrawWindow(hwnd, None, None, Gdi::RDW_INTERNALPAINT);
+//       },
+//       Command::SetVisibility(visibility) => unsafe {
+//         ShowWindow(hwnd, match visibility {
+//           Visibility::Hidden => WindowsAndMessaging::SW_HIDE,
+//           Visibility::Shown => WindowsAndMessaging::SW_SHOW,
+//         });
+//       },
+//       Command::SetDecorations(decorations) => {
+//         let style = data.state.read_lock().style;
+//         match decorations {
+//           Visibility::Shown => {
+//             unsafe {
+//               SetWindowLongW(
+//                 hwnd,
+//                 WindowsAndMessaging::GWL_STYLE,
+//                 get_window_style(&style).0 as i32,
+//               )
+//             };
+//             unsafe {
+//               SetWindowLongW(
+//                 hwnd,
+//                 WindowsAndMessaging::GWL_EXSTYLE,
+//                 get_window_ex_style(&style).0 as i32,
+//               )
+//             };
+//           }
+//           Visibility::Hidden => {
+//             unsafe {
+//               SetWindowLongW(
+//                 hwnd,
+//                 WindowsAndMessaging::GWL_STYLE,
+//                 get_window_style(&style).0 as i32,
+//               )
+//             };
+//             unsafe {
+//               SetWindowLongW(
+//                 hwnd,
+//                 WindowsAndMessaging::GWL_EXSTYLE,
+//                 get_window_ex_style(&style).0 as i32,
+//               )
+//             };
+//           }
+//         }
+//         unsafe {
+//           SetWindowPos(
+//             hwnd,
+//             None,
+//             0,
+//             0,
+//             0,
+//             0,
+//             WindowsAndMessaging::SWP_NOZORDER
+//               | WindowsAndMessaging::SWP_NOMOVE
+//               | WindowsAndMessaging::SWP_NOSIZE
+//               | WindowsAndMessaging::SWP_NOACTIVATE
+//               | WindowsAndMessaging::SWP_FRAMECHANGED,
+//           )
+//           .expect("Failed to set window size");
+//         }
+//       }
+//       Command::SetWindowText(text) => unsafe {
+//         SetWindowTextW(hwnd, &text).unwrap();
+//       },
+//       Command::SetSize(size) => {
+//         let physical_size =
+// size.as_physical(data.state.read_lock().scale_factor);         unsafe {
+//           SetWindowPos(
+//             hwnd,
+//             None,
+//             0,
+//             0,
+//             physical_size.width as i32,
+//             physical_size.height as i32,
+//             WindowsAndMessaging::SWP_NOZORDER
+//               | WindowsAndMessaging::SWP_NOMOVE
+//               | WindowsAndMessaging::SWP_NOREPOSITION
+//               | WindowsAndMessaging::SWP_NOACTIVATE,
+//           )
+//           .expect("Failed to set window size");
+//         }
+//         unsafe { InvalidateRgn(hwnd, None, false) };
+//       }
+//       Command::SetPosition(position) => {
+//         let physical_position =
+// position.as_physical(data.state.read_lock().scale_factor);         unsafe {
+//           SetWindowPos(
+//             hwnd,
+//             None,
+//             physical_position.x,
+//             physical_position.y,
+//             0,
+//             0,
+//             WindowsAndMessaging::SWP_NOZORDER
+//               | WindowsAndMessaging::SWP_NOSIZE
+//               | WindowsAndMessaging::SWP_NOREPOSITION
+//               | WindowsAndMessaging::SWP_NOACTIVATE,
+//           )
+//           .expect("Failed to set window position");
+//         }
+//         unsafe { InvalidateRgn(hwnd, None, false) };
+//       }
+//       Command::SetFullscreen(fullscreen) => {
+//         // info!("Fullscreen: {fullscreen:?}");
+//         // update style
+//         let style = data.state.read_lock().style;
+//         unsafe {
+//           SetWindowLongW(
+//             hwnd,
+//             WindowsAndMessaging::GWL_STYLE,
+//             get_window_style(&style).0 as i32,
+//           )
+//         };
+//         unsafe {
+//           SetWindowLongW(
+//             hwnd,
+//             WindowsAndMessaging::GWL_EXSTYLE,
+//             get_window_ex_style(&style).0 as i32,
+//           )
+//         };
+//         // update size
+//         match fullscreen {
+//           Some(Fullscreen::Borderless) => {
+//             let monitor =
+//               unsafe { MonitorFromWindow(hwnd, Gdi::MONITOR_DEFAULTTONEAREST)
+// };             let mut info = MONITORINFO {
+//               cbSize: size_of::<MONITORINFO>() as u32,
+//               ..Default::default()
+//             };
+//             if unsafe { GetMonitorInfoW(monitor, &mut info) }.as_bool() {
+//               unsafe {
+//                 SetWindowPos(
+//                   hwnd,
+//                   None,
+//                   info.rcMonitor.left,
+//                   info.rcMonitor.top,
+//                   info.rcMonitor.right - info.rcMonitor.left,
+//                   info.rcMonitor.bottom - info.rcMonitor.top,
+//                   WindowsAndMessaging::SWP_ASYNCWINDOWPOS
+//                     | WindowsAndMessaging::SWP_NOZORDER
+//                     | WindowsAndMessaging::SWP_FRAMECHANGED,
+//                 )
+//                 .expect("Failed to set window to fullscreen");
+//               }
+//               unsafe { InvalidateRgn(hwnd, None, false) };
+//             }
+//           }
+//           None => {
+//             let scale_factor = data.state.read_lock().scale_factor;
+//             let size = data
+//               .state
+//               .read_lock()
+//               .last_windowed_size
+//               .as_physical(scale_factor);
+//             let position = data
+//               .state
+//               .read_lock()
+//               .last_windowed_position
+//               .as_physical(scale_factor);
+//             unsafe {
+//               SetWindowPos(
+//                 hwnd,
+//                 None,
+//                 position.x,
+//                 position.y,
+//                 size.width as i32,
+//                 size.height as i32,
+//                 WindowsAndMessaging::SWP_ASYNCWINDOWPOS
+//                   | WindowsAndMessaging::SWP_NOZORDER
+//                   | WindowsAndMessaging::SWP_FRAMECHANGED,
+//               )
+//               .expect("Failed to set window to windowed");
+//             };
+//             unsafe { InvalidateRgn(hwnd, None, false) };
+//           }
+//         }
+//       }
+//       Command::SetCursorMode(mode) => {
+//         match mode {
+//           CursorMode::Normal => {
+//             set_cursor_clip(None);
+//           }
+//           CursorMode::Confined => {
+//             let mut client_rect = RECT::default();
+//             unsafe { GetClientRect(hwnd, &mut client_rect) }.unwrap();
 
-            set_cursor_clip(Some(&client_rect));
-          }
-        };
-      }
-      Command::SetCursorVisibility(visibility) => match visibility {
-        Visibility::Shown => {
-          set_cursor_visibility(Visibility::Shown);
-        }
-        Visibility::Hidden => {
-          set_cursor_visibility(Visibility::Hidden);
-        }
-      },
-    }
+//             set_cursor_clip(Some(&client_rect));
+//           }
+//         };
+//       }
+//       Command::SetCursorVisibility(visibility) => match visibility {
+//         Visibility::Shown => {
+//           set_cursor_visibility(Visibility::Shown);
+//         }
+//         Visibility::Hidden => {
+//           set_cursor_visibility(Visibility::Hidden);
+//         }
+//       },
+//     }
 
-    data.processing_command = false;
-  }
+//     data.processing_command = false;
+//   }
 
-  false
-}
+//   false
+// }
