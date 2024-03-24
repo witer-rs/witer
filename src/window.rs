@@ -138,6 +138,7 @@ impl Window {
     position: impl Into<Option<Position>>,
     settings: WindowSettings,
   ) -> Result<Self, WindowError> {
+    tracing::trace!("Creating window");
     // let (message_sender, message_receiver) = crossbeam::channel::unbounded();
 
     let sync = SyncData {
@@ -169,7 +170,11 @@ impl Window {
 
     let thread = Some(Self::window_loop(window_sender, create_info)?);
 
+    tracing::trace!("Waiting for window loop to hand back window");
+
     let window = window_receiver.recv().unwrap();
+
+    tracing::trace!("Received window from window loop");
 
     window.state.write_lock().thread = thread;
     if let Some(position) = position {
@@ -180,6 +185,8 @@ impl Window {
     window.force_set_theme(settings.theme);
     window.force_set_visibility(settings.visibility);
     window.force_set_fullscreen(settings.fullscreen);
+
+    tracing::trace!("Window created");
 
     Ok(window)
   }
@@ -194,9 +201,9 @@ impl Window {
         let message = create_info.message.clone();
         let (window, state) = Self::create_hwnd(create_info)?;
 
-        window_sender
-          .send(window)
-          .expect("failed to send opened message");
+        tracing::trace!("Sending window back to main thread");
+
+        window_sender.send(window).expect("failed to send window");
 
         while Self::message_pump(&sync, &message, &state) {}
 
@@ -210,6 +217,8 @@ impl Window {
   fn create_hwnd(
     mut create_info: CreateInfo,
   ) -> Result<(Self, Handle<InternalState>), WindowError> {
+    tracing::trace!("Creating window class");
+
     let hinstance: HINSTANCE = unsafe { GetModuleHandleW(None)? }.into();
     debug_assert_ne!(hinstance.0, 0);
     // let size = create_info.settings.size;
@@ -231,10 +240,14 @@ impl Window {
       ..Default::default()
     };
 
+    tracing::trace!("Registering window class");
+
     {
       let atom = unsafe { RegisterClassExW(&wc) };
       debug_assert_ne!(atom, 0);
     }
+
+    tracing::trace!("Creating window handle");
 
     let hwnd = unsafe {
       CreateWindowExW(
@@ -252,6 +265,8 @@ impl Window {
         Some(std::ptr::addr_of_mut!(create_info) as _),
       )
     };
+
+    tracing::trace!("Window handle created");
 
     if hwnd.0 == 0 {
       Err(WindowError::Win32Error(windows::core::Error::from_win32()))
