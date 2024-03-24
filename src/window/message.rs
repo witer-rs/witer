@@ -104,12 +104,12 @@ pub enum Message {
 /// Artificial window messages sent by the window loop.
 #[derive(Debug, PartialEq, Clone)]
 pub enum LoopMessage {
-  /// Sent when the message pump is polled, but there are no messages.
-  Empty,
   /// Sent when the window receives a command request.
   Command(Command),
   /// Sent when the message pump is about to do GetMessageW.
-  Wait,
+  GetMessage,
+  /// Sent when the message pump is polled, but there are no messages.
+  Empty,
   /// Sent when the message pump is exiting.
   Exit,
 }
@@ -277,7 +277,7 @@ impl Message {
     matches!(self, Message::MouseButton { button: b, state: s, .. } if *b == button && *s == state)
   }
 
-  /// Returns `true` if the message is `Message::Loop(LoopMessage::Empty)`
+  /// Returns `true` if the message is [`LoopMessage::Empty`]
   pub fn is_empty(&self) -> bool {
     matches!(self, Message::Loop(LoopMessage::Empty))
   }

@@ -277,7 +277,7 @@ impl Window {
     message
       .lock()
       .unwrap()
-      .replace(Message::Loop(message::LoopMessage::Wait));
+      .replace(Message::Loop(message::LoopMessage::GetMessage));
     sync.signal_new_message();
     sync.wait_on_frame(|| state.read_lock().stage == Stage::ExitLoop);
 

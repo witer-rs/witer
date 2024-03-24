@@ -58,7 +58,7 @@ fn main() -> Result<(), WindowError> {
         app.update(&window);
         app.draw(&window);
       }
-      Message::Loop(LoopMessage::Wait) => window.request_redraw(),
+      Message::Loop(LoopMessage::GetMessage) => window.request_redraw(),
       _ => (),
     }
   }
