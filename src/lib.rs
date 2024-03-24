@@ -5,17 +5,14 @@
 
   ```
   use witer::prelude::*;
-  /*
-    Build
-  */
+
+  // Build
   let window = Window::builder()
     .with_title("My App")
     .with_size(LogicalSize::new(800.0, 500.0))
     .build()?;
 
-  /*
-    Run
-  */
+  // Run
   for message in &window {
     if let Message::Key { .. } = message {
       println!("{message:?}");
