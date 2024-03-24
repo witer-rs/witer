@@ -111,11 +111,21 @@ pub struct Window {
 /// Window is destroyed on drop.
 impl Drop for Window {
   fn drop(&mut self) {
+    let title = self.title();
+    tracing::trace!("Destroying window: {}", title);
+    // redundant assignment to ensure we are in the exit stage even if iteration
+    // never occurred.
+    self.exit_loop();
     Command::Destroy.post(self.hwnd);
+
     let thread = self.state.write_lock().thread.take();
     if let Some(thread) = thread {
+      tracing::trace!("Joining window thread");
       let _ = thread.join();
+      tracing::trace!("Joined window thread");
     }
+
+    tracing::trace!("Destroyed window: {}", title);
   }
 }
 
@@ -138,7 +148,11 @@ impl Window {
     position: impl Into<Option<Position>>,
     settings: WindowSettings,
   ) -> Result<Self, WindowError> {
-    tracing::trace!("Creating window");
+    let title: String = title.into();
+    let size: Size = size.into();
+    let position: Option<Position> = position.into();
+
+    tracing::trace!("Creating window: {}", &title);
     // let (message_sender, message_receiver) = crossbeam::channel::unbounded();
 
     let sync = SyncData {
@@ -146,12 +160,8 @@ impl Window {
       next_frame: Arc::new((Mutex::new(false), Condvar::new())),
     };
 
-    let title: String = title.into();
-    let size: Size = size.into();
-    let position: Option<Position> = position.into();
-
     let create_info = CreateInfo {
-      title,
+      title: title.clone(),
       size,
       position,
       settings: settings.clone(),
@@ -186,7 +196,9 @@ impl Window {
     window.force_set_visibility(settings.visibility);
     window.force_set_fullscreen(settings.fullscreen);
 
-    tracing::trace!("Window created");
+    window.state.write_lock().stage = Stage::Ready;
+
+    tracing::trace!("Created window: {}", &title);
 
     Ok(window)
   }
@@ -195,8 +207,9 @@ impl Window {
     window_sender: SyncSender<Self>,
     create_info: CreateInfo,
   ) -> Result<JoinHandle<Result<(), WindowError>>, WindowError> {
-    let thread_handle = std::thread::Builder::new().name("win32".to_owned()).spawn(
-      move || -> Result<(), WindowError> {
+    let thread_handle = std::thread::Builder::new()
+      .name("window".to_owned())
+      .spawn(move || -> Result<(), WindowError> {
         let sync = create_info.sync.clone();
         let message = create_info.message.clone();
         let (window, state) = Self::create_hwnd(create_info)?;
@@ -208,8 +221,7 @@ impl Window {
         while Self::message_pump(&sync, &message, &state) {}
 
         Ok(())
-      },
-    )?;
+      })?;
 
     Ok(thread_handle)
   }
@@ -325,12 +337,13 @@ impl Window {
       .or(Some(Message::Loop(LoopMessage::Empty)))
   }
 
-  pub fn next_message(&self) -> Option<Message> {
+  fn next_message(&self) -> Option<Message> {
     let current_stage = self.state.read_lock().stage;
 
     self.sync.signal_next_frame();
 
     let next = match current_stage {
+      Stage::Ready | Stage::Setup => None, // do not iterate until looping
       Stage::Looping => {
         let message = self.take_message();
         if let Some(Message::CloseRequested) = message {
@@ -343,7 +356,7 @@ impl Window {
       }
       Stage::Closing => {
         let _ = self.take_message();
-        self.state.write_lock().stage = Stage::ExitLoop;
+        self.exit_loop();
         Some(Message::Loop(message::LoopMessage::Exit))
       }
       Stage::ExitLoop => None,
@@ -714,6 +727,11 @@ impl Window {
     self.state.write_lock().stage = Stage::Closing;
   }
 
+  fn exit_loop(&self) {
+    self.state.write_lock().stage = Stage::ExitLoop;
+    self.sync.signal_next_frame();
+  }
+
   #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
   pub fn raw_window_handle(&self) -> RawWindowHandle {
     let mut handle = Win32WindowHandle::new(
@@ -765,10 +783,14 @@ unsafe impl HasRawDisplayHandle for Window {
 
 impl Window {
   pub fn iter(&self) -> MessageIterator {
+    tracing::trace!("Preparing to immutably iterate over messages");
+    self.state.write_lock().stage = Stage::Looping;
     MessageIterator { window: self }
   }
 
   pub fn iter_mut(&mut self) -> MessageIteratorMut {
+    tracing::trace!("Preparing to mutably iterate over messages");
+    self.state.write_lock().stage = Stage::Looping;
     MessageIteratorMut { window: self }
   }
 }
