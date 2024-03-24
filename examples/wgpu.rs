@@ -6,7 +6,6 @@ use std::{
 };
 
 use foxy_time::{Time, TimeSettings};
-use wgpu::PresentMode;
 use witer::{error::*, prelude::*};
 
 use self::util::init_log;
@@ -132,7 +131,7 @@ impl App {
         format: surface_format,
         width: size.width,
         height: size.height,
-        present_mode: PresentMode::AutoNoVsync,
+        present_mode: wgpu::PresentMode::AutoNoVsync,
         alpha_mode: surface_caps.alpha_modes[0],
         view_formats: vec![],
         desired_maximum_frame_latency: 2,
