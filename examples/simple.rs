@@ -20,16 +20,6 @@ fn main() {
   window.set_inner_size(LogicalSize::new(1280.0, 720.0));
   window.set_visibility(Visibility::Shown);
 
-  let mut iter = window.into_iter();
-  while let Some(message) = iter.next() {
-    if let Message::Key {
-      key: Key::Escape, ..
-    } = message
-    {
-      window.close();
-    }
-  }
-
   for message in &window {
     if let Message::Key {
       key: Key::Escape, ..
