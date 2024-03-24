@@ -116,7 +116,7 @@ pub struct Window {
 /// Window is destroyed on drop.
 impl Drop for Window {
   fn drop(&mut self) {
-    self.request(Command::Destroy);
+    Command::Destroy.post(self.hwnd);
     let thread = self.state.write_lock().thread.take();
     if let Some(thread) = thread {
       let _ = thread.join();
@@ -491,7 +491,7 @@ impl Window {
 
   fn force_set_outer_position(&self, position: Position) {
     // self.state.write_lock().position = position;
-    self.request(Command::SetPosition(position));
+    Command::SetPosition(position).post(self.hwnd);
   }
 
   pub fn set_outer_position(&self, position: Position) {
@@ -504,7 +504,7 @@ impl Window {
 
   fn force_set_outer_size(&self, size: Size) {
     // self.state.write_lock().size = size;
-    self.request(Command::SetSize(size));
+    Command::SetSize(size).post(self.hwnd);
   }
 
   pub fn set_outer_size(&self, size: impl Into<Size>) {
@@ -542,7 +542,7 @@ impl Window {
       height: (window_rect.bottom - window_rect.top) as u32,
     };
 
-    self.request(Command::SetSize(adjusted_size.into()));
+    Command::SetSize(adjusted_size.into()).post(self.hwnd);
   }
 
   pub fn set_inner_size(&self, size: impl Into<Size>) {
@@ -556,7 +556,7 @@ impl Window {
 
   fn force_set_visibility(&self, visibility: Visibility) {
     self.state.write_lock().style.visibility = visibility;
-    self.request(Command::SetVisibility(visibility));
+    Command::SetVisibility(visibility).post(self.hwnd);
   }
 
   pub fn set_visibility(&self, visibility: Visibility) {
@@ -568,7 +568,7 @@ impl Window {
 
   fn force_set_decorations(&self, visibility: Visibility) {
     self.state.write_lock().style.decorations = visibility;
-    self.request(Command::SetDecorations(visibility));
+    Command::SetDecorations(visibility).post(self.hwnd);
   }
 
   pub fn set_decorations(&self, visibility: Visibility) {
@@ -620,7 +620,7 @@ impl Window {
 
   fn force_set_fullscreen(&self, fullscreen: Option<Fullscreen>) {
     self.state.write_lock().style.fullscreen = fullscreen;
-    self.request(Command::SetFullscreen(fullscreen));
+    Command::SetFullscreen(fullscreen).post(self.hwnd);
   }
 
   pub fn set_fullscreen(&self, fullscreen: Option<Fullscreen>) {
@@ -634,7 +634,7 @@ impl Window {
     self.state.write_lock().title = title.as_ref().into();
     let title =
       HSTRING::from(format!("{}{}", title.as_ref(), self.state.read_lock().subtitle));
-    self.request(Command::SetWindowText(title));
+    Command::SetWindowText(title).post(self.hwnd);
   }
 
   /// Set the title of the window
@@ -647,7 +647,7 @@ impl Window {
 
   fn force_set_cursor_mode(&self, cursor_mode: CursorMode) {
     self.state.write_lock().cursor.mode = cursor_mode;
-    self.request(Command::SetCursorMode(cursor_mode));
+    Command::SetCursorMode(cursor_mode).post(self.hwnd);
   }
 
   pub fn set_cursor_mode(&self, cursor_mode: CursorMode) {
@@ -659,7 +659,7 @@ impl Window {
 
   fn force_set_cursor_visibility(&self, cursor_visibility: Visibility) {
     self.state.write_lock().cursor.visibility = cursor_visibility;
-    self.request(Command::SetCursorVisibility(cursor_visibility));
+    Command::SetCursorVisibility(cursor_visibility).post(self.hwnd);
   }
 
   pub fn set_cursor_visibility(&self, cursor_visibility: Visibility) {
@@ -673,7 +673,7 @@ impl Window {
     self.state.write_lock().subtitle = subtitle.as_ref().into();
     let title =
       HSTRING::from(format!("{}{}", self.state.read_lock().title, subtitle.as_ref()));
-    self.request(Command::SetWindowText(title));
+    Command::SetWindowText(title).post(self.hwnd);
   }
 
   /// Set text to appear after the title of the window
@@ -686,7 +686,7 @@ impl Window {
 
   fn force_request_redraw(&self) {
     self.state.write_lock().requested_redraw = true;
-    self.request(Command::Redraw);
+    Command::Redraw.post(self.hwnd);
   }
 
   /// Request a new Draw event
@@ -703,17 +703,6 @@ impl Window {
       return; // already closing
     }
     self.state.write_lock().stage = Stage::Closing;
-  }
-
-  fn request(&self, command: Command) {
-    // let err_str = format!("failed to post command `{command:?}`");
-
-    // self.command_queue.push(command);
-
-    command.post(self.hwnd);
-
-    // unsafe { PostMessageW(self.hwnd, WindowsAndMessaging::WM_APP, WPARAM(0),
-    // LPARAM(0)) }   .unwrap_or_else(|e| panic!("{}: {e}", err_str));
   }
 
   #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]

@@ -739,12 +739,6 @@ fn on_message(
     }
   };
 
-  // // handle command requests
-  // if process_commands(hwnd, data) {
-  //   // process commands returns true to interrupt
-  //   return result;
-  // }
-
   // Wait for previous message to be handled
   if !data.message_sender.is_empty() {
     data
@@ -759,7 +753,6 @@ fn on_message(
 
       data.message_sender.try_send(message).unwrap();
       data.sync.signal_new_message();
-      // data.sync.next_message.lock().unwrap().replace(message);
 
       data
         .sync
