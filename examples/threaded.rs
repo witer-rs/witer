@@ -7,8 +7,11 @@ use std::{
 };
 
 use foxy_time::{Time, TimeSettings};
-use tracing::Level;
 use witer::{error::*, prelude::*};
+
+use self::util::init_log;
+
+mod util;
 
 /*
   This example showcases how to render a triangle using WGPU on a separate thread while
@@ -20,10 +23,7 @@ use witer::{error::*, prelude::*};
 */
 
 fn main() -> Result<(), WindowError> {
-  tracing_subscriber::fmt()
-    .with_max_level(Level::INFO)
-    .with_thread_names(true)
-    .init();
+  init_log(env!("CARGO_CRATE_NAME"));
 
   let window = Arc::new(
     Window::builder()

@@ -41,10 +41,7 @@ pub enum Message {
   /// Messages sent by devices registered for raw input.
   RawInput(RawInputMessage),
   /// Message sent when window is created.
-  Created {
-    hwnd: HWND,
-    hinstance: HINSTANCE,
-  },
+  Created { hwnd: HWND, hinstance: HINSTANCE },
   /// Message sent when window X button is pressed.
   CloseRequested,
   /// Message sent when Windows requests the window be repainted.
@@ -72,10 +69,7 @@ pub enum Message {
     is_double_click: bool,
   },
   /// Message sent when the scroll wheel is actuated.
-  MouseWheel {
-    delta_x: f32,
-    delta_y: f32,
-  },
+  MouseWheel { delta_x: f32, delta_y: f32 },
   /// Message sent when the cursor is moved within the window bounds. Don't
   /// use this for mouse input in cases such as first-person cameras as it is
   /// locked to the bounds of the window.

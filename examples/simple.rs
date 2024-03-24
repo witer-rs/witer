@@ -1,5 +1,9 @@
 use witer::prelude::*;
 
+use self::util::init_log;
+
+mod util;
+
 /*
   This example showcases how to open a simple window that
   closes when Escape is pressed. It also showcases how to set
@@ -7,6 +11,8 @@ use witer::prelude::*;
 */
 
 fn main() {
+  init_log(env!("CARGO_CRATE_NAME"));
+
   let window = Window::builder()
     .with_title("Press Esc to close!")
     .with_visibility(Visibility::Hidden)

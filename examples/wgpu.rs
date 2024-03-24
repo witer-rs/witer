@@ -9,11 +9,17 @@ use foxy_time::{Time, TimeSettings};
 use wgpu::PresentMode;
 use witer::{error::*, prelude::*};
 
+use self::util::init_log;
+
+mod util;
+
 /*
   This example showcases a simple app rendering a blank screen using WGPU.
 */
 
 fn main() -> Result<(), WindowError> {
+  init_log(env!("CARGO_CRATE_NAME"));
+
   // start hidden to prevent first frame white flash
   let window = Arc::new(
     Window::builder()
