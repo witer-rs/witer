@@ -9,9 +9,7 @@ use std::{
 use foxy_time::{Time, TimeSettings};
 use witer::{error::*, prelude::*};
 
-use self::util::init_log;
-
-mod util;
+mod common;
 
 /*
   This example showcases how to render a triangle using WGPU on a separate thread while
@@ -23,7 +21,7 @@ mod util;
 */
 
 fn main() -> Result<(), WindowError> {
-  init_log(env!("CARGO_CRATE_NAME"));
+  common::init_log(env!("CARGO_CRATE_NAME"));
 
   let window = Arc::new(
     Window::builder()
@@ -177,7 +175,7 @@ impl App {
       };
       surface.configure(&device, &config);
 
-      let shader = device.create_shader_module(wgpu::include_wgsl!("util/shader.wgsl"));
+      let shader = device.create_shader_module(wgpu::include_wgsl!("common/shader.wgsl"));
 
       let render_pipeline_layout =
         device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {

@@ -1,8 +1,6 @@
 use witer::prelude::*;
 
-use self::util::init_log;
-
-mod util;
+mod common;
 
 /*
   This example showcases how to open a simple window that
@@ -11,7 +9,7 @@ mod util;
 */
 
 fn main() {
-  init_log(env!("CARGO_CRATE_NAME"));
+  common::init_log(env!("CARGO_CRATE_NAME"));
 
   let window = Window::builder()
     .with_title("Press Esc to close!")
