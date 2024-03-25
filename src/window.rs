@@ -181,7 +181,6 @@ impl Window {
 
     tracing::trace!("[`{}`]: waiting for window loop to hand back window", &title);
 
-    sync.signal_next_frame();
     let window = window_receiver.recv().unwrap();
 
     tracing::trace!("[`{}`]: received window from window loop", &title);
@@ -195,8 +194,6 @@ impl Window {
     window.force_set_theme(settings.theme);
     window.force_set_visibility(settings.visibility);
     window.force_set_fullscreen(settings.fullscreen);
-
-    window.state.write_lock().stage = Stage::Ready;
 
     tracing::trace!("[`{}`]: created window", &title);
 
@@ -327,7 +324,7 @@ impl Window {
     self.sync.signal_next_frame();
 
     let next = match current_stage {
-      Stage::Ready | Stage::Setup => None, // do not iterate until looping
+      Stage::Setup => None, // do not iterate until looping
       Stage::Looping => {
         let message = self.take_message();
         if let Some(Message::CloseRequested) = message {
@@ -772,7 +769,7 @@ impl Window {
   fn iter(&self) -> MessageIterator {
     let current_stage = self.state.read_lock().stage;
     match current_stage {
-      Stage::Ready => {
+      Stage::Setup => {
         tracing::trace!(
           "[`{}`]: preparing to immutably iterate over messages",
           self.title()
@@ -786,7 +783,7 @@ impl Window {
         )
       }
       _ => tracing::warn!(
-        "[`{}`]: iterating over window which wasn't in the Ready stage",
+        "[`{}`]: iterating over window which wasn't in the Setup stage",
         self.title()
       ),
     }
@@ -796,7 +793,7 @@ impl Window {
   fn iter_mut(&mut self) -> MessageIteratorMut {
     let current_stage = self.state.read_lock().stage;
     match current_stage {
-      Stage::Ready => {
+      Stage::Setup => {
         tracing::trace!(
           "[`{}`]: preparing to mutably iterate over messages",
           self.title()
@@ -810,7 +807,7 @@ impl Window {
         )
       }
       _ => tracing::warn!(
-        "[`{}`]: iterating over window which wasn't in the Ready stage",
+        "[`{}`]: iterating over window which wasn't in the Setup stage",
         self.title()
       ),
     }

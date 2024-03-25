@@ -274,7 +274,7 @@ impl App {
     }
 
     match (self.is_revealed, self.frame_count) {
-      (false, 10) => {
+      (false, 1) => {
         Self::center_window(window);
         window.set_visibility(Visibility::Shown);
         self.is_revealed = true;

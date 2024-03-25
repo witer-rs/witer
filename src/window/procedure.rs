@@ -105,13 +105,17 @@ impl SyncData {
   pub fn send_to_main(&self, message: Message, state: &Handle<InternalState>) {
     let should_wait = self.message.lock().unwrap().is_some();
     if should_wait {
-      self.wait_on_frame(|| state.read_lock().stage == Stage::ExitLoop);
+      self.wait_on_frame(|| {
+        matches!(state.read_lock().stage, Stage::Setup | Stage::ExitLoop)
+      });
     }
 
     self.message.lock().unwrap().replace(message);
     self.signal_new_message();
 
-    self.wait_on_frame(|| state.read_lock().stage == Stage::ExitLoop);
+    self.wait_on_frame(|| {
+      matches!(state.read_lock().stage, Stage::Setup | Stage::ExitLoop)
+    });
   }
 
   pub fn signal_new_message(&self) {
@@ -213,7 +217,7 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
     },
     flow: create_info.settings.flow,
     close_on_x: create_info.settings.close_on_x,
-    stage: Stage::Looping,
+    stage: Stage::Setup,
     input,
     requested_redraw: false,
   });
@@ -290,6 +294,7 @@ fn on_message(
     match msg {
       Command::MESSAGE_ID => {
         let command = unsafe { Box::from_raw(w_param.0 as *mut Command) };
+        tracing::debug!("{command:?}");
         match *command {
           Command::Destroy => {
             unsafe { DestroyWindow(hwnd) }.unwrap();
