@@ -27,7 +27,7 @@ use windows::Win32::{
       HRAWINPUT,
       RID_DEVICE_INFO_TYPE,
     },
-    Shell::{DefSubclassProc, SetWindowSubclass},
+    Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass},
     WindowsAndMessaging::{
       self,
       DefWindowProcW,
@@ -405,7 +405,6 @@ fn on_message(
             unsafe { InvalidateRgn(hwnd, None, false) };
           }
           Command::SetFullscreen(fullscreen) => {
-            // info!("Fullscreen: {fullscreen:?}");
             // update style
             let style = data.state.read_lock().style;
             unsafe {
@@ -510,6 +509,9 @@ fn on_message(
       }
       WindowsAndMessaging::WM_DESTROY => {
         unsafe { PostQuitMessage(0) };
+        unsafe {
+          RemoveWindowSubclass(hwnd, Some(subclass_proc), Window::WINDOW_SUBCLASS_ID)
+        };
         unsafe { drop(Box::from_raw(data)) };
         return unsafe { DefSubclassProc(hwnd, msg, w_param, l_param) };
       }
