@@ -92,8 +92,6 @@ pub struct CreateInfo {
   pub window: Option<(Window, Handle<InternalState>)>,
   pub sync: SyncData,
   pub message: Arc<Mutex<Option<Message>>>,
-  // pub message_sender: Sender<Message>,
-  // pub message_receiver: Receiver<Message>,
   pub style: StyleInfo,
 }
 
@@ -131,8 +129,6 @@ pub struct SubclassWindowData {
   pub state: Handle<InternalState>,
   pub sync: SyncData,
   pub message: Arc<Mutex<Option<Message>>>,
-  // pub message_sender: Sender<Message>,
-  pub processing_command: bool, // required to prevent re-entrant commands
 }
 
 ////////////////////////
@@ -238,7 +234,6 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
     state: state.clone(),
     sync: create_info.sync.clone(),
     message: create_info.message.clone(),
-    processing_command: false,
   };
 
   // create subclass ptr
