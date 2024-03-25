@@ -105,7 +105,6 @@ pub struct Window {
   hwnd: HWND,
   state: Handle<InternalState>,
   sync: SyncData,
-  message: Arc<Mutex<Option<Message>>>,
 }
 
 /// Window is destroyed on drop.
@@ -156,6 +155,7 @@ impl Window {
     // let (message_sender, message_receiver) = crossbeam::channel::unbounded();
 
     let sync = SyncData {
+      message: Arc::new(Mutex::new(None)),
       new_message: Arc::new((Mutex::new(false), Condvar::new())),
       next_frame: Arc::new((Mutex::new(false), Condvar::new())),
     };
@@ -167,7 +167,6 @@ impl Window {
       settings: settings.clone(),
       window: None,
       sync: sync.clone(),
-      message: Arc::new(Mutex::new(None)),
       style: StyleInfo {
         visibility: settings.visibility,
         decorations: settings.decorations,
@@ -178,10 +177,12 @@ impl Window {
 
     let (window_sender, window_receiver) = std::sync::mpsc::sync_channel(0);
 
+    // pre-signal the next frame so the window loop doesn't block after sending the
+    // create message.
+    sync.signal_next_frame();
     let thread = Some(Self::window_loop(window_sender, create_info)?);
 
     tracing::trace!("[`{}`]: waiting for window loop to hand back window", &title);
-
     let window = window_receiver.recv().unwrap();
 
     tracing::trace!("[`{}`]: received window from window loop", &title);
@@ -212,7 +213,6 @@ impl Window {
       .spawn(move || -> Result<(), WindowError> {
         let title = create_info.title.clone();
         let sync = create_info.sync.clone();
-        let message = create_info.message.clone();
         let (window, state) = Self::create_hwnd(create_info)?;
 
         tracing::trace!("[`{}`]: sending window back to main thread", title);
@@ -220,7 +220,7 @@ impl Window {
 
         window_sender.send(window).expect("failed to send window");
 
-        while Self::message_pump(&sync, &message, &state) {}
+        while Self::message_pump(&sync, &state) {}
 
         Ok(())
       })?;
@@ -235,8 +235,6 @@ impl Window {
 
     let hinstance: HINSTANCE = unsafe { GetModuleHandleW(None)? }.into();
     debug_assert_ne!(hinstance.0, 0);
-    // let size = create_info.settings.size;
-    // let position = create_info.settings.position;
     let title = HSTRING::from(create_info.title.clone());
     let window_class = title.clone();
 
@@ -291,24 +289,8 @@ impl Window {
     }
   }
 
-  fn message_pump(
-    sync: &SyncData,
-    // message_sender: &SyncSender<Message>,
-    message: &Arc<Mutex<Option<Message>>>,
-    state: &Handle<InternalState>,
-  ) -> bool {
-    let should_wait = message.lock().unwrap().is_some();
-    if should_wait {
-      sync.wait_on_frame(|| state.read_lock().stage == Stage::ExitLoop);
-    }
-
-    // pass message to main thread
-    message
-      .lock()
-      .unwrap()
-      .replace(Message::Loop(message::LoopMessage::GetMessage));
-    sync.signal_new_message();
-    sync.wait_on_frame(|| state.read_lock().stage == Stage::ExitLoop);
+  fn message_pump(sync: &SyncData, state: &Handle<InternalState>) -> bool {
+    sync.send_to_main(Message::Loop(message::LoopMessage::GetMessage), state);
 
     let mut msg = MSG::default();
     if unsafe { GetMessageW(&mut msg, None, 0, 0).as_bool() } {
@@ -332,6 +314,7 @@ impl Window {
 
     // let msg = self.sync.next_message.lock().unwrap().take();
     self
+      .sync
       .message
       .lock()
       .unwrap()

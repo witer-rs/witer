@@ -31,7 +31,7 @@ fn main() -> Result<(), WindowError> {
   for message in window.as_ref() {
     if !matches!(message, Message::Paint | Message::CursorMove { .. } | Message::Loop(..))
     {
-      println!("WINDOW: {message:?}");
+      tracing::debug!("WINDOW: {message:?}");
     }
 
     if message.is_key(Key::F11, KeyState::Pressed) {
@@ -186,7 +186,7 @@ impl App {
         return;
       }
       Err(error) => {
-        eprintln!("{error}");
+        tracing::error!("{error}");
         return;
       }
     };

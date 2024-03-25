@@ -91,17 +91,29 @@ pub struct CreateInfo {
   pub settings: WindowSettings,
   pub window: Option<(Window, Handle<InternalState>)>,
   pub sync: SyncData,
-  pub message: Arc<Mutex<Option<Message>>>,
   pub style: StyleInfo,
 }
 
 #[derive(Clone)]
 pub struct SyncData {
+  pub message: Arc<Mutex<Option<Message>>>,
   pub new_message: Arc<(Mutex<bool>, Condvar)>,
   pub next_frame: Arc<(Mutex<bool>, Condvar)>,
 }
 
 impl SyncData {
+  pub fn send_to_main(&self, message: Message, state: &Handle<InternalState>) {
+    let should_wait = self.message.lock().unwrap().is_some();
+    if should_wait {
+      self.wait_on_frame(|| state.read_lock().stage == Stage::ExitLoop);
+    }
+
+    self.message.lock().unwrap().replace(message);
+    self.signal_new_message();
+
+    self.wait_on_frame(|| state.read_lock().stage == Stage::ExitLoop);
+  }
+
   pub fn signal_new_message(&self) {
     let (lock, cvar) = self.new_message.as_ref();
     let mut new = lock.lock().unwrap();
@@ -128,7 +140,6 @@ impl SyncData {
 pub struct SubclassWindowData {
   pub state: Handle<InternalState>,
   pub sync: SyncData,
-  pub message: Arc<Mutex<Option<Message>>>,
 }
 
 ////////////////////////
@@ -192,8 +203,6 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
     theme: Default::default(),
     style: create_info.style,
     scale_factor,
-    // position,
-    // size,
     last_windowed_position: position,
     last_windowed_size: size,
     cursor: CursorInfo {
@@ -209,23 +218,19 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
     requested_redraw: false,
   });
 
-  create_info
-    .message
-    .lock()
-    .unwrap()
-    .replace(Message::Created {
+  create_info.sync.send_to_main(
+    Message::Created {
       hwnd,
       hinstance: create_struct.hInstance,
-    });
-
-  create_info.sync.signal_new_message();
+    },
+    &state,
+  );
 
   let window = Window {
     hinstance: create_struct.hInstance,
     hwnd,
     state: state.clone(),
     sync: create_info.sync.clone(),
-    message: create_info.message.clone(),
   };
 
   create_info.window = Some((window, state.clone()));
@@ -233,7 +238,6 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
   let subclass_data = SubclassWindowData {
     state: state.clone(),
     sync: create_info.sync.clone(),
-    message: create_info.message.clone(),
   };
 
   // create subclass ptr
@@ -278,7 +282,6 @@ fn on_message(
   l_param: LPARAM,
   data: &mut SubclassWindowData,
 ) -> LRESULT {
-  // let messages = Message::collect(hwnd, msg, w_param, l_param, &data.state);
   let mut messages = Vec::with_capacity(0);
   messages.reserve_exact(1);
 
@@ -730,37 +733,22 @@ fn on_message(
     }
   };
 
-  // Wait for previous message to be handled
-  let should_wait = data.message.lock().unwrap().is_some();
-  if should_wait {
-    data
-      .sync
-      .wait_on_frame(|| data.state.read_lock().stage == Stage::ExitLoop);
-  }
-
   // pass message to main thread
   if !messages.is_empty() {
     for message in messages {
-      update_state(hwnd, data, &message);
-
-      // data.message_sender.try_send(message).unwrap();
-      data.message.lock().unwrap().replace(message);
-      data.sync.signal_new_message();
-
-      data
-        .sync
-        .wait_on_frame(|| data.state.read_lock().stage == Stage::ExitLoop);
+      update_state(hwnd, &data.state, &message);
+      data.sync.send_to_main(message, &data.state);
     }
   }
 
   result
 }
 
-fn update_state(hwnd: HWND, data: &SubclassWindowData, message: &Message) {
+fn update_state(hwnd: HWND, state: &Handle<InternalState>, message: &Message) {
   match message {
     &Message::Focus(focus) => {
-      let cursor_visibility = data.state.read_lock().cursor.visibility;
-      let cursor_mode = data.state.read_lock().cursor.mode;
+      let cursor_visibility = state.read_lock().cursor.visibility;
+      let cursor_mode = state.read_lock().cursor.mode;
       if focus == Focus::Gained {
         Command::SetCursorMode(cursor_mode).post(hwnd);
         Command::SetCursorVisibility(cursor_visibility).post(hwnd);
@@ -770,10 +758,10 @@ fn update_state(hwnd: HWND, data: &SubclassWindowData, message: &Message) {
     }
     &Message::Resized(_size) => {
       // info!("RESIZED: {_size:?}");
-      let is_windowed = data.state.read_lock().style.fullscreen.is_none();
+      let is_windowed = state.read_lock().style.fullscreen.is_none();
       // // data.state.write_lock().size = size;
       if is_windowed {
-        data.state.write_lock().update_last_windowed_pos_size(hwnd);
+        state.write_lock().update_last_windowed_pos_size(hwnd);
       }
     }
     &Message::BoundsChanged {
@@ -781,22 +769,29 @@ fn update_state(hwnd: HWND, data: &SubclassWindowData, message: &Message) {
       outer_size: _,
     } => {
       // info!("BOUNDSCHANGED: {outer_position:?}, {outer_size:?}");
-      let is_windowed = data.state.read_lock().style.fullscreen.is_none();
+      let is_windowed = state.read_lock().style.fullscreen.is_none();
       // // data.state.write_lock().position = position;
       if is_windowed {
-        data.state.write_lock().update_last_windowed_pos_size(hwnd);
+        state.write_lock().update_last_windowed_pos_size(hwnd);
       }
     }
-    &Message::Key { key, state, .. } => {
-      data.state.write_lock().input.update_key_state(key, state);
+    &Message::Key {
+      key,
+      state: key_state,
+      ..
+    } => {
+      state.write_lock().input.update_key_state(key, key_state);
     }
-    &Message::MouseButton { button, state, .. } => data
-      .state
+    &Message::MouseButton {
+      button,
+      state: button_state,
+      ..
+    } => state
       .write_lock()
       .input
-      .update_mouse_button_state(button, state),
+      .update_mouse_button_state(button, button_state),
     Message::Paint => {
-      data.state.write_lock().requested_redraw = false;
+      state.write_lock().requested_redraw = false;
     }
     _ => (),
   }
