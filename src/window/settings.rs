@@ -90,6 +90,7 @@ pub struct WindowBuilder {
   position: Option<Position>,
   settings: WindowSettings,
 }
+
 impl Default for WindowBuilder {
   fn default() -> Self {
     Self {
@@ -97,6 +98,15 @@ impl Default for WindowBuilder {
       size: LogicalSize::new(800.0, 500.0).into(),
       position: None,
       settings: WindowSettings::default(),
+    }
+  }
+}
+
+impl From<WindowSettings> for WindowBuilder {
+  fn from(settings: WindowSettings) -> Self {
+    Self {
+      settings,
+      ..Default::default()
     }
   }
 }
