@@ -112,7 +112,7 @@ pub struct Window {
 impl Drop for Window {
   fn drop(&mut self) {
     let title = self.title();
-    tracing::trace!("Destroying window: {}", title);
+    tracing::trace!("[`{}`]: destroying window", title);
     // redundant assignment to ensure we are in the exit stage even if iteration
     // never occurred.
     self.exit_loop();
@@ -120,12 +120,12 @@ impl Drop for Window {
 
     let thread = self.state.write_lock().thread.take();
     if let Some(thread) = thread {
-      tracing::trace!("Joining window thread");
+      tracing::trace!("[`{}`]: joining window thread", title);
       let _ = thread.join();
-      tracing::trace!("Joined window thread");
+      tracing::trace!("[`{}`]: joined window thread", title);
     }
 
-    tracing::trace!("Destroyed window: {}", title);
+    tracing::trace!("[`{}`]: destroyed window", title);
   }
 }
 
@@ -152,7 +152,7 @@ impl Window {
     let size: Size = size.into();
     let position: Option<Position> = position.into();
 
-    tracing::trace!("Creating window: {}", &title);
+    tracing::trace!("[`{}`]: creating window", &title);
     // let (message_sender, message_receiver) = crossbeam::channel::unbounded();
 
     let sync = SyncData {
@@ -180,11 +180,11 @@ impl Window {
 
     let thread = Some(Self::window_loop(window_sender, create_info)?);
 
-    tracing::trace!("Waiting for window loop to hand back window");
+    tracing::trace!("[`{}`]: waiting for window loop to hand back window", &title);
 
     let window = window_receiver.recv().unwrap();
 
-    tracing::trace!("Received window from window loop");
+    tracing::trace!("[`{}`]: received window from window loop", &title);
 
     window.state.write_lock().thread = thread;
     if let Some(position) = position {
@@ -198,7 +198,7 @@ impl Window {
 
     window.state.write_lock().stage = Stage::Ready;
 
-    tracing::trace!("Created window: {}", &title);
+    tracing::trace!("[`{}`]: created window", &title);
 
     Ok(window)
   }
@@ -210,11 +210,13 @@ impl Window {
     let thread_handle = std::thread::Builder::new()
       .name("window".to_owned())
       .spawn(move || -> Result<(), WindowError> {
+        let title = create_info.title.clone();
         let sync = create_info.sync.clone();
         let message = create_info.message.clone();
         let (window, state) = Self::create_hwnd(create_info)?;
 
-        tracing::trace!("Sending window back to main thread");
+        tracing::trace!("[`{}`]: sending window back to main thread", title);
+        drop(title);
 
         window_sender.send(window).expect("failed to send window");
 
@@ -229,7 +231,7 @@ impl Window {
   fn create_hwnd(
     mut create_info: CreateInfo,
   ) -> Result<(Self, Handle<InternalState>), WindowError> {
-    tracing::trace!("Creating window class");
+    tracing::trace!("[`{}`]: creating window class", &create_info.title);
 
     let hinstance: HINSTANCE = unsafe { GetModuleHandleW(None)? }.into();
     debug_assert_ne!(hinstance.0, 0);
@@ -252,14 +254,14 @@ impl Window {
       ..Default::default()
     };
 
-    tracing::trace!("Registering window class");
+    tracing::trace!("[`{}`]: registering window class", &create_info.title);
 
     {
       let atom = unsafe { RegisterClassExW(&wc) };
       debug_assert_ne!(atom, 0);
     }
 
-    tracing::trace!("Creating window handle");
+    tracing::trace!("[`{}`]: creating window handle", &create_info.title);
 
     let hwnd = unsafe {
       CreateWindowExW(
@@ -278,7 +280,7 @@ impl Window {
       )
     };
 
-    tracing::trace!("Window handle created");
+    tracing::trace!("[`{}`]: window handle created", &create_info.title);
 
     if hwnd.0 == 0 {
       Err(WindowError::Win32Error(windows::core::Error::from_win32()))
@@ -359,7 +361,10 @@ impl Window {
         self.exit_loop();
         Some(Message::Loop(message::LoopMessage::Exit))
       }
-      Stage::ExitLoop => None,
+      Stage::ExitLoop => {
+        tracing::trace!("[`{}`]: exiting loop", self.title());
+        None
+      }
     };
 
     next
@@ -786,13 +791,22 @@ impl Window {
     let current_stage = self.state.read_lock().stage;
     match current_stage {
       Stage::Ready => {
-        tracing::trace!("Preparing to immutably iterate over messages");
+        tracing::trace!(
+          "[`{}`]: preparing to immutably iterate over messages",
+          self.title()
+        );
         self.state.write_lock().stage = Stage::Looping;
       }
       Stage::ExitLoop => {
-        tracing::error!("Attempted to iterate over window already in the ExitLoop stage")
+        tracing::error!(
+          "[`{}`]: attempted to iterate over window already in the ExitLoop stage",
+          self.title()
+        )
       }
-      _ => tracing::warn!("Iterating over window which wasn't in the Ready stage"),
+      _ => tracing::warn!(
+        "[`{}`]: iterating over window which wasn't in the Ready stage",
+        self.title()
+      ),
     }
     MessageIterator { window: self }
   }
@@ -801,13 +815,22 @@ impl Window {
     let current_stage = self.state.read_lock().stage;
     match current_stage {
       Stage::Ready => {
-        tracing::trace!("Preparing to mutably iterate over messages");
+        tracing::trace!(
+          "[`{}`]: preparing to mutably iterate over messages",
+          self.title()
+        );
         self.state.write_lock().stage = Stage::Looping;
       }
       Stage::ExitLoop => {
-        tracing::error!("Attempted to iterate over window already in the ExitLoop stage")
+        tracing::error!(
+          "[`{}`]: attempted to iterate over window already in the ExitLoop stage",
+          self.title()
+        )
       }
-      _ => tracing::warn!("Iterating over window which wasn't in the Ready stage"),
+      _ => tracing::warn!(
+        "[`{}`]: iterating over window which wasn't in the Ready stage",
+        self.title()
+      ),
     }
     MessageIteratorMut { window: self }
   }
