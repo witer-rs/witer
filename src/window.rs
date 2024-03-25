@@ -104,6 +104,7 @@ pub mod state;
 pub struct Window {
   hinstance: HINSTANCE,
   hwnd: HWND,
+  class_atom: u16,
   state: Handle<InternalState>,
   sync: SyncData,
 }
@@ -166,6 +167,7 @@ impl Window {
       size,
       position,
       settings: settings.clone(),
+      class_atom: 0,
       window: None,
       sync: sync.clone(),
       style: StyleInfo {
@@ -211,23 +213,19 @@ impl Window {
         let title = create_info.title.clone();
         let sync = create_info.sync.clone();
         let (window, state) = Self::create_hwnd(create_info)?;
+        let hinstance = window.hinstance;
+        let class_atom = window.class_atom;
 
         tracing::trace!("[`{}`]: sending window back to main thread", title);
-
         window_sender.send(window).expect("failed to send window");
 
         tracing::trace!("[`{}`]: pumping messages", title);
-
         while Self::message_pump(&sync, &state) {}
 
-        tracing::trace!("[`{}`]: window has quit. cleaning up.", title);
+        tracing::trace!("[`{}`]: unregistering window class", title);
+        unsafe { UnregisterClassW(PCWSTR(class_atom as *const u16), hinstance) }.unwrap();
 
-        let title = HSTRING::from(state.read_lock().title.clone());
-        let hinstance: HINSTANCE = unsafe { GetModuleHandleW(None).unwrap() }.into();
-        unsafe { UnregisterClassW(&title, hinstance) }.unwrap();
-
-        tracing::trace!("[`{}`]: window thread is joining", title);
-
+        tracing::trace!("[`{}`]: joining main thread", title);
         Ok(())
       })?;
 
@@ -261,8 +259,8 @@ impl Window {
     tracing::trace!("[`{}`]: registering window class", &create_info.title);
 
     {
-      let atom = unsafe { RegisterClassExW(&wc) };
-      debug_assert_ne!(atom, 0);
+      create_info.class_atom = unsafe { RegisterClassExW(&wc) };
+      debug_assert_ne!(create_info.class_atom, 0);
     }
 
     tracing::trace!("[`{}`]: creating window handle", &create_info.title);
@@ -296,7 +294,7 @@ impl Window {
   }
 
   fn message_pump(sync: &SyncData, state: &Handle<InternalState>) -> bool {
-    sync.send_to_main(Message::Loop(message::LoopMessage::GetMessage), state);
+    sync.send_to_main(Message::Loop(LoopMessage::GetMessage), state);
 
     let mut msg = MSG::default();
     if unsafe { GetMessageW(&mut msg, None, 0, 0).as_bool() } {
@@ -348,7 +346,7 @@ impl Window {
       Stage::Closing => {
         let _ = self.take_message();
         self.exit_loop();
-        Some(Message::Loop(message::LoopMessage::Exit))
+        Some(Message::Loop(LoopMessage::Exit))
       }
       Stage::ExitLoop => {
         tracing::trace!("[`{}`]: exiting loop", self.title());

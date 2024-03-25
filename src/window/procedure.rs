@@ -45,14 +45,6 @@ use windows::Win32::{
     },
   },
 };
-use windows::{
-  core::{HSTRING, PCWSTR},
-  Win32::{
-    System::LibraryLoader::GetModuleHandleW,
-    UI::WindowsAndMessaging::UnregisterClassW,
-  },
-};
-
 #[allow(unused)]
 use super::message::Message;
 use super::{
@@ -96,6 +88,7 @@ pub struct CreateInfo {
   pub size: Size,
   pub position: Option<Position>,
   pub settings: WindowSettings,
+  pub class_atom: u16,
   pub window: Option<(Window, Handle<InternalState>)>,
   pub sync: SyncData,
   pub style: StyleInfo,
@@ -240,6 +233,7 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
   let window = Window {
     hinstance: create_struct.hInstance,
     hwnd,
+    class_atom: create_info.class_atom,
     state: state.clone(),
     sync: create_info.sync.clone(),
   };
@@ -682,7 +676,7 @@ fn on_message(
 
               unsafe {
                 TrackMouseEvent(&mut TRACKMOUSEEVENT {
-                  cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
+                  cbSize: size_of::<TRACKMOUSEEVENT>() as u32,
                   dwFlags: KeyboardAndMouse::TME_LEAVE,
                   hwndTrack: hwnd,
                   dwHoverTime: Controls::HOVER_DEFAULT,
