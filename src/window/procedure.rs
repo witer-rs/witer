@@ -45,6 +45,13 @@ use windows::Win32::{
     },
   },
 };
+use windows::{
+  core::{HSTRING, PCWSTR},
+  Win32::{
+    System::LibraryLoader::GetModuleHandleW,
+    UI::WindowsAndMessaging::UnregisterClassW,
+  },
+};
 
 #[allow(unused)]
 use super::message::Message;

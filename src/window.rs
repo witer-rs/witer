@@ -54,6 +54,7 @@ use windows::{
         LoadCursorW,
         RegisterClassExW,
         TranslateMessage,
+        UnregisterClassW,
         MSG,
         WNDCLASSEXW,
       },
@@ -212,11 +213,20 @@ impl Window {
         let (window, state) = Self::create_hwnd(create_info)?;
 
         tracing::trace!("[`{}`]: sending window back to main thread", title);
-        drop(title);
 
         window_sender.send(window).expect("failed to send window");
 
+        tracing::trace!("[`{}`]: pumping messages", title);
+
         while Self::message_pump(&sync, &state) {}
+
+        tracing::trace!("[`{}`]: window has quit. cleaning up.", title);
+
+        let title = HSTRING::from(state.read_lock().title.clone());
+        let hinstance: HINSTANCE = unsafe { GetModuleHandleW(None).unwrap() }.into();
+        unsafe { UnregisterClassW(&title, hinstance) }.unwrap();
+
+        tracing::trace!("[`{}`]: window thread is joining", title);
 
         Ok(())
       })?;
