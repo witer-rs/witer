@@ -177,12 +177,11 @@ impl Window {
 
     let (window_sender, window_receiver) = std::sync::mpsc::sync_channel(0);
 
-    // pre-signal the next frame so the window loop doesn't block after sending the
-    // create message.
-    sync.signal_next_frame();
     let thread = Some(Self::window_loop(window_sender, create_info)?);
 
     tracing::trace!("[`{}`]: waiting for window loop to hand back window", &title);
+
+    sync.signal_next_frame();
     let window = window_receiver.recv().unwrap();
 
     tracing::trace!("[`{}`]: received window from window loop", &title);
