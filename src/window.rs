@@ -72,7 +72,6 @@ use self::{
 };
 use crate::{
   error::WindowError,
-  handle::Handle,
   prelude::{ButtonState, Key, KeyState, MouseButton},
   utilities::{
     get_window_ex_style,
@@ -87,7 +86,7 @@ use crate::{
     message::Message,
     procedure::CreateInfo,
     settings::WindowSettings,
-    state::{Flow, InternalState, PhysicalPosition, Size, Theme, Visibility},
+    state::{Flow, PhysicalPosition, Size, Theme, Visibility, WindowState},
   },
 };
 
@@ -101,30 +100,17 @@ pub mod state;
 
 /// Main window class. Uses internal mutability. Window is destroyed on drop.
 #[allow(unused)]
-pub struct Window {
-  hinstance: HINSTANCE,
-  hwnd: HWND,
-  class_atom: u16,
-  state: Handle<InternalState>,
-  sync: SyncData,
-}
+pub struct Window(Arc<WindowState>);
 
 /// Window is destroyed on drop.
 impl Drop for Window {
   fn drop(&mut self) {
     let title = self.title();
     tracing::trace!("[`{}`]: destroying window", title);
-    // redundant assignment to ensure we are in the exit stage even if iteration
-    // never occurred.
-    self.exit_loop();
-    Command::Destroy.post(self.hwnd);
 
-    let thread = self.state.write_lock().thread.take();
-    if let Some(thread) = thread {
-      tracing::trace!("[`{}`]: joining window thread", title);
-      let _ = thread.join();
-      tracing::trace!("[`{}`]: joined window thread", title);
-    }
+    self.exit_loop();
+    Command::Destroy.post(self.0.hwnd);
+    self.0.join_thread();
 
     tracing::trace!("[`{}`]: destroyed window", title);
   }
@@ -188,7 +174,7 @@ impl Window {
 
     tracing::trace!("[`{}`]: received window from window loop", &title);
 
-    window.state.write_lock().thread = thread;
+    window.0.set_thread(thread);
     if let Some(position) = position {
       window.force_set_outer_position(position);
     }
@@ -212,18 +198,23 @@ impl Window {
       .spawn(move || -> Result<(), WindowError> {
         let title = create_info.title.clone();
         let sync = create_info.sync.clone();
-        let (window, state) = Self::create_hwnd(create_info)?;
-        let hinstance = window.hinstance;
-        let class_atom = window.class_atom;
+        let window = Self::create_hwnd(create_info)?;
+        let window_state = window.0.clone();
 
         tracing::trace!("[`{}`]: sending window back to main thread", title);
         window_sender.send(window).expect("failed to send window");
 
         tracing::trace!("[`{}`]: pumping messages", title);
-        while Self::message_pump(&sync, &state) {}
+        while Self::message_pump(&sync, &window_state) {}
 
         tracing::trace!("[`{}`]: unregistering window class", title);
-        unsafe { UnregisterClassW(PCWSTR(class_atom as *const u16), hinstance) }.unwrap();
+        unsafe {
+          UnregisterClassW(
+            PCWSTR(window_state.class_atom as *const u16),
+            window_state.hinstance,
+          )
+        }
+        .unwrap();
 
         tracing::trace!("[`{}`]: joining main thread", title);
         Ok(())
@@ -232,9 +223,7 @@ impl Window {
     Ok(thread_handle)
   }
 
-  fn create_hwnd(
-    mut create_info: CreateInfo,
-  ) -> Result<(Self, Handle<InternalState>), WindowError> {
+  fn create_hwnd(mut create_info: CreateInfo) -> Result<Self, WindowError> {
     tracing::trace!("[`{}`]: creating window class", &create_info.title);
 
     let hinstance: HINSTANCE = unsafe { GetModuleHandleW(None)? }.into();
@@ -287,13 +276,13 @@ impl Window {
     if hwnd.0 == 0 {
       Err(WindowError::Win32Error(windows::core::Error::from_win32()))
     } else {
-      let (window, state) = create_info.window.take().unwrap();
+      let window = create_info.window.take().unwrap();
 
-      Ok((window, state))
+      Ok(window)
     }
   }
 
-  fn message_pump(sync: &SyncData, state: &Handle<InternalState>) -> bool {
+  fn message_pump(sync: &SyncData, state: &Arc<WindowState>) -> bool {
     sync.send_to_main(Message::Loop(LoopMessage::GetMessage), state);
 
     let mut msg = MSG::default();
@@ -309,15 +298,16 @@ impl Window {
   }
 
   fn take_message(&self) -> Option<Message> {
-    let flow = self.state.read_lock().flow;
+    let flow = self.0.state.lock().unwrap().flow;
     if let Flow::Wait = flow {
-      let (lock, cvar) = self.sync.new_message.as_ref();
+      let (lock, cvar) = self.0.sync.new_message.as_ref();
       let mut new = cvar.wait_while(lock.lock().unwrap(), |new| !*new).unwrap();
       *new = false;
     }
 
     // let msg = self.sync.next_message.lock().unwrap().take();
     self
+      .0
       .sync
       .message
       .lock()
@@ -327,16 +317,16 @@ impl Window {
   }
 
   fn next_message(&self) -> Option<Message> {
-    let current_stage = self.state.read_lock().stage;
+    let current_stage = self.0.state.lock().unwrap().stage;
 
-    self.sync.signal_next_frame();
+    self.0.sync.signal_next_frame();
 
     let next = match current_stage {
       Stage::Setup => None, // do not iterate until looping
       Stage::Looping => {
         let message = self.take_message();
         if let Some(Message::CloseRequested) = message {
-          let x = self.state.read_lock().close_on_x;
+          let x = self.0.state.lock().unwrap().close_on_x;
           if x {
             self.close();
           }
@@ -360,28 +350,28 @@ impl Window {
   // GETTERS
 
   pub fn visibility(&self) -> Visibility {
-    self.state.read_lock().style.visibility
+    self.0.state.lock().unwrap().style.visibility
   }
 
   pub fn theme(&self) -> Theme {
-    self.state.read_lock().theme
+    self.0.state.lock().unwrap().theme
   }
 
   pub fn flow(&self) -> Flow {
-    self.state.read_lock().flow
+    self.0.state.lock().unwrap().flow
   }
 
   pub fn title(&self) -> String {
-    self.state.read_lock().title.to_string()
+    self.0.state.lock().unwrap().title.to_string()
   }
 
   pub fn subtitle(&self) -> String {
-    self.state.read_lock().subtitle.to_string()
+    self.0.state.lock().unwrap().subtitle.to_string()
   }
 
   pub fn outer_size(&self) -> PhysicalSize {
     let mut window_rect = RECT::default();
-    let _ = unsafe { GetWindowRect(self.hwnd, &mut window_rect) };
+    let _ = unsafe { GetWindowRect(self.0.hwnd, &mut window_rect) };
     PhysicalSize {
       width: (window_rect.right - window_rect.left) as u32,
       height: (window_rect.bottom - window_rect.top) as u32,
@@ -390,7 +380,7 @@ impl Window {
 
   pub fn inner_size(&self) -> PhysicalSize {
     let mut client_rect = RECT::default();
-    let _ = unsafe { GetClientRect(self.hwnd, &mut client_rect) };
+    let _ = unsafe { GetClientRect(self.0.hwnd, &mut client_rect) };
     PhysicalSize {
       width: (client_rect.right - client_rect.left) as u32,
       height: (client_rect.bottom - client_rect.top) as u32,
@@ -399,7 +389,7 @@ impl Window {
 
   pub fn outer_position(&self) -> PhysicalPosition {
     let mut window_rect = RECT::default();
-    let _ = unsafe { GetWindowRect(self.hwnd, &mut window_rect) };
+    let _ = unsafe { GetWindowRect(self.0.hwnd, &mut window_rect) };
     PhysicalPosition {
       x: window_rect.left,
       y: window_rect.top,
@@ -408,7 +398,7 @@ impl Window {
 
   pub fn inner_position(&self) -> PhysicalPosition {
     let mut window_rect = RECT::default();
-    let _ = unsafe { GetClientRect(self.hwnd, &mut window_rect) };
+    let _ = unsafe { GetClientRect(self.0.hwnd, &mut window_rect) };
     PhysicalPosition {
       x: window_rect.left,
       y: window_rect.top,
@@ -416,8 +406,7 @@ impl Window {
   }
 
   pub fn fullscreen(&self) -> Option<Fullscreen> {
-    let state = self.state.read_lock();
-    state.style.fullscreen
+    self.0.state.lock().unwrap().style.fullscreen
   }
 
   pub fn cursor_screen_position(&self) -> PhysicalPosition {
@@ -427,7 +416,7 @@ impl Window {
   }
 
   pub fn scale_factor(&self) -> f64 {
-    self.state.read_lock().scale_factor
+    self.0.state.lock().unwrap().scale_factor
   }
 
   unsafe extern "system" fn monitor_enum_proc(
@@ -456,7 +445,8 @@ impl Window {
   }
 
   pub fn current_monitor(&self) -> Monitor {
-    let hmonitor = unsafe { MonitorFromWindow(self.hwnd, Gdi::MONITOR_DEFAULTTONEAREST) };
+    let hmonitor =
+      unsafe { MonitorFromWindow(self.0.hwnd, Gdi::MONITOR_DEFAULTTONEAREST) };
     Monitor::new(hmonitor)
   }
 
@@ -467,49 +457,42 @@ impl Window {
   }
 
   pub fn key(&self, keycode: Key) -> KeyState {
-    let state = self.state.read_lock();
-    state.input.key(keycode)
+    self.0.state.lock().unwrap().input.key(keycode)
   }
 
   pub fn mouse(&self, button: MouseButton) -> ButtonState {
-    let state = self.state.read_lock();
-    state.input.mouse(button)
+    self.0.state.lock().unwrap().input.mouse(button)
   }
 
   pub fn shift(&self) -> ButtonState {
-    let state = self.state.read_lock();
-    state.input.shift()
+    self.0.state.lock().unwrap().input.shift()
   }
 
   pub fn ctrl(&self) -> ButtonState {
-    let state = self.state.read_lock();
-    state.input.ctrl()
+    self.0.state.lock().unwrap().input.ctrl()
   }
 
   pub fn alt(&self) -> ButtonState {
-    let state = self.state.read_lock();
-    state.input.alt()
+    self.0.state.lock().unwrap().input.alt()
   }
 
   pub fn win(&self) -> ButtonState {
-    let state = self.state.read_lock();
-    state.input.win()
+    self.0.state.lock().unwrap().input.win()
   }
 
   pub fn is_closing(&self) -> bool {
-    let state = self.state.read_lock();
-    state.is_closing()
+    self.0.is_closing()
   }
 
   // SETTERS
 
   fn force_set_outer_position(&self, position: Position) {
     // self.state.write_lock().position = position;
-    Command::SetPosition(position).post(self.hwnd);
+    Command::SetPosition(position).post(self.0.hwnd);
   }
 
   pub fn set_outer_position(&self, position: Position) {
-    let scale_factor = self.state.read_lock().scale_factor;
+    let scale_factor = self.0.state.lock().unwrap().scale_factor;
     if position.as_physical(scale_factor) == self.outer_position() {
       return;
     }
@@ -518,12 +501,12 @@ impl Window {
 
   fn force_set_outer_size(&self, size: Size) {
     // self.state.write_lock().size = size;
-    Command::SetSize(size).post(self.hwnd);
+    Command::SetSize(size).post(self.0.hwnd);
   }
 
   pub fn set_outer_size(&self, size: impl Into<Size>) {
     let size = size.into();
-    let scale_factor = self.state.read_lock().scale_factor;
+    let scale_factor = self.0.state.lock().unwrap().scale_factor;
     if size.as_physical(scale_factor) == self.outer_size() {
       return;
     }
@@ -531,9 +514,9 @@ impl Window {
   }
 
   fn force_set_inner_size(&self, size: Size) {
-    let scale_factor = self.state.read_lock().scale_factor;
+    let scale_factor = self.0.state.lock().unwrap().scale_factor;
     let physical_size = size.as_physical(scale_factor);
-    let style = self.state.read_lock().style;
+    let style = self.0.state.lock().unwrap().style;
     let mut window_rect = RECT {
       top: 0,
       left: 0,
@@ -546,7 +529,7 @@ impl Window {
         get_window_style(&style),
         false,
         get_window_ex_style(&style),
-        hwnd_dpi(self.hwnd),
+        hwnd_dpi(self.0.hwnd),
       )
     }
     .unwrap();
@@ -556,12 +539,12 @@ impl Window {
       height: (window_rect.bottom - window_rect.top) as u32,
     };
 
-    Command::SetSize(adjusted_size.into()).post(self.hwnd);
+    Command::SetSize(adjusted_size.into()).post(self.0.hwnd);
   }
 
   pub fn set_inner_size(&self, size: impl Into<Size>) {
     let size = size.into();
-    let scale_factor = self.state.read_lock().scale_factor;
+    let scale_factor = self.0.state.lock().unwrap().scale_factor;
     if size.as_physical(scale_factor) == self.inner_size() {
       return;
     }
@@ -569,24 +552,24 @@ impl Window {
   }
 
   fn force_set_visibility(&self, visibility: Visibility) {
-    self.state.write_lock().style.visibility = visibility;
-    Command::SetVisibility(visibility).post(self.hwnd);
+    self.0.state.lock().unwrap().style.visibility = visibility;
+    Command::SetVisibility(visibility).post(self.0.hwnd);
   }
 
   pub fn set_visibility(&self, visibility: Visibility) {
-    if visibility == self.state.read_lock().style.visibility {
+    if visibility == self.0.state.lock().unwrap().style.visibility {
       return;
     }
     self.force_set_visibility(visibility)
   }
 
   fn force_set_decorations(&self, visibility: Visibility) {
-    self.state.write_lock().style.decorations = visibility;
-    Command::SetDecorations(visibility).post(self.hwnd);
+    self.0.state.lock().unwrap().style.decorations = visibility;
+    Command::SetDecorations(visibility).post(self.0.hwnd);
   }
 
   pub fn set_decorations(&self, visibility: Visibility) {
-    if visibility == self.state.read_lock().style.decorations {
+    if visibility == self.0.state.lock().unwrap().style.decorations {
       return;
     }
     self.force_set_decorations(visibility)
@@ -611,11 +594,11 @@ impl Window {
       Theme::Light => Theme::Light,
     };
 
-    self.state.write_lock().theme = theme;
+    self.0.state.lock().unwrap().theme = theme;
     let dark_mode = BOOL::from(theme == Theme::Dark);
     if let Err(_error) = unsafe {
       DwmSetWindowAttribute(
-        self.hwnd,
+        self.0.hwnd,
         Dwm::DWMWA_USE_IMMERSIVE_DARK_MODE,
         std::ptr::addr_of!(dark_mode) as *const std::ffi::c_void,
         std::mem::size_of::<BOOL>() as u32,
@@ -626,86 +609,92 @@ impl Window {
   }
 
   pub fn set_theme(&self, theme: Theme) {
-    if theme == self.state.read_lock().theme {
+    if theme == self.0.state.lock().unwrap().theme {
       return;
     }
     self.force_set_theme(theme)
   }
 
   fn force_set_fullscreen(&self, fullscreen: Option<Fullscreen>) {
-    self.state.write_lock().style.fullscreen = fullscreen;
-    Command::SetFullscreen(fullscreen).post(self.hwnd);
+    self.0.state.lock().unwrap().style.fullscreen = fullscreen;
+    Command::SetFullscreen(fullscreen).post(self.0.hwnd);
   }
 
   pub fn set_fullscreen(&self, fullscreen: Option<Fullscreen>) {
-    if fullscreen == self.state.read_lock().style.fullscreen {
+    if fullscreen == self.0.state.lock().unwrap().style.fullscreen {
       return;
     }
     self.force_set_fullscreen(fullscreen)
   }
 
   fn force_set_title(&self, title: impl AsRef<str>) {
-    self.state.write_lock().title = title.as_ref().into();
-    let title =
-      HSTRING::from(format!("{}{}", title.as_ref(), self.state.read_lock().subtitle));
-    Command::SetWindowText(title).post(self.hwnd);
+    self.0.state.lock().unwrap().title = title.as_ref().into();
+    let title = HSTRING::from(format!(
+      "{}{}",
+      title.as_ref(),
+      self.0.state.lock().unwrap().subtitle
+    ));
+    Command::SetWindowText(title).post(self.0.hwnd);
   }
 
   /// Set the title of the window
   pub fn set_title(&self, title: impl AsRef<str>) {
-    if title.as_ref() == self.state.read_lock().title {
+    if title.as_ref() == self.0.state.lock().unwrap().title {
       return;
     }
     self.force_set_title(title)
   }
 
   fn force_set_cursor_mode(&self, cursor_mode: CursorMode) {
-    self.state.write_lock().cursor.mode = cursor_mode;
-    Command::SetCursorMode(cursor_mode).post(self.hwnd);
+    self.0.state.lock().unwrap().cursor.mode = cursor_mode;
+    Command::SetCursorMode(cursor_mode).post(self.0.hwnd);
   }
 
   pub fn set_cursor_mode(&self, cursor_mode: CursorMode) {
-    if cursor_mode == self.state.read_lock().cursor.mode {
+    if cursor_mode == self.0.state.lock().unwrap().cursor.mode {
       return;
     }
     self.force_set_cursor_mode(cursor_mode)
   }
 
   fn force_set_cursor_visibility(&self, cursor_visibility: Visibility) {
-    self.state.write_lock().cursor.visibility = cursor_visibility;
-    Command::SetCursorVisibility(cursor_visibility).post(self.hwnd);
+    self.0.state.lock().unwrap().cursor.visibility = cursor_visibility;
+    Command::SetCursorVisibility(cursor_visibility).post(self.0.hwnd);
   }
 
   pub fn set_cursor_visibility(&self, cursor_visibility: Visibility) {
-    if cursor_visibility == self.state.read_lock().cursor.visibility {
+    if cursor_visibility == self.0.state.lock().unwrap().cursor.visibility {
       return;
     }
     self.force_set_cursor_visibility(cursor_visibility)
   }
 
   fn force_set_subtitle(&self, subtitle: impl AsRef<str>) {
-    self.state.write_lock().subtitle = subtitle.as_ref().into();
-    let title =
-      HSTRING::from(format!("{}{}", self.state.read_lock().title, subtitle.as_ref()));
-    Command::SetWindowText(title).post(self.hwnd);
+    self.0.state.lock().unwrap().subtitle = subtitle.as_ref().into();
+    let title = HSTRING::from(format!(
+      "{}{}",
+      self.0.state.lock().unwrap().title,
+      subtitle.as_ref()
+    ));
+    Command::SetWindowText(title).post(self.0.hwnd);
   }
 
   /// Set text to appear after the title of the window
   pub fn set_subtitle(&self, subtitle: impl AsRef<str>) {
-    if subtitle.as_ref() == self.state.read_lock().subtitle {
+    if subtitle.as_ref() == self.0.state.lock().unwrap().subtitle {
       return;
     }
     self.force_set_subtitle(subtitle)
   }
 
   fn force_request_redraw(&self) {
-    self.state.write_lock().requested_redraw = true;
-    Command::Redraw.post(self.hwnd);
+    self.0.state.lock().unwrap().requested_redraw = true;
+    Command::Redraw.post(self.0.hwnd);
   }
 
   /// Request a new Draw event
   pub fn request_redraw(&self) {
-    if self.state.read_lock().requested_redraw {
+    if self.0.state.lock().unwrap().requested_redraw {
       return;
     }
     self.force_request_redraw()
@@ -716,20 +705,21 @@ impl Window {
     if self.is_closing() {
       return; // already closing
     }
-    self.state.write_lock().stage = Stage::Closing;
+    self.0.state.lock().unwrap().stage = Stage::Closing;
   }
 
   fn exit_loop(&self) {
-    self.state.write_lock().stage = Stage::ExitLoop;
-    self.sync.signal_next_frame();
+    self.0.state.lock().unwrap().stage = Stage::ExitLoop;
+    self.0.sync.signal_next_frame();
   }
 
   #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
   pub fn raw_window_handle(&self) -> RawWindowHandle {
     let mut handle = Win32WindowHandle::new(
-      std::num::NonZeroIsize::new(self.hwnd.0).expect("window handle should not be zero"),
+      std::num::NonZeroIsize::new(self.0.hwnd.0)
+        .expect("window handle should not be zero"),
     );
-    let hinstance = std::num::NonZeroIsize::new(self.hinstance.0)
+    let hinstance = std::num::NonZeroIsize::new(self.0.hinstance.0)
       .expect("instance handle should not be zero");
     handle.hinstance = Some(hinstance);
     RawWindowHandle::from(handle)
@@ -753,8 +743,8 @@ impl HasWindowHandle for Window {
 unsafe impl HasRawWindowHandle for Window {
   fn raw_window_handle(&self) -> RawWindowHandle {
     let mut handle = Win32WindowHandle::empty();
-    handle.hwnd = self.hwnd.0 as *mut std::ffi::c_void;
-    handle.hinstance = self.hinstance.0 as *mut std::ffi::c_void;
+    handle.hwnd = self.0.hwnd.0 as *mut std::ffi::c_void;
+    handle.hinstance = self.0.hinstance.0 as *mut std::ffi::c_void;
     RawWindowHandle::Win32(handle)
   }
 }
@@ -775,14 +765,14 @@ unsafe impl HasRawDisplayHandle for Window {
 
 impl Window {
   fn iter(&self) -> MessageIterator {
-    let current_stage = self.state.read_lock().stage;
+    let current_stage = self.0.state.lock().unwrap().stage;
     match current_stage {
       Stage::Setup => {
         tracing::trace!(
           "[`{}`]: preparing to immutably iterate over messages",
           self.title()
         );
-        self.state.write_lock().stage = Stage::Looping;
+        self.0.state.lock().unwrap().stage = Stage::Looping;
       }
       Stage::ExitLoop => {
         tracing::error!(
@@ -799,14 +789,14 @@ impl Window {
   }
 
   fn iter_mut(&mut self) -> MessageIteratorMut {
-    let current_stage = self.state.read_lock().stage;
+    let current_stage = self.0.state.lock().unwrap().stage;
     match current_stage {
       Stage::Setup => {
         tracing::trace!(
           "[`{}`]: preparing to mutably iterate over messages",
           self.title()
         );
-        self.state.write_lock().stage = Stage::Looping;
+        self.0.state.lock().unwrap().stage = Stage::Looping;
       }
       Stage::ExitLoop => {
         tracing::error!(

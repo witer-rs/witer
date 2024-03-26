@@ -36,7 +36,6 @@ pub use rwh_06 as raw_window_handle;
 
 pub mod compat;
 pub mod error;
-mod handle;
 pub mod prelude;
 pub mod utilities;
 pub mod window;
