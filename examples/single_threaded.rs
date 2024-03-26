@@ -29,10 +29,10 @@ fn main() -> Result<(), WindowError> {
   let mut app = App::new(&window);
 
   for message in window.as_ref() {
-    if !matches!(message, Message::Paint | Message::CursorMove { .. } | Message::Loop(..))
-    {
-      tracing::debug!("WINDOW: {message:?}");
-    }
+    // if !matches!(message, Message::Paint | Message::CursorMove { .. } |
+    // Message::Loop(..)) {
+    //   tracing::debug!("WINDOW: {message:?}");
+    // }
 
     if message.is_key(Key::F11, KeyState::Pressed) {
       let fullscreen = window.fullscreen();
