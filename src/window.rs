@@ -86,7 +86,7 @@ use crate::{
     message::Message,
     procedure::CreateInfo,
     settings::WindowSettings,
-    state::{Flow, PhysicalPosition, Size, Theme, Visibility, WindowState},
+    state::{Flow, NativeWindow, PhysicalPosition, Size, Theme, Visibility},
   },
 };
 
@@ -100,7 +100,7 @@ pub mod state;
 
 /// Main window class. Uses internal mutability. Window is destroyed on drop.
 #[allow(unused)]
-pub struct Window(Arc<WindowState>);
+pub struct Window(Arc<NativeWindow>);
 
 /// Window is destroyed on drop.
 impl Drop for Window {
@@ -140,7 +140,6 @@ impl Window {
     let position: Option<Position> = position.into();
 
     tracing::trace!("[`{}`]: creating window", &title);
-    // let (message_sender, message_receiver) = crossbeam::channel::unbounded();
 
     let sync = SyncData {
       message: Arc::new(Mutex::new(None)),
@@ -175,14 +174,6 @@ impl Window {
     tracing::trace!("[`{}`]: received window from window loop", &title);
 
     window.0.set_thread(thread);
-    if let Some(position) = position {
-      window.force_set_outer_position(position);
-    }
-    window.force_set_outer_size(size);
-    window.force_set_decorations(settings.decorations);
-    window.force_set_theme(settings.theme);
-    window.force_set_visibility(settings.visibility);
-    window.force_set_fullscreen(settings.fullscreen);
 
     tracing::trace!("[`{}`]: created window", &title);
 
@@ -282,7 +273,7 @@ impl Window {
     }
   }
 
-  fn message_pump(sync: &SyncData, state: &Arc<WindowState>) -> bool {
+  fn message_pump(sync: &SyncData, state: &Arc<NativeWindow>) -> bool {
     sync.send_to_main(Message::Loop(LoopMessage::GetMessage), state);
 
     let mut msg = MSG::default();
@@ -305,7 +296,6 @@ impl Window {
       *new = false;
     }
 
-    // let msg = self.sync.next_message.lock().unwrap().take();
     self
       .0
       .sync
@@ -322,7 +312,7 @@ impl Window {
     self.0.sync.signal_next_frame();
 
     let next = match current_stage {
-      Stage::Setup => None, // do not iterate until looping
+      Stage::Setup | Stage::Ready => None, // do not iterate until looping
       Stage::Looping => {
         let message = self.take_message();
         if let Some(Message::CloseRequested) = message {
@@ -767,7 +757,7 @@ impl Window {
   fn iter(&self) -> MessageIterator {
     let current_stage = self.0.state.lock().unwrap().stage;
     match current_stage {
-      Stage::Setup => {
+      Stage::Ready => {
         tracing::trace!(
           "[`{}`]: preparing to immutably iterate over messages",
           self.title()
@@ -781,7 +771,7 @@ impl Window {
         )
       }
       _ => tracing::warn!(
-        "[`{}`]: iterating over window which wasn't in the Setup stage",
+        "[`{}`]: iterating over window which wasn't in the Ready stage",
         self.title()
       ),
     }
@@ -791,7 +781,7 @@ impl Window {
   fn iter_mut(&mut self) -> MessageIteratorMut {
     let current_stage = self.0.state.lock().unwrap().stage;
     match current_stage {
-      Stage::Setup => {
+      Stage::Ready => {
         tracing::trace!(
           "[`{}`]: preparing to mutably iterate over messages",
           self.title()
@@ -805,7 +795,7 @@ impl Window {
         )
       }
       _ => tracing::warn!(
-        "[`{}`]: iterating over window which wasn't in the Setup stage",
+        "[`{}`]: iterating over window which wasn't in the Ready stage",
         self.title()
       ),
     }

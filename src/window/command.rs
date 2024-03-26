@@ -2,7 +2,7 @@ use windows::{
   core::HSTRING,
   Win32::{
     Foundation::{HWND, LPARAM, WPARAM},
-    UI::WindowsAndMessaging::{self, PostMessageW},
+    UI::WindowsAndMessaging::{self, PostMessageW, SendMessageW},
   },
 };
 
@@ -33,6 +33,14 @@ impl Command {
       if let Err(e) = PostMessageW(hwnd, Self::MESSAGE_ID, WPARAM(addr), LPARAM(0)) {
         tracing::error!("{e}");
       }
+    }
+  }
+
+  pub(crate) fn send(self, hwnd: HWND) {
+    let command = Box::leak(Box::new(self));
+    let addr = command as *mut Command as usize;
+    unsafe {
+      SendMessageW(hwnd, Self::MESSAGE_ID, WPARAM(addr), LPARAM(0));
     }
   }
 }

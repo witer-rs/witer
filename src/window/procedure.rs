@@ -23,6 +23,7 @@ use windows::Win32::{
 #[allow(unused)]
 use super::message::Message;
 use super::{
+  command::Command,
   settings::WindowSettings,
   state::{MutableState, Position, Size, StyleInfo, Visibility},
   Window,
@@ -36,7 +37,7 @@ use crate::{
   },
   window::{
     stage::Stage,
-    state::{CursorInfo, PhysicalPosition, WindowState},
+    state::{CursorInfo, NativeWindow, PhysicalPosition},
   },
 };
 
@@ -59,7 +60,7 @@ pub struct SyncData {
 }
 
 impl SyncData {
-  pub fn send_to_main(&self, message: Message, state: &WindowState) {
+  pub fn send_to_main(&self, message: Message, state: &NativeWindow) {
     let should_wait = self.message.lock().unwrap().is_some();
     if should_wait {
       self.wait_on_frame(|| {
@@ -116,13 +117,13 @@ pub extern "system" fn wnd_proc(
     (0, WindowsAndMessaging::WM_CREATE) => on_create(hwnd, msg, wparam, lparam),
     (0, _) => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
     (state_ptr, WindowsAndMessaging::WM_DESTROY) => {
-      let state = unsafe { (state_ptr as *mut Arc<WindowState>).as_mut().unwrap() };
+      let state = unsafe { (state_ptr as *mut Arc<NativeWindow>).as_mut().unwrap() };
       unsafe { PostQuitMessage(0) };
       unsafe { drop(Box::from_raw(state)) };
       unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
     }
     (state_ptr, _) => {
-      let state = unsafe { (state_ptr as *mut Arc<WindowState>).as_mut().unwrap() };
+      let state = unsafe { (state_ptr as *mut Arc<NativeWindow>).as_mut().unwrap() };
       state.on_message(hwnd, msg, wparam, lparam)
     }
   }
@@ -161,7 +162,7 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
 
   // create state
   let input = Input::new();
-  let state = Arc::new(WindowState {
+  let state = Arc::new(NativeWindow {
     hinstance: create_struct.hInstance,
     hwnd,
     class_atom: create_info.class_atom,
@@ -189,21 +190,41 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
     }),
   });
 
-  create_info.sync.send_to_main(
-    Message::Created {
-      hwnd,
-      hinstance: create_struct.hInstance,
-    },
-    &state,
-  );
-
-  create_info.window = Some(Window(state.clone()));
-
   // create data ptr
-  let user_data_ptr = Box::into_raw(Box::new(state));
+  let user_data_ptr = Box::into_raw(Box::new(state.clone()));
   unsafe {
     SetWindowLongPtrW(hwnd, WindowsAndMessaging::GWLP_USERDATA, user_data_ptr as isize)
   };
+
+  tracing::trace!("[`{}`]: finalizing window settings", create_info.title);
+
+  let window = Window(state.clone());
+  window.force_set_theme(create_info.settings.theme);
+
+  if let Some(position) = create_info.position {
+    Command::SetPosition(position).send(hwnd);
+  }
+  Command::SetSize(size).send(hwnd);
+  Command::SetDecorations(create_info.settings.decorations).send(hwnd);
+  Command::SetVisibility(create_info.settings.visibility).send(hwnd);
+  Command::SetFullscreen(create_info.settings.fullscreen).send(hwnd);
+
+  window.0.state.lock().unwrap().stage = Stage::Ready;
+
+  tracing::trace!("[`{}`]: window is ready", create_info.title);
+
+  create_info.window = Some(window);
+
+  create_info
+    .sync
+    .message
+    .lock()
+    .unwrap()
+    .replace(Message::Created {
+      hwnd,
+      hinstance: create_struct.hInstance,
+    });
+  create_info.sync.signal_new_message();
 
   unsafe { DefWindowProcW(hwnd, msg, w_param, l_param) }
 }

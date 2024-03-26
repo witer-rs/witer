@@ -82,7 +82,7 @@ pub struct CursorInfo {
   pub last_position: PhysicalPosition,
 }
 
-pub struct WindowState {
+pub struct NativeWindow {
   pub hinstance: HINSTANCE,
   pub hwnd: HWND,
   pub class_atom: u16,
@@ -107,7 +107,7 @@ pub struct MutableState {
   pub requested_redraw: bool,
 }
 
-impl WindowState {
+impl NativeWindow {
   pub(crate) fn set_thread(&self, handle: Option<JoinHandle<Result<(), WindowError>>>) {
     *self.thread.lock().unwrap() = handle;
   }
