@@ -1,3 +1,4 @@
+use cursor_icon::CursorIcon;
 use windows::{
   core::HSTRING,
   Win32::{
@@ -6,7 +7,7 @@ use windows::{
   },
 };
 
-use super::state::{CursorMode, Fullscreen, Position, Size, Visibility};
+use super::data::{CursorMode, Fullscreen, Position, Size, Visibility};
 
 #[repr(u32)]
 #[derive(Debug, Clone, PartialEq)]
@@ -19,6 +20,7 @@ pub enum Command {
   SetSize(Size),
   SetPosition(Position),
   SetFullscreen(Option<Fullscreen>),
+  SetCursorIcon(CursorIcon),
   SetCursorMode(CursorMode),
   SetCursorVisibility(Visibility),
 }

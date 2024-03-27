@@ -1,5 +1,5 @@
 use super::{
-  state::{CursorMode, Flow, Fullscreen, LogicalSize, Position, Size, Theme, Visibility},
+  data::{CursorMode, Flow, Fullscreen, LogicalSize, Position, Size, Theme, Visibility},
   Window,
 };
 use crate::error::WindowError;

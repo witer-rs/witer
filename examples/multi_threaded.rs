@@ -23,19 +23,17 @@ mod common;
 fn main() -> Result<(), WindowError> {
   common::init_log(env!("CARGO_CRATE_NAME"));
 
-  let window = Arc::new(
-    Window::builder()
-      .with_title("Threaded Example")
-      .with_flow(Flow::Poll)
-      .with_visibility(Visibility::Hidden)
-      .build()?,
-  );
+  let window = Window::builder()
+    .with_title("Threaded Example")
+    .with_flow(Flow::Poll)
+    .with_visibility(Visibility::Hidden)
+    .build()?;
 
   let (message_sender, message_receiver) = std::sync::mpsc::channel();
   let sync_barrier = Arc::new(Barrier::new(2));
   let handle = app_loop(window.clone(), message_receiver, sync_barrier.clone());
 
-  for message in window.as_ref() {
+  for message in &window {
     if message.is_key(Key::F11, KeyState::Pressed) {
       let fullscreen = window.fullscreen();
       match fullscreen {
@@ -65,7 +63,7 @@ fn main() -> Result<(), WindowError> {
 }
 
 fn app_loop(
-  window: Arc<Window>,
+  window: Window,
   message_receiver: Receiver<Message>,
   sync_barrier: Arc<Barrier>,
 ) -> JoinHandle<()> {
@@ -122,7 +120,7 @@ struct App {
 }
 
 impl App {
-  fn new(window: &Arc<Window>) -> Self {
+  fn new(window: &Window) -> Self {
     pollster::block_on(async {
       let last_render_time = Instant::now();
       let time = TimeSettings::default().build();

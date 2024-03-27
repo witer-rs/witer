@@ -6,8 +6,9 @@ use std::{
   },
 };
 
+use cursor_icon::CursorIcon;
 use windows::{
-  core::PCSTR,
+  core::{PCSTR, PCWSTR},
   Win32::{
     Devices::HumanInterfaceDevice,
     Foundation::{HWND, NTSTATUS, RECT},
@@ -41,7 +42,10 @@ use windows::{
 
 use crate::{
   prelude::{PhysicalPosition, PhysicalSize},
-  window::state::{Fullscreen, StyleInfo, Visibility},
+  window::{
+    data::{Fullscreen, Visibility},
+    frame::Style,
+  },
 };
 
 pub fn signed_lo_word(dword: i32) -> i16 {
@@ -173,7 +177,7 @@ fn is_color_light(clr: &windows::UI::Color) -> bool {
   ((5 * clr.G as u32) + (2 * clr.R as u32) + clr.B as u32) > (8 * 128)
 }
 
-pub(crate) fn get_window_style(info: &StyleInfo) -> WINDOW_STYLE {
+pub(crate) fn get_window_style(info: &Style) -> WINDOW_STYLE {
   let mut style = WindowsAndMessaging::WS_CAPTION
     | WindowsAndMessaging::WS_BORDER
     | WindowsAndMessaging::WS_CLIPSIBLINGS
@@ -201,7 +205,7 @@ pub(crate) fn get_window_style(info: &StyleInfo) -> WINDOW_STYLE {
   style
 }
 
-pub(crate) fn get_window_ex_style(info: &StyleInfo) -> WINDOW_EX_STYLE {
+pub(crate) fn get_window_ex_style(info: &Style) -> WINDOW_EX_STYLE {
   let mut style =
     WindowsAndMessaging::WS_EX_WINDOWEDGE | WindowsAndMessaging::WS_EX_APPWINDOW;
 
@@ -369,5 +373,37 @@ impl Monitor {
     .unwrap();
 
     dpi_to_scale_factor(dpi_x)
+  }
+}
+
+pub(crate) fn to_windows_cursor(cursor: CursorIcon) -> PCWSTR {
+  match cursor {
+    CursorIcon::Default => WindowsAndMessaging::IDC_ARROW,
+    CursorIcon::Pointer => WindowsAndMessaging::IDC_HAND,
+    CursorIcon::Crosshair => WindowsAndMessaging::IDC_CROSS,
+    CursorIcon::Text | CursorIcon::VerticalText => WindowsAndMessaging::IDC_IBEAM,
+    CursorIcon::NotAllowed | CursorIcon::NoDrop => WindowsAndMessaging::IDC_NO,
+    CursorIcon::Grab
+    | CursorIcon::Grabbing
+    | CursorIcon::Move
+    | CursorIcon::AllScroll => WindowsAndMessaging::IDC_SIZEALL,
+    CursorIcon::EResize
+    | CursorIcon::WResize
+    | CursorIcon::EwResize
+    | CursorIcon::ColResize => WindowsAndMessaging::IDC_SIZEWE,
+    CursorIcon::NResize
+    | CursorIcon::SResize
+    | CursorIcon::NsResize
+    | CursorIcon::RowResize => WindowsAndMessaging::IDC_SIZENS,
+    CursorIcon::NeResize | CursorIcon::SwResize | CursorIcon::NeswResize => {
+      WindowsAndMessaging::IDC_SIZENESW
+    }
+    CursorIcon::NwResize | CursorIcon::SeResize | CursorIcon::NwseResize => {
+      WindowsAndMessaging::IDC_SIZENWSE
+    }
+    CursorIcon::Wait => WindowsAndMessaging::IDC_WAIT,
+    CursorIcon::Progress => WindowsAndMessaging::IDC_APPSTARTING,
+    CursorIcon::Help => WindowsAndMessaging::IDC_HELP,
+    _ => WindowsAndMessaging::IDC_ARROW, // use arrow for the missing cases.
   }
 }

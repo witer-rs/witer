@@ -64,11 +64,11 @@ use windows::{
 
 use self::{
   command::Command,
+  data::{CursorMode, Fullscreen, PhysicalSize, Position},
   message::LoopMessage,
   procedure::SyncData,
   settings::WindowBuilder,
   stage::Stage,
-  state::{CursorMode, Fullscreen, PhysicalSize, Position, StyleInfo},
 };
 use crate::{
   error::WindowError,
@@ -82,39 +82,30 @@ use crate::{
     Monitor,
   },
   window::{
+    data::{Flow, Internal, PhysicalPosition, Size, Theme, Visibility},
+    frame::Style,
     input::Input,
     message::Message,
     procedure::CreateInfo,
     settings::WindowSettings,
-    state::{Flow, NativeWindow, PhysicalPosition, Size, Theme, Visibility},
   },
 };
 
 mod command;
+pub mod cursor;
+pub mod data;
+pub mod frame;
 pub mod input;
 pub mod message;
+pub mod monitor;
 pub mod procedure;
 pub mod settings;
 pub mod stage;
-pub mod state;
 
 /// Main window class. Uses internal mutability. Window is destroyed on drop.
 #[allow(unused)]
-pub struct Window(Arc<NativeWindow>);
-
-/// Window is destroyed on drop.
-impl Drop for Window {
-  fn drop(&mut self) {
-    let title = self.title();
-    tracing::trace!("[`{}`]: destroying window", title);
-
-    self.exit_loop();
-    Command::Destroy.post(self.0.hwnd);
-    self.0.join_thread();
-
-    tracing::trace!("[`{}`]: destroyed window", title);
-  }
-}
+#[derive(Clone)]
+pub struct Window(Arc<Internal>);
 
 impl Window {
   pub const WINDOW_SUBCLASS_ID: usize = 0;
@@ -155,11 +146,15 @@ impl Window {
       class_atom: 0,
       window: None,
       sync: sync.clone(),
-      style: StyleInfo {
+      style: Style {
         visibility: settings.visibility,
         decorations: settings.decorations,
         fullscreen: settings.fullscreen,
         resizeable: settings.resizeable,
+        minimized: false,
+        maximized: false,
+        active: false,
+        focused: false,
       },
     };
 
@@ -273,7 +268,7 @@ impl Window {
     }
   }
 
-  fn message_pump(sync: &SyncData, state: &Arc<NativeWindow>) -> bool {
+  fn message_pump(sync: &SyncData, state: &Arc<Internal>) -> bool {
     sync.send_to_main(Message::Loop(LoopMessage::GetMessage), state);
 
     let mut msg = MSG::default();
@@ -289,7 +284,7 @@ impl Window {
   }
 
   fn take_message(&self) -> Option<Message> {
-    let flow = self.0.state.lock().unwrap().flow;
+    let flow = self.0.data.lock().unwrap().flow;
     if let Flow::Wait = flow {
       let (lock, cvar) = self.0.sync.new_message.as_ref();
       let mut new = cvar.wait_while(lock.lock().unwrap(), |new| !*new).unwrap();
@@ -307,7 +302,7 @@ impl Window {
   }
 
   fn next_message(&self) -> Option<Message> {
-    let current_stage = self.0.state.lock().unwrap().stage;
+    let current_stage = self.0.data.lock().unwrap().stage;
 
     self.0.sync.signal_next_frame();
 
@@ -316,7 +311,7 @@ impl Window {
       Stage::Looping => {
         let message = self.take_message();
         if let Some(Message::CloseRequested) = message {
-          let x = self.0.state.lock().unwrap().close_on_x;
+          let x = self.0.data.lock().unwrap().close_on_x;
           if x {
             self.close();
           }
@@ -325,7 +320,7 @@ impl Window {
       }
       Stage::Closing => {
         let _ = self.take_message();
-        self.exit_loop();
+        self.0.exit_loop();
         Some(Message::Loop(LoopMessage::Exit))
       }
       Stage::ExitLoop => {
@@ -340,23 +335,23 @@ impl Window {
   // GETTERS
 
   pub fn visibility(&self) -> Visibility {
-    self.0.state.lock().unwrap().style.visibility
+    self.0.data.lock().unwrap().style.visibility
   }
 
   pub fn theme(&self) -> Theme {
-    self.0.state.lock().unwrap().theme
+    self.0.data.lock().unwrap().theme
   }
 
   pub fn flow(&self) -> Flow {
-    self.0.state.lock().unwrap().flow
+    self.0.data.lock().unwrap().flow
   }
 
   pub fn title(&self) -> String {
-    self.0.state.lock().unwrap().title.to_string()
+    self.0.data.lock().unwrap().title.to_string()
   }
 
   pub fn subtitle(&self) -> String {
-    self.0.state.lock().unwrap().subtitle.to_string()
+    self.0.data.lock().unwrap().subtitle.to_string()
   }
 
   pub fn outer_size(&self) -> PhysicalSize {
@@ -396,7 +391,7 @@ impl Window {
   }
 
   pub fn fullscreen(&self) -> Option<Fullscreen> {
-    self.0.state.lock().unwrap().style.fullscreen
+    self.0.data.lock().unwrap().style.fullscreen
   }
 
   pub fn cursor_screen_position(&self) -> PhysicalPosition {
@@ -405,8 +400,13 @@ impl Window {
     PhysicalPosition { x: pt.x, y: pt.y }
   }
 
+  pub fn has_focus(&self) -> bool {
+    let style = &self.0.data.lock().unwrap().style;
+    style.focused && style.active
+  }
+
   pub fn scale_factor(&self) -> f64 {
-    self.0.state.lock().unwrap().scale_factor
+    self.0.data.lock().unwrap().scale_factor
   }
 
   unsafe extern "system" fn monitor_enum_proc(
@@ -447,31 +447,39 @@ impl Window {
   }
 
   pub fn key(&self, keycode: Key) -> KeyState {
-    self.0.state.lock().unwrap().input.key(keycode)
+    self.0.data.lock().unwrap().input.key(keycode)
   }
 
   pub fn mouse(&self, button: MouseButton) -> ButtonState {
-    self.0.state.lock().unwrap().input.mouse(button)
+    self.0.data.lock().unwrap().input.mouse(button)
   }
 
   pub fn shift(&self) -> ButtonState {
-    self.0.state.lock().unwrap().input.shift()
+    self.0.data.lock().unwrap().input.shift()
   }
 
   pub fn ctrl(&self) -> ButtonState {
-    self.0.state.lock().unwrap().input.ctrl()
+    self.0.data.lock().unwrap().input.ctrl()
   }
 
   pub fn alt(&self) -> ButtonState {
-    self.0.state.lock().unwrap().input.alt()
+    self.0.data.lock().unwrap().input.alt()
   }
 
   pub fn win(&self) -> ButtonState {
-    self.0.state.lock().unwrap().input.win()
+    self.0.data.lock().unwrap().input.win()
   }
 
   pub fn is_closing(&self) -> bool {
     self.0.is_closing()
+  }
+
+  pub fn is_minimized(&self) -> bool {
+    self.0.data.lock().unwrap().style.minimized
+  }
+
+  pub fn is_maximized(&self) -> bool {
+    self.0.data.lock().unwrap().style.maximized
   }
 
   // SETTERS
@@ -482,7 +490,7 @@ impl Window {
   }
 
   pub fn set_outer_position(&self, position: Position) {
-    let scale_factor = self.0.state.lock().unwrap().scale_factor;
+    let scale_factor = self.0.data.lock().unwrap().scale_factor;
     if position.as_physical(scale_factor) == self.outer_position() {
       return;
     }
@@ -496,7 +504,7 @@ impl Window {
 
   pub fn set_outer_size(&self, size: impl Into<Size>) {
     let size = size.into();
-    let scale_factor = self.0.state.lock().unwrap().scale_factor;
+    let scale_factor = self.0.data.lock().unwrap().scale_factor;
     if size.as_physical(scale_factor) == self.outer_size() {
       return;
     }
@@ -504,9 +512,9 @@ impl Window {
   }
 
   fn force_set_inner_size(&self, size: Size) {
-    let scale_factor = self.0.state.lock().unwrap().scale_factor;
+    let scale_factor = self.0.data.lock().unwrap().scale_factor;
     let physical_size = size.as_physical(scale_factor);
-    let style = self.0.state.lock().unwrap().style;
+    let style = self.0.data.lock().unwrap().style.clone();
     let mut window_rect = RECT {
       top: 0,
       left: 0,
@@ -534,7 +542,7 @@ impl Window {
 
   pub fn set_inner_size(&self, size: impl Into<Size>) {
     let size = size.into();
-    let scale_factor = self.0.state.lock().unwrap().scale_factor;
+    let scale_factor = self.0.data.lock().unwrap().scale_factor;
     if size.as_physical(scale_factor) == self.inner_size() {
       return;
     }
@@ -542,24 +550,24 @@ impl Window {
   }
 
   fn force_set_visibility(&self, visibility: Visibility) {
-    self.0.state.lock().unwrap().style.visibility = visibility;
+    self.0.data.lock().unwrap().style.visibility = visibility;
     Command::SetVisibility(visibility).post(self.0.hwnd);
   }
 
   pub fn set_visibility(&self, visibility: Visibility) {
-    if visibility == self.0.state.lock().unwrap().style.visibility {
+    if visibility == self.0.data.lock().unwrap().style.visibility {
       return;
     }
     self.force_set_visibility(visibility)
   }
 
   fn force_set_decorations(&self, visibility: Visibility) {
-    self.0.state.lock().unwrap().style.decorations = visibility;
+    self.0.data.lock().unwrap().style.decorations = visibility;
     Command::SetDecorations(visibility).post(self.0.hwnd);
   }
 
   pub fn set_decorations(&self, visibility: Visibility) {
-    if visibility == self.0.state.lock().unwrap().style.decorations {
+    if visibility == self.0.data.lock().unwrap().style.decorations {
       return;
     }
     self.force_set_decorations(visibility)
@@ -584,7 +592,7 @@ impl Window {
       Theme::Light => Theme::Light,
     };
 
-    self.0.state.lock().unwrap().theme = theme;
+    self.0.data.lock().unwrap().theme = theme;
     let dark_mode = BOOL::from(theme == Theme::Dark);
     if let Err(_error) = unsafe {
       DwmSetWindowAttribute(
@@ -599,71 +607,71 @@ impl Window {
   }
 
   pub fn set_theme(&self, theme: Theme) {
-    if theme == self.0.state.lock().unwrap().theme {
+    if theme == self.0.data.lock().unwrap().theme {
       return;
     }
     self.force_set_theme(theme)
   }
 
   fn force_set_fullscreen(&self, fullscreen: Option<Fullscreen>) {
-    self.0.state.lock().unwrap().style.fullscreen = fullscreen;
+    self.0.data.lock().unwrap().style.fullscreen = fullscreen;
     Command::SetFullscreen(fullscreen).post(self.0.hwnd);
   }
 
   pub fn set_fullscreen(&self, fullscreen: Option<Fullscreen>) {
-    if fullscreen == self.0.state.lock().unwrap().style.fullscreen {
+    if fullscreen == self.0.data.lock().unwrap().style.fullscreen {
       return;
     }
     self.force_set_fullscreen(fullscreen)
   }
 
   fn force_set_title(&self, title: impl AsRef<str>) {
-    self.0.state.lock().unwrap().title = title.as_ref().into();
+    self.0.data.lock().unwrap().title = title.as_ref().into();
     let title = HSTRING::from(format!(
       "{}{}",
       title.as_ref(),
-      self.0.state.lock().unwrap().subtitle
+      self.0.data.lock().unwrap().subtitle
     ));
     Command::SetWindowText(title).post(self.0.hwnd);
   }
 
   /// Set the title of the window
   pub fn set_title(&self, title: impl AsRef<str>) {
-    if title.as_ref() == self.0.state.lock().unwrap().title {
+    if title.as_ref() == self.0.data.lock().unwrap().title {
       return;
     }
     self.force_set_title(title)
   }
 
   fn force_set_cursor_mode(&self, cursor_mode: CursorMode) {
-    self.0.state.lock().unwrap().cursor.mode = cursor_mode;
+    self.0.data.lock().unwrap().cursor.mode = cursor_mode;
     Command::SetCursorMode(cursor_mode).post(self.0.hwnd);
   }
 
   pub fn set_cursor_mode(&self, cursor_mode: CursorMode) {
-    if cursor_mode == self.0.state.lock().unwrap().cursor.mode {
+    if cursor_mode == self.0.data.lock().unwrap().cursor.mode {
       return;
     }
     self.force_set_cursor_mode(cursor_mode)
   }
 
   fn force_set_cursor_visibility(&self, cursor_visibility: Visibility) {
-    self.0.state.lock().unwrap().cursor.visibility = cursor_visibility;
+    self.0.data.lock().unwrap().cursor.visibility = cursor_visibility;
     Command::SetCursorVisibility(cursor_visibility).post(self.0.hwnd);
   }
 
   pub fn set_cursor_visibility(&self, cursor_visibility: Visibility) {
-    if cursor_visibility == self.0.state.lock().unwrap().cursor.visibility {
+    if cursor_visibility == self.0.data.lock().unwrap().cursor.visibility {
       return;
     }
     self.force_set_cursor_visibility(cursor_visibility)
   }
 
   fn force_set_subtitle(&self, subtitle: impl AsRef<str>) {
-    self.0.state.lock().unwrap().subtitle = subtitle.as_ref().into();
+    self.0.data.lock().unwrap().subtitle = subtitle.as_ref().into();
     let title = HSTRING::from(format!(
       "{}{}",
-      self.0.state.lock().unwrap().title,
+      self.0.data.lock().unwrap().title,
       subtitle.as_ref()
     ));
     Command::SetWindowText(title).post(self.0.hwnd);
@@ -671,20 +679,20 @@ impl Window {
 
   /// Set text to appear after the title of the window
   pub fn set_subtitle(&self, subtitle: impl AsRef<str>) {
-    if subtitle.as_ref() == self.0.state.lock().unwrap().subtitle {
+    if subtitle.as_ref() == self.0.data.lock().unwrap().subtitle {
       return;
     }
     self.force_set_subtitle(subtitle)
   }
 
   fn force_request_redraw(&self) {
-    self.0.state.lock().unwrap().requested_redraw = true;
+    self.0.data.lock().unwrap().requested_redraw = true;
     Command::Redraw.post(self.0.hwnd);
   }
 
   /// Request a new Draw event
   pub fn request_redraw(&self) {
-    if self.0.state.lock().unwrap().requested_redraw {
+    if self.0.data.lock().unwrap().requested_redraw {
       return;
     }
     self.force_request_redraw()
@@ -695,12 +703,7 @@ impl Window {
     if self.is_closing() {
       return; // already closing
     }
-    self.0.state.lock().unwrap().stage = Stage::Closing;
-  }
-
-  fn exit_loop(&self) {
-    self.0.state.lock().unwrap().stage = Stage::ExitLoop;
-    self.0.sync.signal_next_frame();
+    self.0.data.lock().unwrap().stage = Stage::Closing;
   }
 
   #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
@@ -755,14 +758,14 @@ unsafe impl HasRawDisplayHandle for Window {
 
 impl Window {
   fn iter(&self) -> MessageIterator {
-    let current_stage = self.0.state.lock().unwrap().stage;
+    let current_stage = self.0.data.lock().unwrap().stage;
     match current_stage {
       Stage::Ready => {
         tracing::trace!(
           "[`{}`]: preparing to immutably iterate over messages",
           self.title()
         );
-        self.0.state.lock().unwrap().stage = Stage::Looping;
+        self.0.data.lock().unwrap().stage = Stage::Looping;
       }
       Stage::ExitLoop => {
         tracing::error!(
@@ -779,14 +782,14 @@ impl Window {
   }
 
   fn iter_mut(&mut self) -> MessageIteratorMut {
-    let current_stage = self.0.state.lock().unwrap().stage;
+    let current_stage = self.0.data.lock().unwrap().stage;
     match current_stage {
       Stage::Ready => {
         tracing::trace!(
           "[`{}`]: preparing to mutably iterate over messages",
           self.title()
         );
-        self.0.state.lock().unwrap().stage = Stage::Looping;
+        self.0.data.lock().unwrap().stage = Stage::Looping;
       }
       Stage::ExitLoop => {
         tracing::error!(

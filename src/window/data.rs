@@ -28,7 +28,9 @@ use windows::Win32::{
       DestroyWindow,
       GetClientRect,
       GetWindowRect,
+      LoadCursorW,
       PostMessageW,
+      SetCursor,
       SetWindowLongW,
       SetWindowPos,
       SetWindowTextW,
@@ -40,6 +42,8 @@ use windows::Win32::{
 
 use super::{
   command::Command,
+  cursor::Cursor,
+  frame::Style,
   input::mouse::mouse_button_states,
   message::{get_cursor_move_kind, CursorMoveKind, Focus},
   procedure::SyncData,
@@ -52,12 +56,14 @@ use crate::{
     get_window_ex_style,
     get_window_style,
     hi_word,
+    is_flag_set,
     lo_word,
     read_raw_input,
     set_cursor_clip,
     set_cursor_visibility,
     signed_hi_word,
     signed_lo_word,
+    to_windows_cursor,
   },
   window::Input,
   Key,
@@ -67,47 +73,49 @@ use crate::{
   RawKeyState,
 };
 
-#[derive(Debug, Clone, Copy)]
-pub struct StyleInfo {
-  pub visibility: Visibility,
-  pub decorations: Visibility,
-  pub fullscreen: Option<Fullscreen>,
-  pub resizeable: bool,
-}
-
-pub struct CursorInfo {
-  pub mode: CursorMode,
-  pub visibility: Visibility,
-  pub inside_window: bool,
-  pub last_position: PhysicalPosition,
-}
-
-pub struct NativeWindow {
+pub struct Internal {
   pub hinstance: HINSTANCE,
   pub hwnd: HWND,
   pub class_atom: u16,
   pub sync: SyncData,
   pub thread: Mutex<Option<JoinHandle<Result<(), WindowError>>>>,
-  pub state: Mutex<MutableState>,
+  pub data: Mutex<Data>,
 }
 
-pub struct MutableState {
+/// Window is destroyed on drop.
+impl Drop for Internal {
+  fn drop(&mut self) {
+    let title = self.data.lock().unwrap().title.clone();
+    tracing::trace!("[`{}`]: destroying window", title);
+
+    self.exit_loop();
+    Command::Destroy.post(self.hwnd);
+    self.join_thread();
+
+    tracing::trace!("[`{}`]: destroyed window", title);
+  }
+}
+
+pub struct Data {
   pub title: String,
   pub subtitle: String,
   pub theme: Theme,
-  pub style: StyleInfo,
-  pub last_windowed_position: Position,
-  pub last_windowed_size: Size,
-  pub cursor: CursorInfo,
-  pub scale_factor: f64,
   pub flow: Flow,
   pub close_on_x: bool,
+
   pub stage: Stage,
+  pub style: Style,
   pub input: Input,
+  pub cursor: Cursor,
+
+  pub last_windowed_position: Position,
+  pub last_windowed_size: Size,
+  pub scale_factor: f64,
+
   pub requested_redraw: bool,
 }
 
-impl NativeWindow {
+impl Internal {
   pub(crate) fn set_thread(&self, handle: Option<JoinHandle<Result<(), WindowError>>>) {
     *self.thread.lock().unwrap() = handle;
   }
@@ -115,14 +123,19 @@ impl NativeWindow {
   pub(crate) fn join_thread(&self) {
     let thread = self.thread.lock().unwrap().take();
     if let Some(thread) = thread {
-      tracing::trace!("[`{}`]: joining window thread", self.state.lock().unwrap().title);
+      tracing::trace!("[`{}`]: joining window thread", self.data.lock().unwrap().title);
       let _ = thread.join();
-      tracing::trace!("[`{}`]: joined window thread", self.state.lock().unwrap().title);
+      tracing::trace!("[`{}`]: joined window thread", self.data.lock().unwrap().title);
     }
   }
 
   pub(crate) fn is_closing(&self) -> bool {
-    matches!(self.state.lock().unwrap().stage, Stage::Closing | Stage::ExitLoop)
+    matches!(self.data.lock().unwrap().stage, Stage::Closing | Stage::ExitLoop)
+  }
+
+  pub(crate) fn exit_loop(&self) {
+    self.data.lock().unwrap().stage = Stage::ExitLoop;
+    self.sync.signal_next_frame();
   }
 
   pub(crate) fn update_last_windowed_pos_size(&self, hwnd: HWND) {
@@ -132,12 +145,12 @@ impl NativeWindow {
       width: (window_rect.right - window_rect.left) as u32,
       height: (window_rect.bottom - window_rect.top) as u32,
     };
-    self.state.lock().unwrap().last_windowed_size = size.into();
+    self.data.lock().unwrap().last_windowed_size = size.into();
     let position = PhysicalPosition {
       x: window_rect.left,
       y: window_rect.top,
     };
-    self.state.lock().unwrap().last_windowed_position = position.into();
+    self.data.lock().unwrap().last_windowed_position = position.into();
   }
 
   pub(crate) fn on_message(
@@ -169,7 +182,7 @@ impl NativeWindow {
             });
           },
           Command::SetDecorations(decorations) => {
-            let style = self.state.lock().unwrap().style;
+            let style = self.data.lock().unwrap().style.clone();
             match decorations {
               Visibility::Shown => {
                 unsafe {
@@ -225,7 +238,7 @@ impl NativeWindow {
             SetWindowTextW(hwnd, &text).unwrap();
           },
           Command::SetSize(size) => {
-            let physical_size = size.as_physical(self.state.lock().unwrap().scale_factor);
+            let physical_size = size.as_physical(self.data.lock().unwrap().scale_factor);
             unsafe {
               SetWindowPos(
                 hwnd,
@@ -245,7 +258,7 @@ impl NativeWindow {
           }
           Command::SetPosition(position) => {
             let physical_position =
-              position.as_physical(self.state.lock().unwrap().scale_factor);
+              position.as_physical(self.data.lock().unwrap().scale_factor);
             unsafe {
               SetWindowPos(
                 hwnd,
@@ -265,7 +278,7 @@ impl NativeWindow {
           }
           Command::SetFullscreen(fullscreen) => {
             // update style
-            let style = self.state.lock().unwrap().style;
+            let style = self.data.lock().unwrap().style.clone();
             unsafe {
               SetWindowLongW(
                 hwnd,
@@ -308,15 +321,15 @@ impl NativeWindow {
                 }
               }
               None => {
-                let scale_factor = self.state.lock().unwrap().scale_factor;
+                let scale_factor = self.data.lock().unwrap().scale_factor;
                 let size = self
-                  .state
+                  .data
                   .lock()
                   .unwrap()
                   .last_windowed_size
                   .as_physical(scale_factor);
                 let position = self
-                  .state
+                  .data
                   .lock()
                   .unwrap()
                   .last_windowed_position
@@ -338,6 +351,12 @@ impl NativeWindow {
                 unsafe { InvalidateRgn(hwnd, None, false) };
               }
             }
+          }
+          Command::SetCursorIcon(icon) => {
+            let cursor_icon = to_windows_cursor(icon);
+            let hcursor =
+              unsafe { LoadCursorW(HINSTANCE::default(), cursor_icon) }.unwrap();
+            unsafe { SetCursor(hcursor) };
           }
           Command::SetCursorMode(mode) => {
             match mode {
@@ -364,10 +383,24 @@ impl NativeWindow {
 
         LRESULT(0)
       }
-      WindowsAndMessaging::WM_SIZING | WindowsAndMessaging::WM_MOVING => {
-        // ignore certain messages
-        return unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) };
+      WindowsAndMessaging::WM_SETCURSOR => {
+        let in_client_area =
+          lo_word(lparam.0 as u32) as u32 == WindowsAndMessaging::HTCLIENT;
+
+        if in_client_area {
+          let icon = self.data.lock().unwrap().cursor.selected_icon;
+          let cursor_icon = to_windows_cursor(icon);
+          let hcursor =
+            unsafe { LoadCursorW(HINSTANCE::default(), cursor_icon) }.unwrap();
+          unsafe { SetCursor(hcursor) };
+        }
+
+        unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
       }
+      // WindowsAndMessaging::WM_SIZING | WindowsAndMessaging::WM_MOVING => {
+      //   // ignore certain messages
+      //   return unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) };
+      // }
       WindowsAndMessaging::WM_CLOSE => {
         messages.push(Message::CloseRequested);
         LRESULT(0)
@@ -377,6 +410,11 @@ impl NativeWindow {
         unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
       }
       WindowsAndMessaging::WM_SIZE => {
+        self.data.lock().unwrap().style.minimized =
+          is_flag_set(wparam.0 as u32, WindowsAndMessaging::SIZE_MINIMIZED);
+        self.data.lock().unwrap().style.maximized =
+          is_flag_set(wparam.0 as u32, WindowsAndMessaging::SIZE_MAXIMIZED);
+
         let width = lo_word(lparam.0 as u32) as u32;
         let height = hi_word(lparam.0 as u32) as u32;
 
@@ -403,12 +441,20 @@ impl NativeWindow {
         });
         unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
       }
+      WindowsAndMessaging::WM_NCACTIVATE => {
+        let is_active = wparam.0 == true.into();
+        self.data.lock().unwrap().style.active = is_active;
+
+        unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+      }
       WindowsAndMessaging::WM_SETFOCUS => {
         messages.push(Message::Focus(Focus::Gained));
+        self.data.lock().unwrap().style.focused = true;
         unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
       }
       WindowsAndMessaging::WM_KILLFOCUS => {
         messages.push(Message::Focus(Focus::Lost));
+        self.data.lock().unwrap().style.focused = false;
         unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
       }
       WindowsAndMessaging::WM_COMMAND => {
@@ -492,8 +538,10 @@ impl NativeWindow {
         unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
       }
       WindowsAndMessaging::WM_CHAR => {
-        let c = char::from_u32(wparam.0 as u32).unwrap_or_default();
-        messages.push(Message::Char(c));
+        let text = char::from_u32(wparam.0 as u32)
+          .unwrap_or_default()
+          .to_string();
+        messages.push(Message::Text(text));
         unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
       }
       WindowsAndMessaging::WM_KEYDOWN
@@ -501,7 +549,7 @@ impl NativeWindow {
       | WindowsAndMessaging::WM_KEYUP
       | WindowsAndMessaging::WM_SYSKEYUP => {
         let (changed, shift, ctrl, alt, win) =
-          self.state.lock().unwrap().input.update_modifiers_state();
+          self.data.lock().unwrap().input.update_modifiers_state();
         if changed {
           messages.push(Message::ModifiersChanged {
             shift,
@@ -520,7 +568,7 @@ impl NativeWindow {
 
         let kind = get_cursor_move_kind(
           hwnd,
-          self.state.lock().unwrap().cursor.inside_window,
+          self.data.lock().unwrap().cursor.inside_window,
           x,
           y,
         );
@@ -528,7 +576,7 @@ impl NativeWindow {
         let send_message = {
           match kind {
             CursorMoveKind::Entered => {
-              self.state.lock().unwrap().cursor.inside_window = true;
+              self.data.lock().unwrap().cursor.inside_window = true;
 
               unsafe {
                 TrackMouseEvent(&mut TRACKMOUSEEVENT {
@@ -543,26 +591,26 @@ impl NativeWindow {
               true
             }
             CursorMoveKind::Left => {
-              self.state.lock().unwrap().cursor.inside_window = false;
+              self.data.lock().unwrap().cursor.inside_window = false;
 
               true
             }
             CursorMoveKind::Inside => {
-              self.state.lock().unwrap().cursor.last_position != position
+              self.data.lock().unwrap().cursor.last_position != position
             }
           }
         };
 
         if send_message {
           messages.push(Message::CursorMove { position, kind });
-          self.state.lock().unwrap().cursor.last_position = position;
+          self.data.lock().unwrap().cursor.last_position = position;
         }
         unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
       }
       Controls::WM_MOUSELEAVE => {
-        self.state.lock().unwrap().cursor.inside_window = false;
+        self.data.lock().unwrap().cursor.inside_window = false;
         messages.push(Message::CursorMove {
-          position: self.state.lock().unwrap().cursor.last_position,
+          position: self.data.lock().unwrap().cursor.last_position,
           kind: CursorMoveKind::Left,
         });
         unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
@@ -601,8 +649,8 @@ impl NativeWindow {
       for message in messages {
         match &message {
           &Message::Focus(focus) => {
-            let cursor_visibility = self.state.lock().unwrap().cursor.visibility;
-            let cursor_mode = self.state.lock().unwrap().cursor.mode;
+            let cursor_visibility = self.data.lock().unwrap().cursor.visibility;
+            let cursor_mode = self.data.lock().unwrap().cursor.mode;
             if focus == Focus::Gained {
               Command::SetCursorMode(cursor_mode).post(hwnd);
               Command::SetCursorVisibility(cursor_visibility).post(hwnd);
@@ -614,7 +662,7 @@ impl NativeWindow {
           }
           &Message::Resized(_size) => {
             // info!("RESIZED: {_size:?}");
-            let is_windowed = self.state.lock().unwrap().style.fullscreen.is_none();
+            let is_windowed = self.data.lock().unwrap().style.fullscreen.is_none();
             // // data.state.write_lock().size = size;
             if is_windowed {
               self.update_last_windowed_pos_size(hwnd);
@@ -625,7 +673,7 @@ impl NativeWindow {
             outer_size: _,
           } => {
             // info!("BOUNDSCHANGED: {outer_position:?}, {outer_size:?}");
-            let is_windowed = self.state.lock().unwrap().style.fullscreen.is_none();
+            let is_windowed = self.data.lock().unwrap().style.fullscreen.is_none();
             // // data.state.write_lock().position = position;
             if is_windowed {
               self.update_last_windowed_pos_size(hwnd);
@@ -637,7 +685,7 @@ impl NativeWindow {
             ..
           } => {
             self
-              .state
+              .data
               .lock()
               .unwrap()
               .input
@@ -648,13 +696,13 @@ impl NativeWindow {
             state: button_state,
             ..
           } => self
-            .state
+            .data
             .lock()
             .unwrap()
             .input
             .update_mouse_button_state(button, button_state),
           Message::Paint => {
-            self.state.lock().unwrap().requested_redraw = false;
+            self.data.lock().unwrap().requested_redraw = false;
           }
           _ => (),
         }

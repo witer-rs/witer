@@ -42,15 +42,7 @@ pub mod window;
 
 // re-exports
 pub use window::{
-  input::{
-    key::Key,
-    mouse::MouseButton,
-    state::{ButtonState, KeyState, RawKeyState},
-    Input,
-  },
-  message::{LoopMessage, Message, RawInputMessage},
-  settings::{WindowBuilder, WindowSettings},
-  state::{
+  data::{
     CursorMode,
     Flow,
     Fullscreen,
@@ -63,6 +55,14 @@ pub use window::{
     Theme,
     Visibility,
   },
+  input::{
+    key::Key,
+    mouse::MouseButton,
+    state::{ButtonState, KeyState, RawKeyState},
+    Input,
+  },
+  message::{LoopMessage, Message, RawInputMessage},
+  settings::{WindowBuilder, WindowSettings},
   Window,
 };
 

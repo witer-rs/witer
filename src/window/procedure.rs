@@ -1,5 +1,6 @@
 use std::sync::{Arc, Condvar, Mutex};
 
+use cursor_icon::CursorIcon;
 // use crossbeam::channel::{Receiver, Sender};
 use windows::Win32::{
   Foundation::*,
@@ -24,8 +25,9 @@ use windows::Win32::{
 use super::message::Message;
 use super::{
   command::Command,
+  data::{Data, Position, Size, Visibility},
+  frame::Style,
   settings::WindowSettings,
-  state::{MutableState, Position, Size, StyleInfo, Visibility},
   Window,
 };
 use crate::{
@@ -36,8 +38,9 @@ use crate::{
     register_all_mice_and_keyboards_for_raw_input,
   },
   window::{
+    cursor::Cursor,
+    data::{Internal, PhysicalPosition},
     stage::Stage,
-    state::{CursorInfo, NativeWindow, PhysicalPosition},
   },
 };
 
@@ -49,7 +52,7 @@ pub struct CreateInfo {
   pub class_atom: u16,
   pub window: Option<Window>,
   pub sync: SyncData,
-  pub style: StyleInfo,
+  pub style: Style,
 }
 
 #[derive(Clone)]
@@ -60,11 +63,11 @@ pub struct SyncData {
 }
 
 impl SyncData {
-  pub fn send_to_main(&self, message: Message, state: &NativeWindow) {
+  pub fn send_to_main(&self, message: Message, state: &Internal) {
     let should_wait = self.message.lock().unwrap().is_some();
     if should_wait {
       self.wait_on_frame(|| {
-        matches!(state.state.lock().unwrap().stage, Stage::Setup | Stage::ExitLoop)
+        matches!(state.data.lock().unwrap().stage, Stage::Setup | Stage::ExitLoop)
       });
     }
 
@@ -72,7 +75,7 @@ impl SyncData {
     self.signal_new_message();
 
     self.wait_on_frame(|| {
-      matches!(state.state.lock().unwrap().stage, Stage::Setup | Stage::ExitLoop)
+      matches!(state.data.lock().unwrap().stage, Stage::Setup | Stage::ExitLoop)
     });
   }
 
@@ -117,13 +120,13 @@ pub extern "system" fn wnd_proc(
     (0, WindowsAndMessaging::WM_CREATE) => on_create(hwnd, msg, wparam, lparam),
     (0, _) => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
     (state_ptr, WindowsAndMessaging::WM_DESTROY) => {
-      let state = unsafe { (state_ptr as *mut Arc<NativeWindow>).as_mut().unwrap() };
+      let state = unsafe { (state_ptr as *mut Arc<Internal>).as_mut().unwrap() };
       unsafe { PostQuitMessage(0) };
       unsafe { drop(Box::from_raw(state)) };
       unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
     }
     (state_ptr, _) => {
-      let state = unsafe { (state_ptr as *mut Arc<NativeWindow>).as_mut().unwrap() };
+      let state = unsafe { (state_ptr as *mut Arc<Internal>).as_mut().unwrap() };
       state.on_message(hwnd, msg, wparam, lparam)
     }
   }
@@ -162,25 +165,26 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
 
   // create state
   let input = Input::new();
-  let state = Arc::new(NativeWindow {
+  let state = Arc::new(Internal {
     hinstance: create_struct.hInstance,
     hwnd,
     class_atom: create_info.class_atom,
     sync: create_info.sync.clone(),
     thread: Mutex::new(None),
-    state: Mutex::new(MutableState {
+    data: Mutex::new(Data {
       title: create_info.title.clone(),
       subtitle: Default::default(),
       theme: Default::default(),
-      style: create_info.style,
+      style: create_info.style.clone(),
       scale_factor,
       last_windowed_position: position,
       last_windowed_size: size,
-      cursor: CursorInfo {
+      cursor: Cursor {
         mode: create_info.settings.cursor_mode,
         visibility: Visibility::Shown,
         inside_window: false,
         last_position: PhysicalPosition::default(),
+        selected_icon: CursorIcon::Default,
       },
       flow: create_info.settings.flow,
       close_on_x: create_info.settings.close_on_x,
@@ -209,7 +213,7 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
   Command::SetVisibility(create_info.settings.visibility).send(hwnd);
   Command::SetFullscreen(create_info.settings.fullscreen).send(hwnd);
 
-  window.0.state.lock().unwrap().stage = Stage::Ready;
+  window.0.data.lock().unwrap().stage = Stage::Ready;
 
   tracing::trace!("[`{}`]: window is ready", create_info.title);
 

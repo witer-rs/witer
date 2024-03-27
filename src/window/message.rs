@@ -16,8 +16,8 @@ use windows::Win32::{
 
 use super::{
   command::Command,
+  data::{PhysicalPosition, PhysicalSize},
   input::{mouse::MouseButton, state::RawKeyState},
-  state::{PhysicalPosition, PhysicalSize},
 };
 use crate::{
   utilities::{hi_word, is_flag_set, lo_byte, lo_word, signed_hi_word, signed_lo_word},
@@ -54,7 +54,7 @@ pub enum Message {
     is_extended_key: bool,
   },
   /// Message sent when a text character is typed containing that character.
-  Char(char),
+  Text(String),
   ModifiersChanged {
     shift: ButtonState,
     ctrl: ButtonState,

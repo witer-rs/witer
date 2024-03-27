@@ -28,5 +28,9 @@ fn main() {
     {
       window.close();
     }
+
+    if window.has_focus() {
+      tracing::debug!("{message:?}")
+    }
   }
 }
