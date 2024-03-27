@@ -23,9 +23,9 @@ rwh_06  = ["dep:rwh_06"]
 
 # opengl  = ["dep:glium", "rwh_05"]
 
-egui = ["dep:egui", "dep:web-time"]
+egui      = ["dep:egui", "dep:web-time"]
 clipboard = ["dep:arboard"]
-links = ["dep:webbrowser"]
+links     = ["dep:webbrowser"]
 
 [dependencies]
 thiserror = "1.0"
@@ -38,10 +38,10 @@ cursor-icon = "1.1"
 
 # glium = { version = "0.34", optional = true }
 
-egui = { version = "0.26", optional = true }
-arboard = { version = "3.3", optional = true, default-features = false }
+egui       = { version = "0.27", optional = true }
+arboard    = { version = "3.3", optional = true, default-features = false }
 webbrowser = { version = "0.8.3", optional = true }
-web-time = { version = "1.1.0", optional = true } # Timekeeping for native and web
+web-time   = { version = "1.1.0", optional = true }                         # Timekeeping for native and web
 
 [dependencies.windows]
 version  = "0.54"
@@ -52,7 +52,16 @@ tracing-subscriber = { version = "0.3" }
 foxy_time          = { version = "1", path = "../foxy_time" }
 pollster           = "0.3"
 wgpu               = "0.19"
+egui-wgpu          = "0.27"
 
 [[example]]
 name              = "opengl"
 required-features = ["opengl"]
+
+[[example]]
+name              = "single_threaded"
+required-features = ["egui"]
+
+[[example]]
+name              = "multi_threaded"
+required-features = ["egui"]

@@ -4,6 +4,7 @@ use std::{
   thread::JoinHandle,
 };
 
+use cursor_icon::CursorIcon;
 #[cfg(all(feature = "rwh_05", not(feature = "rwh_06")))]
 use rwh_05::{
   HasRawDisplayHandle,
@@ -483,6 +484,19 @@ impl Window {
   }
 
   // SETTERS
+
+  fn force_set_cursor_icon(&self, cursor_icon: CursorIcon) {
+    // self.state.write_lock().position = position;
+    Command::SetCursorIcon(cursor_icon).post(self.0.hwnd);
+  }
+
+  pub fn set_cursor_icon(&self, cursor_icon: CursorIcon) {
+    let selected_icon = self.0.data.lock().unwrap().cursor.selected_icon;
+    if selected_icon == cursor_icon {
+      return;
+    }
+    self.force_set_cursor_icon(cursor_icon)
+  }
 
   fn force_set_outer_position(&self, position: Position) {
     // self.state.write_lock().position = position;

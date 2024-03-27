@@ -5,8 +5,11 @@ use std::{
   time::{Duration, Instant},
 };
 
+use egui_wgpu::ScreenDescriptor;
 use foxy_time::{Time, TimeSettings};
-use witer::{error::*, prelude::*};
+use witer::{compat::egui::EventResponse, error::*, prelude::*};
+
+use self::common::egui::EguiRenderer;
 
 mod common;
 
@@ -55,11 +58,16 @@ fn main() -> Result<(), WindowError> {
       window.close();
     }
 
+    let response = app.egui_renderer.handle_input(&window, &message);
+    if response.repaint {
+      window.request_redraw();
+    }
+
     match &message {
       Message::Resized(..) => app.resize(window.inner_size()),
       Message::Paint => {
-        app.update(&window);
-        app.draw(&window);
+        app.update(&window, &response);
+        app.draw(&window, &response);
       }
       Message::Loop(LoopMessage::GetMessage) => window.request_redraw(),
       _ => (),
@@ -80,6 +88,8 @@ struct App {
   size: PhysicalSize,
 
   frame_count: u32,
+
+  egui_renderer: EguiRenderer,
 }
 
 impl App {
@@ -136,6 +146,9 @@ impl App {
       };
       surface.configure(&device, &config);
 
+      let egui_renderer =
+        EguiRenderer::new(&device, wgpu::TextureFormat::Bgra8UnormSrgb, None, 1, window);
+
       Self {
         last_time,
         time,
@@ -145,6 +158,7 @@ impl App {
         config,
         size,
         frame_count: 0,
+        egui_renderer,
       }
     })
   }
@@ -158,14 +172,14 @@ impl App {
     }
   }
 
-  fn update(&mut self, _window: &Window) {
+  fn update(&mut self, _window: &Window, _response: &EventResponse) {
     self.time.update();
     while self.time.should_do_tick_unchecked() {
       self.time.tick();
     }
   }
 
-  fn draw(&mut self, window: &Window) {
+  fn draw(&mut self, window: &Window, _response: &EventResponse) {
     let size = window.inner_size();
     if size.width <= 1 || size.height <= 1 {
       return;
@@ -221,6 +235,32 @@ impl App {
         timestamp_writes: None,
       });
     }
+
+    let screen_descriptor = ScreenDescriptor {
+      size_in_pixels: [self.config.width, self.config.height],
+      pixels_per_point: window.scale_factor() as f32,
+    };
+
+    self.egui_renderer.draw(
+      &self.device,
+      &self.queue,
+      &mut encoder,
+      window,
+      &view,
+      screen_descriptor,
+      |ctx| {
+        egui::Window::new("Settings")
+          .default_open(false)
+          .default_size((50.0, 50.0))
+          .resizable(false)
+          .anchor(egui::Align2::LEFT_BOTTOM, (5.0, -5.0))
+          .show(ctx, |ctx| {
+            if ctx.button("Test").clicked() {
+              tracing::debug!("PRESSED");
+            }
+          });
+      },
+    );
 
     self.queue.submit(std::iter::once(encoder.finish()));
     output.present();

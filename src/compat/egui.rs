@@ -1,7 +1,7 @@
 #![cfg(feature = "egui")]
 // _TEMPORARY_ fix to shut up the compiler while I work on the port
-#![allow(unused)]
-#![allow(unused_variables)]
+// #![allow(unused)]
+// #![allow(unused_variables)]
 #![allow(clippy::unnecessary_cast)]
 #![allow(clippy::manual_range_contains)]
 
@@ -340,7 +340,6 @@ impl State {
       // }
       Message::Key { key, state, .. } => {
         self.on_keyboard_input(key, state);
-
         // When pressing the Tab key, egui focuses the first focusable element, hence
         // Tab always consumes.
         let consumed = self.egui_ctx.wants_keyboard_input() || key == &Key::Tab;
@@ -405,7 +404,7 @@ impl State {
         self.egui_input.modifiers.ctrl = ctrl.is_pressed();
         self.egui_input.modifiers.shift = shift.is_pressed();
         self.egui_input.modifiers.mac_cmd = false;
-        self.egui_input.modifiers.command = false;
+        self.egui_input.modifiers.command = ctrl.is_pressed();
 
         EventResponse {
           repaint: true,
@@ -641,7 +640,8 @@ impl State {
     let pressed = state.is_pressed();
 
     let physical_key = key_from_key_code(key);
-    let logical_key = key_from_winit_key(key);
+    let logical_key = physical_key;
+    // let logical_key = key_from_winit_key(key);
 
     if let Some(logical_key) = logical_key {
       if pressed {
@@ -714,8 +714,6 @@ impl State {
       events: _,                    // handled elsewhere
       mutable_text_under_cursor: _, // only used in eframe web
       ime,
-      #[cfg(feature = "accesskit")]
-      accesskit_update,
     } = platform_output;
 
     self.set_cursor_icon(window, cursor_icon);
@@ -774,7 +772,7 @@ impl State {
 
       if let Some(winit_cursor_icon) = translate_cursor(cursor_icon) {
         window.set_cursor_visibility(Visibility::Shown);
-        // window.set_cursor_icon(winit_cursor_icon);
+        window.set_cursor_icon(winit_cursor_icon);
       } else {
         window.set_cursor_visibility(Visibility::Hidden);
       }
@@ -969,7 +967,6 @@ fn key_from_named_key(named_key: Key) -> Option<egui::Key> {
     Key::F19 => egui::Key::F19,
     Key::F20 => egui::Key::F20,
     _ => {
-      tracing::trace!("Unknown key: {named_key:?}");
       return None;
     }
   })

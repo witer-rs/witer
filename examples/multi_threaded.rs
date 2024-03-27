@@ -6,8 +6,11 @@ use std::{
   time::{Duration, Instant},
 };
 
+use egui_wgpu::ScreenDescriptor;
 use foxy_time::{Time, TimeSettings};
 use witer::{error::*, prelude::*};
+
+use self::common::egui::EguiRenderer;
 
 mod common;
 
@@ -73,7 +76,25 @@ fn app_loop(
       let mut app = App::new(&window);
 
       loop {
-        let message = message_receiver.try_recv().ok();
+        let mut message = message_receiver.try_recv().ok();
+
+        let consumed = if let Some(message) = &message {
+          app.egui_renderer.handle_input(&window, message).consumed
+        } else {
+          false
+        };
+
+        if consumed {
+          message = None;
+        }
+
+        match &message {
+          Some(Message::Resized(new_size)) => {
+            app.resize(*new_size);
+          }
+          Some(Message::Loop(LoopMessage::Exit)) => break,
+          _ => (),
+        }
 
         if !matches!(
           message,
@@ -85,14 +106,6 @@ fn app_loop(
           ) | None
         ) {
           tracing::info!("{message:?}");
-        }
-
-        match &message {
-          Some(Message::Resized(new_size)) => {
-            app.resize(*new_size);
-          }
-          Some(Message::Loop(LoopMessage::Exit)) => break,
-          _ => (),
         }
 
         app.update(&window);
@@ -117,6 +130,9 @@ struct App {
   config: wgpu::SurfaceConfiguration,
   size: PhysicalSize,
   render_pipeline: wgpu::RenderPipeline,
+
+  egui_renderer: EguiRenderer,
+  text: String,
 }
 
 impl App {
@@ -174,6 +190,9 @@ impl App {
       surface.configure(&device, &config);
 
       let shader = device.create_shader_module(wgpu::include_wgsl!("common/shader.wgsl"));
+
+      let egui_renderer =
+        EguiRenderer::new(&device, wgpu::TextureFormat::Bgra8UnormSrgb, None, 1, window);
 
       let render_pipeline_layout =
         device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -234,7 +253,9 @@ impl App {
         queue,
         config,
         size,
+        egui_renderer,
         render_pipeline,
+        text: String::new(),
       }
     })
   }
@@ -328,6 +349,33 @@ impl App {
       render_pass.set_pipeline(&self.render_pipeline); // 2.
       render_pass.draw(0..3, 0..1); // 3.
     }
+
+    let screen_descriptor = ScreenDescriptor {
+      size_in_pixels: [self.config.width, self.config.height],
+      pixels_per_point: window.scale_factor() as f32,
+    };
+
+    self.egui_renderer.draw(
+      &self.device,
+      &self.queue,
+      &mut encoder,
+      window,
+      &view,
+      screen_descriptor,
+      |ctx| {
+        egui::Window::new("Settings")
+          // .default_open(false)
+          // .default_size((50.0, 50.0))
+          // .resizable(false)
+          // .anchor(egui::Align2::LEFT_BOTTOM, (5.0, -5.0))
+          .show(ctx, |ctx| {
+            if ctx.button("Test").clicked() {
+              tracing::debug!("PRESSED");
+            }
+            ctx.text_edit_multiline(&mut self.text);
+          });
+      },
+    );
 
     self.queue.submit(std::iter::once(encoder.finish()));
     output.present();

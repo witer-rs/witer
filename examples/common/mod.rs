@@ -1,5 +1,7 @@
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+pub mod egui;
+
 pub fn init_log(crate_name: &'static str) {
   tracing_subscriber::registry()
     .with(tracing_subscriber::fmt::layer().with_thread_names(true))

@@ -353,6 +353,7 @@ impl Internal {
             }
           }
           Command::SetCursorIcon(icon) => {
+            self.data.lock().unwrap().cursor.selected_icon = icon;
             let cursor_icon = to_windows_cursor(icon);
             let hcursor =
               unsafe { LoadCursorW(HINSTANCE::default(), cursor_icon) }.unwrap();
@@ -393,9 +394,10 @@ impl Internal {
           let hcursor =
             unsafe { LoadCursorW(HINSTANCE::default(), cursor_icon) }.unwrap();
           unsafe { SetCursor(hcursor) };
+          LRESULT(0)
+        } else {
+          unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
         }
-
-        unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
       }
       // WindowsAndMessaging::WM_SIZING | WindowsAndMessaging::WM_MOVING => {
       //   // ignore certain messages

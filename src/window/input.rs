@@ -1,7 +1,20 @@
 use std::collections::HashMap;
 
+use windows::Win32::UI::Input::KeyboardAndMouse::{
+  GetKeyState,
+  VIRTUAL_KEY,
+  VK_CONTROL,
+  VK_LWIN,
+  VK_MENU,
+  VK_RWIN,
+  VK_SHIFT,
+};
+
 use self::state::KeyState;
-use crate::window::input::{key::Key, mouse::MouseButton, state::ButtonState};
+use crate::{
+  utilities::is_flag_set,
+  window::input::{key::Key, mouse::MouseButton, state::ButtonState},
+};
 
 pub mod key;
 pub mod mouse;
@@ -55,20 +68,20 @@ impl Input {
 
   pub fn update_modifiers_state(
     &mut self,
+    // shift: bool,
+    // ctrl: bool,
+    // alt: bool,
+    // win: bool,
   ) -> (bool, ButtonState, ButtonState, ButtonState, ButtonState) {
-    let key = |keycode: Key| -> KeyState {
-      self
-        .keys
-        .get(&keycode)
-        .copied()
-        .unwrap_or(KeyState::Released)
+    let key = |keycode: VIRTUAL_KEY| -> bool {
+      let state = unsafe { GetKeyState(keycode.0 as i32) };
+      is_flag_set(state, 0x1000)
     };
 
     let mut changed = false;
 
     let old_value = self.shift;
-    self.shift = if key(Key::LeftShift).is_pressed() || key(Key::RightShift).is_pressed()
-    {
+    self.shift = if key(VK_SHIFT) {
       ButtonState::Pressed
     } else {
       ButtonState::Released
@@ -76,16 +89,15 @@ impl Input {
     changed |= self.shift != old_value;
 
     let old_value = self.ctrl;
-    self.ctrl =
-      if key(Key::LeftControl).is_pressed() || key(Key::RightControl).is_pressed() {
-        ButtonState::Pressed
-      } else {
-        ButtonState::Released
-      };
+    self.ctrl = if key(VK_CONTROL) {
+      ButtonState::Pressed
+    } else {
+      ButtonState::Released
+    };
     changed |= self.ctrl != old_value;
 
     let old_value = self.alt;
-    self.alt = if key(Key::LeftAlt).is_pressed() || key(Key::RightAlt).is_pressed() {
+    self.alt = if key(VK_MENU) {
       ButtonState::Pressed
     } else {
       ButtonState::Released
@@ -93,7 +105,7 @@ impl Input {
     changed |= self.alt != old_value;
 
     let old_value = self.win;
-    self.win = if key(Key::LeftSuper).is_pressed() || key(Key::RightSuper).is_pressed() {
+    self.win = if key(VK_LWIN) || key(VK_RWIN) {
       ButtonState::Pressed
     } else {
       ButtonState::Released
