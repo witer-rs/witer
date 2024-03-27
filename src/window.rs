@@ -108,6 +108,26 @@ pub mod stage;
 #[derive(Clone)]
 pub struct Window(Arc<Internal>);
 
+/// Window is destroyed on drop.
+impl Drop for Window {
+  fn drop(&mut self) {
+    let title = self.0.data_lock().title.clone();
+
+    if self.0.data_lock().stage == Stage::Destroyed {
+      return;
+    } else {
+      self.0.data_lock().stage = Stage::Destroyed;
+    }
+
+    tracing::trace!("[`{}`]: destroying window", title);
+
+    Command::Destroy.post(self.0.hwnd);
+    self.0.join_thread();
+
+    tracing::trace!("[`{}`]: destroyed window", title);
+  }
+}
+
 impl Window {
   pub const WINDOW_SUBCLASS_ID: usize = 0;
 
@@ -308,7 +328,7 @@ impl Window {
     self.0.sync.signal_next_frame();
 
     let next = match current_stage {
-      Stage::Setup | Stage::Ready => None, // do not iterate until looping
+      Stage::Setup | Stage::Ready | Stage::Destroyed => None,
       Stage::Looping => {
         let message = self.take_message();
         if let Some(Message::CloseRequested) = message {
@@ -321,7 +341,7 @@ impl Window {
       }
       Stage::Closing => {
         let _ = self.take_message();
-        self.0.exit_loop();
+        self.0.data.lock().unwrap().stage = Stage::ExitLoop;
         Some(Message::Loop(LoopMessage::Exit))
       }
       Stage::ExitLoop => {

@@ -67,7 +67,10 @@ impl SyncData {
     let should_wait = self.message.lock().unwrap().is_some();
     if should_wait {
       self.wait_on_frame(|| {
-        matches!(state.data.lock().unwrap().stage, Stage::Setup | Stage::ExitLoop)
+        matches!(
+          state.data.lock().unwrap().stage,
+          Stage::Setup | Stage::ExitLoop | Stage::Destroyed
+        )
       });
     }
 
@@ -75,7 +78,10 @@ impl SyncData {
     self.signal_new_message();
 
     self.wait_on_frame(|| {
-      matches!(state.data.lock().unwrap().stage, Stage::Setup | Stage::ExitLoop)
+      matches!(
+        state.data.lock().unwrap().stage,
+        Stage::Setup | Stage::ExitLoop | Stage::Destroyed
+      )
     });
   }
 

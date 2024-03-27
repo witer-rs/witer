@@ -1,6 +1,6 @@
 use std::{
   ops::{Div, Mul},
-  sync::Mutex,
+  sync::{Mutex, MutexGuard},
   thread::JoinHandle,
 };
 
@@ -82,20 +82,6 @@ pub struct Internal {
   pub data: Mutex<Data>,
 }
 
-/// Window is destroyed on drop.
-impl Drop for Internal {
-  fn drop(&mut self) {
-    let title = self.data.lock().unwrap().title.clone();
-    tracing::trace!("[`{}`]: destroying window", title);
-
-    self.exit_loop();
-    Command::Destroy.post(self.hwnd);
-    self.join_thread();
-
-    tracing::trace!("[`{}`]: destroyed window", title);
-  }
-}
-
 pub struct Data {
   pub title: String,
   pub subtitle: String,
@@ -116,6 +102,10 @@ pub struct Data {
 }
 
 impl Internal {
+  pub(crate) fn data_lock(&self) -> MutexGuard<Data> {
+    self.data.lock().unwrap()
+  }
+
   pub(crate) fn set_thread(&self, handle: Option<JoinHandle<Result<(), WindowError>>>) {
     *self.thread.lock().unwrap() = handle;
   }
@@ -130,13 +120,14 @@ impl Internal {
   }
 
   pub(crate) fn is_closing(&self) -> bool {
-    matches!(self.data.lock().unwrap().stage, Stage::Closing | Stage::ExitLoop)
+    matches!(
+      self.data.lock().unwrap().stage,
+      Stage::Closing | Stage::ExitLoop | Stage::Destroyed
+    )
   }
 
-  pub(crate) fn exit_loop(&self) {
-    self.data.lock().unwrap().stage = Stage::ExitLoop;
-    self.sync.signal_next_frame();
-  }
+  // pub(crate) fn exit_loop(&self) {
+  // }
 
   pub(crate) fn update_last_windowed_pos_size(&self, hwnd: HWND) {
     let mut window_rect = RECT::default();
