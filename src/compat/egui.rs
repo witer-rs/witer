@@ -1,4 +1,9 @@
 #![cfg(feature = "egui")]
+// _TEMPORARY_ fix to shut up the compiler while I work on the port
+#![allow(unused)]
+#![allow(unused_variables)]
+#![allow(clippy::unnecessary_cast)]
+#![allow(clippy::manual_range_contains)]
 
 //! [`witer`] port of [`egui`] bindings for [`winit`].
 //!
@@ -351,7 +356,7 @@ impl State {
           repaint: true,
           consumed,
         }
-      } 
+      }
       Message::Focus(focus) => {
         self.egui_input.focused = *focus == Focus::Gained;
         // We will not be given a KeyboardInput event when the modifiers are released
