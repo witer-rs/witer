@@ -27,16 +27,6 @@ fn main() -> Result<(), WindowError> {
   let mut app = App::new(&window);
 
   for message in &window {
-    if !matches!(
-      message,
-      Message::Paint
-        | Message::Loop(..)
-        | Message::RawInput(..)
-        | Message::CursorMove { .. }
-    ) {
-      tracing::info!("{message:?}");
-    }
-
     if message.is_key(Key::F11, KeyState::Pressed) {
       let fullscreen = window.fullscreen();
       match fullscreen {
@@ -55,6 +45,11 @@ fn main() -> Result<(), WindowError> {
     }
 
     let response = app.egui_renderer.handle_input(&window, &message);
+    let message = if response.consumed {
+      Message::Loop(LoopMessage::Empty)
+    } else {
+      message
+    };
 
     match &message {
       Message::Resized(..) => app.resize(window.inner_size()),
@@ -62,7 +57,7 @@ fn main() -> Result<(), WindowError> {
       _ => (),
     }
 
-    app.update(&window, &response);
+    app.update(&window, &message, &response);
     app.draw(&window, &response);
   }
 
@@ -217,10 +212,20 @@ impl App {
     }
   }
 
-  fn update(&mut self, _window: &Window, _response: &EventResponse) {
+  fn update(&mut self, _window: &Window, message: &Message, _response: &EventResponse) {
     self.time.update();
     while self.time.should_do_tick_unchecked() {
       self.time.tick();
+    }
+
+    if !matches!(
+      message,
+      Message::Paint
+        | Message::Loop(..)
+        | Message::RawInput(..)
+        | Message::CursorMove { .. }
+    ) {
+      tracing::info!("{message:?}");
     }
   }
 
