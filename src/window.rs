@@ -101,7 +101,8 @@ pub mod procedure;
 pub mod settings;
 pub mod stage;
 
-/// Main window class. Uses internal mutability. Window is destroyed on drop.
+/// Main window class. Uses internal mutability. Window is destroyed on drop. Cloning does not create a new window,
+/// but instead clones the smart pointer handle to the same window.
 #[allow(unused)]
 #[derive(Clone)]
 pub struct Window(Arc<Internal>);
