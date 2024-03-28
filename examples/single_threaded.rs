@@ -46,16 +46,12 @@ fn main() -> Result<(), WindowError> {
     }
 
     match app.frame_count {
-      0..=9 => app.frame_count = app.frame_count.wrapping_add(1),
-      10 => {
+      0..=2 => app.frame_count = app.frame_count.saturating_add(1),
+      3 => {
         window.set_visibility(Visibility::Shown);
-        app.frame_count = app.frame_count.wrapping_add(1);
+        app.frame_count = app.frame_count.saturating_add(1);
       }
       _ => (),
-    }
-
-    if window.shift().is_pressed() && window.key(Key::Escape).is_pressed() {
-      window.close();
     }
 
     let response = app.egui_renderer.handle_input(&window, &message);
@@ -315,7 +311,5 @@ impl App {
 
     self.queue.submit(std::iter::once(encoder.finish()));
     output.present();
-
-    self.frame_count = self.frame_count.wrapping_add(1);
   }
 }
