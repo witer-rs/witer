@@ -43,7 +43,12 @@ use windows::{
     },
     System::LibraryLoader::GetModuleHandleW,
     UI::{
-      HiDpi::AdjustWindowRectExForDpi,
+      HiDpi::{
+        AdjustWindowRectExForDpi,
+        SetProcessDpiAwarenessContext,
+        DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE,
+        DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+      },
       WindowsAndMessaging::{
         self,
         CreateWindowExW,
@@ -228,6 +233,15 @@ impl Window {
     }
 
     tracing::trace!("[`{}`]: creating window handle", &create_info.title);
+
+    if unsafe {
+      SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)
+    }
+    .is_err()
+    {
+      unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE) }
+        .unwrap();
+    }
 
     let hwnd = unsafe {
       CreateWindowExW(

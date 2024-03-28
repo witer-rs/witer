@@ -5,11 +5,7 @@ use cursor_icon::CursorIcon;
 use windows::Win32::{
   Foundation::*,
   UI::{
-    HiDpi::{
-      SetProcessDpiAwarenessContext,
-      DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE,
-      DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
-    },
+    HiDpi::EnableNonClientDpiScaling,
     WindowsAndMessaging::{
       self,
       DefWindowProcW,
@@ -118,11 +114,8 @@ pub extern "system" fn wnd_proc(
 }
 
 fn on_nccreate(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT {
-  if unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) }
-    .is_err()
-  {
-    unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE) }
-      .unwrap();
+  if let Err(e) = unsafe { EnableNonClientDpiScaling(hwnd) } {
+    tracing::error!("{e}");
   }
 
   register_all_mice_and_keyboards_for_raw_input(hwnd);
