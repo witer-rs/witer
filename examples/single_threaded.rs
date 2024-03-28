@@ -51,10 +51,8 @@ fn main() -> Result<(), WindowError> {
       message
     };
 
-    match &message {
-      Message::Resized(..) => app.resize(window.inner_size()),
-      Message::Paint => (),
-      _ => (),
+    if let Message::Resized(new_size) = &message {
+      app.resize(*new_size);
     }
 
     app.update(&window, &message, &response);
