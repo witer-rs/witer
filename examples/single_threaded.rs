@@ -302,16 +302,13 @@ impl App {
       &view,
       screen_descriptor,
       |ctx| {
-        egui::Window::new("Settings")
-          .default_open(false)
+        egui::Window::new("Debug")
+          .default_open(true)
           .default_size((50.0, 50.0))
           .resizable(false)
           .anchor(egui::Align2::LEFT_BOTTOM, (5.0, -5.0))
           .show(ctx, |ctx| {
             ctx.label(format!("fps: {:.1}", self.fps));
-            if ctx.button("Test").clicked() {
-              tracing::debug!("PRESSED");
-            }
           });
       },
     );
