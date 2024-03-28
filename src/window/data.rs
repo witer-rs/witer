@@ -550,7 +550,9 @@ impl Internal {
           )
         }
         .unwrap();
-        messages.push(Message::ScaleFactorChanged(dpi_to_scale_factor(dpi)));
+        let scale_factor = dpi_to_scale_factor(dpi);
+        self.data.lock().unwrap().scale_factor = scale_factor;
+        messages.push(Message::ScaleFactorChanged(scale_factor));
         unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
       }
       WindowsAndMessaging::WM_INPUT => {

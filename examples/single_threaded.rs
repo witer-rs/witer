@@ -76,6 +76,7 @@ struct App {
   render_pipeline: wgpu::RenderPipeline,
 
   frame_count: u32,
+  fps: f32,
 
   egui_renderer: EguiRenderer,
 }
@@ -198,6 +199,7 @@ impl App {
         size,
         render_pipeline,
         frame_count: 0,
+        fps: 0.0,
         egui_renderer,
       }
     })
@@ -238,8 +240,7 @@ impl App {
     let now = Instant::now();
     let elapsed = now.duration_since(self.last_time);
     if elapsed >= Duration::from_secs_f64(0.20) {
-      let title = format!(" | U: {:.1}", 1.0 / self.time.average_delta_secs(),);
-      window.set_subtitle(title);
+      self.fps = (1.0 / self.time.average_delta_secs()) as f32;
       self.last_time = now;
     }
 
@@ -307,6 +308,7 @@ impl App {
           .resizable(false)
           .anchor(egui::Align2::LEFT_BOTTOM, (5.0, -5.0))
           .show(ctx, |ctx| {
+            ctx.label(format!("fps: {:.1}", self.fps));
             if ctx.button("Test").clicked() {
               tracing::debug!("PRESSED");
             }
