@@ -69,8 +69,7 @@ fn main() -> Result<(), WindowError> {
         app.update(&window, &response);
         app.draw(&window, &response);
       }
-      Message::Loop(LoopMessage::GetMessage) => window.request_redraw(),
-      _ => (),
+      _ => window.request_redraw(),
     }
   }
 

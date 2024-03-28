@@ -1,41 +1,44 @@
 use std::{
   ops::{Div, Mul},
-  sync::{Mutex, MutexGuard},
+  sync::{Arc, Condvar, Mutex, MutexGuard},
   thread::JoinHandle,
 };
 
-use windows::Win32::{
-  Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM},
-  Graphics::Gdi::{
-    self,
-    GetMonitorInfoW,
-    InvalidateRgn,
-    MonitorFromWindow,
-    RedrawWindow,
-    MONITORINFO,
-  },
-  UI::{
-    self,
-    Controls,
-    Input::{
-      KeyboardAndMouse::{self, TrackMouseEvent, TRACKMOUSEEVENT},
-      HRAWINPUT,
-      RID_DEVICE_INFO_TYPE,
-    },
-    WindowsAndMessaging::{
+use windows::{
+  core::PCWSTR,
+  Win32::{
+    Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM},
+    Graphics::Gdi::{
       self,
-      DefWindowProcW,
-      DestroyWindow,
-      GetClientRect,
-      GetWindowRect,
-      LoadCursorW,
-      PostMessageW,
-      SetCursor,
-      SetWindowLongW,
-      SetWindowPos,
-      SetWindowTextW,
-      ShowWindow,
-      WINDOWPOS,
+      GetMonitorInfoW,
+      InvalidateRgn,
+      MonitorFromWindow,
+      RedrawWindow,
+      MONITORINFO,
+    },
+    UI::{
+      self,
+      Controls,
+      Input::{
+        KeyboardAndMouse::{self, TrackMouseEvent, TRACKMOUSEEVENT},
+        HRAWINPUT,
+        RID_DEVICE_INFO_TYPE,
+      },
+      WindowsAndMessaging::{
+        self,
+        DefWindowProcW,
+        GetClientRect,
+        GetWindowRect,
+        LoadCursorW,
+        PostMessageW,
+        SetCursor,
+        SetWindowLongW,
+        SetWindowPos,
+        SetWindowTextW,
+        ShowWindow,
+        UnregisterClassW,
+        WINDOWPOS,
+      },
     },
   },
 };
@@ -46,7 +49,6 @@ use super::{
   frame::Style,
   input::mouse::mouse_button_states,
   message::{get_cursor_move_kind, CursorMoveKind, Focus},
-  procedure::SyncData,
   stage::Stage,
 };
 use crate::{
@@ -73,6 +75,59 @@ use crate::{
   RawKeyState,
 };
 
+#[derive(Clone)]
+pub struct SyncData {
+  pub message: Arc<Mutex<Option<Message>>>,
+  pub new_message: Arc<(Mutex<bool>, Condvar)>,
+  pub next_frame: Arc<(Mutex<bool>, Condvar)>,
+}
+
+impl SyncData {
+  pub fn send_to_main(&self, message: Message, state: &Internal) {
+    let should_wait = self.message.lock().unwrap().is_some();
+    if should_wait {
+      self.wait_on_frame(|| {
+        matches!(
+          state.data.lock().unwrap().stage,
+          Stage::Setup | Stage::ExitLoop | Stage::Destroyed
+        )
+      });
+    }
+
+    self.message.lock().unwrap().replace(message);
+    self.signal_new_message();
+
+    self.wait_on_frame(|| {
+      matches!(
+        state.data.lock().unwrap().stage,
+        Stage::Setup | Stage::ExitLoop | Stage::Destroyed
+      )
+    });
+  }
+
+  pub fn signal_new_message(&self) {
+    let (lock, cvar) = self.new_message.as_ref();
+    let mut new = lock.lock().unwrap();
+    *new = true;
+    cvar.notify_one();
+  }
+
+  pub fn wait_on_frame(&self, interrupt: impl Fn() -> bool) {
+    let (lock, cvar) = self.next_frame.as_ref();
+    let mut next = cvar
+      .wait_while(lock.lock().unwrap(), |next| !*next && !interrupt())
+      .unwrap();
+    *next = false;
+  }
+
+  pub fn signal_next_frame(&self) {
+    let (lock, cvar) = self.next_frame.as_ref();
+    let mut next = lock.lock().unwrap();
+    *next = true;
+    cvar.notify_one();
+  }
+}
+
 pub struct Internal {
   pub hinstance: HINSTANCE,
   pub hwnd: HWND,
@@ -80,6 +135,30 @@ pub struct Internal {
   pub sync: SyncData,
   pub thread: Mutex<Option<JoinHandle<Result<(), WindowError>>>>,
   pub data: Mutex<Data>,
+}
+
+/// Window is destroyed on drop.
+impl Drop for Internal {
+  fn drop(&mut self) {
+    let title = self.data_lock().title.clone();
+
+    if self.data_lock().stage == Stage::Destroyed {
+      return;
+    } else {
+      self.data_lock().stage = Stage::Destroyed;
+    }
+
+    tracing::trace!("[`{}`]: destroying window", title);
+
+    Command::Destroy.post(self.hwnd);
+    self.join_thread();
+
+    tracing::trace!("[`{}`]: unregistering window class", title);
+    unsafe { UnregisterClassW(PCWSTR(self.class_atom as *const u16), self.hinstance) }
+      .unwrap();
+
+    tracing::trace!("[`{}`]: destroyed window", title);
+  }
 }
 
 pub struct Data {
@@ -157,12 +236,10 @@ impl Internal {
     let result = match msg {
       Command::MESSAGE_ID => {
         let command = unsafe { Box::from_raw(wparam.0 as *mut Command) };
-        tracing::debug!("{command:?}");
+        // tracing::debug!("{command:?}");
         match *command {
-          Command::Destroy => {
-            unsafe { DestroyWindow(hwnd) }.unwrap();
-            return LRESULT(0); // hwnd will be invalid
-          }
+          Command::Exit => (),
+          Command::Destroy => (),
           Command::Redraw => unsafe {
             RedrawWindow(hwnd, None, None, Gdi::RDW_INTERNALPAINT);
           },

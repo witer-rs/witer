@@ -1,4 +1,4 @@
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Mutex};
 
 use cursor_icon::CursorIcon;
 // use crossbeam::channel::{Receiver, Sender};
@@ -13,6 +13,7 @@ use windows::Win32::{
     WindowsAndMessaging::{
       self,
       DefWindowProcW,
+      DestroyWindow,
       GetWindowLongPtrW,
       PostQuitMessage,
       SetWindowLongPtrW,
@@ -25,7 +26,7 @@ use windows::Win32::{
 use super::message::Message;
 use super::{
   command::Command,
-  data::{Data, Position, Size, Visibility},
+  data::{Data, Position, Size, SyncData, Visibility},
   frame::Style,
   settings::WindowSettings,
   Window,
@@ -55,57 +56,8 @@ pub struct CreateInfo {
   pub style: Style,
 }
 
-#[derive(Clone)]
-pub struct SyncData {
-  pub message: Arc<Mutex<Option<Message>>>,
-  pub new_message: Arc<(Mutex<bool>, Condvar)>,
-  pub next_frame: Arc<(Mutex<bool>, Condvar)>,
-}
-
-impl SyncData {
-  pub fn send_to_main(&self, message: Message, state: &Internal) {
-    let should_wait = self.message.lock().unwrap().is_some();
-    if should_wait {
-      self.wait_on_frame(|| {
-        matches!(
-          state.data.lock().unwrap().stage,
-          Stage::Setup | Stage::ExitLoop | Stage::Destroyed
-        )
-      });
-    }
-
-    self.message.lock().unwrap().replace(message);
-    self.signal_new_message();
-
-    self.wait_on_frame(|| {
-      matches!(
-        state.data.lock().unwrap().stage,
-        Stage::Setup | Stage::ExitLoop | Stage::Destroyed
-      )
-    });
-  }
-
-  pub fn signal_new_message(&self) {
-    let (lock, cvar) = self.new_message.as_ref();
-    let mut new = lock.lock().unwrap();
-    *new = true;
-    cvar.notify_one();
-  }
-
-  pub fn wait_on_frame(&self, interrupt: impl Fn() -> bool) {
-    let (lock, cvar) = self.next_frame.as_ref();
-    let mut next = cvar
-      .wait_while(lock.lock().unwrap(), |next| !*next && !interrupt())
-      .unwrap();
-    *next = false;
-  }
-
-  pub fn signal_next_frame(&self) {
-    let (lock, cvar) = self.next_frame.as_ref();
-    let mut next = lock.lock().unwrap();
-    *next = true;
-    cvar.notify_one();
-  }
+pub struct UserData {
+  state: Arc<Internal>,
 }
 
 ////////////////////////
@@ -125,15 +77,42 @@ pub extern "system" fn wnd_proc(
     (0, WindowsAndMessaging::WM_NCCREATE) => on_nccreate(hwnd, msg, wparam, lparam),
     (0, WindowsAndMessaging::WM_CREATE) => on_create(hwnd, msg, wparam, lparam),
     (0, _) => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
-    (state_ptr, WindowsAndMessaging::WM_DESTROY) => {
-      let state = unsafe { (state_ptr as *mut Arc<Internal>).as_mut().unwrap() };
-      unsafe { PostQuitMessage(0) };
-      unsafe { drop(Box::from_raw(state)) };
-      unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
-    }
-    (state_ptr, _) => {
-      let state = unsafe { (state_ptr as *mut Arc<Internal>).as_mut().unwrap() };
-      state.on_message(hwnd, msg, wparam, lparam)
+    (state_ptr, message) => {
+      let result = match message {
+        Command::MESSAGE_ID => {
+          let command = unsafe { (wparam.0 as *mut Command).as_mut() }.unwrap();
+          match command {
+            Command::Exit => {
+              let user_data = unsafe { Box::from_raw(state_ptr as *mut UserData) };
+              drop(user_data);
+              LRESULT(0)
+            }
+            Command::Destroy => {
+              unsafe { DestroyWindow(hwnd) }.unwrap();
+              LRESULT(0)
+            }
+            _ => {
+              if let Some(user_data) = unsafe { (state_ptr as *mut UserData).as_mut() } {
+                user_data.state.on_message(hwnd, msg, wparam, lparam)
+              } else {
+                unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+              }
+            }
+          }
+        }
+        WindowsAndMessaging::WM_DESTROY => {
+          unsafe { PostQuitMessage(0) };
+          unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+        }
+        _ => {
+          if let Some(user_data) = unsafe { (state_ptr as *mut UserData).as_mut() } {
+            user_data.state.on_message(hwnd, msg, wparam, lparam)
+          } else {
+            unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+          }
+        }
+      };
+      result
     }
   }
 }
@@ -201,7 +180,10 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
   });
 
   // create data ptr
-  let user_data_ptr = Box::into_raw(Box::new(state.clone()));
+  let user_data = UserData {
+    state: state.clone(),
+  };
+  let user_data_ptr = Box::into_raw(Box::new(user_data));
   unsafe {
     SetWindowLongPtrW(hwnd, WindowsAndMessaging::GWLP_USERDATA, user_data_ptr as isize)
   };

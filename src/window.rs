@@ -55,7 +55,6 @@ use windows::{
         LoadCursorW,
         RegisterClassExW,
         TranslateMessage,
-        UnregisterClassW,
         MSG,
         WNDCLASSEXW,
       },
@@ -67,7 +66,6 @@ use self::{
   command::Command,
   data::{CursorMode, Fullscreen, PhysicalSize, Position},
   message::LoopMessage,
-  procedure::SyncData,
   settings::WindowBuilder,
   stage::Stage,
 };
@@ -83,7 +81,7 @@ use crate::{
     Monitor,
   },
   window::{
-    data::{Flow, Internal, PhysicalPosition, Size, Theme, Visibility},
+    data::{Flow, Internal, PhysicalPosition, Size, SyncData, Theme, Visibility},
     frame::Style,
     input::Input,
     message::Message,
@@ -107,26 +105,6 @@ pub mod stage;
 #[allow(unused)]
 #[derive(Clone)]
 pub struct Window(Arc<Internal>);
-
-/// Window is destroyed on drop.
-impl Drop for Window {
-  fn drop(&mut self) {
-    let title = self.0.data_lock().title.clone();
-
-    if self.0.data_lock().stage == Stage::Destroyed {
-      return;
-    } else {
-      self.0.data_lock().stage = Stage::Destroyed;
-    }
-
-    tracing::trace!("[`{}`]: destroying window", title);
-
-    Command::Destroy.post(self.0.hwnd);
-    self.0.join_thread();
-
-    tracing::trace!("[`{}`]: destroyed window", title);
-  }
-}
 
 impl Window {
   pub const WINDOW_SUBCLASS_ID: usize = 0;
@@ -204,24 +182,13 @@ impl Window {
       .name("window".to_owned())
       .spawn(move || -> Result<(), WindowError> {
         let title = create_info.title.clone();
-        let sync = create_info.sync.clone();
         let window = Self::create_hwnd(create_info)?;
-        let window_state = window.0.clone();
 
         tracing::trace!("[`{}`]: sending window back to main thread", title);
         window_sender.send(window).expect("failed to send window");
 
         tracing::trace!("[`{}`]: pumping messages", title);
-        while Self::message_pump(&sync, &window_state) {}
-
-        tracing::trace!("[`{}`]: unregistering window class", title);
-        unsafe {
-          UnregisterClassW(
-            PCWSTR(window_state.class_atom as *const u16),
-            window_state.hinstance,
-          )
-        }
-        .unwrap();
+        while Self::message_pump() {}
 
         tracing::trace!("[`{}`]: joining main thread", title);
         Ok(())
@@ -289,9 +256,7 @@ impl Window {
     }
   }
 
-  fn message_pump(sync: &SyncData, state: &Arc<Internal>) -> bool {
-    sync.send_to_main(Message::Loop(LoopMessage::GetMessage), state);
-
+  fn message_pump() -> bool {
     let mut msg = MSG::default();
     if unsafe { GetMessageW(&mut msg, None, 0, 0).as_bool() } {
       unsafe {
@@ -346,6 +311,7 @@ impl Window {
       }
       Stage::ExitLoop => {
         tracing::trace!("[`{}`]: exiting loop", self.title());
+        Command::Exit.post(self.0.hwnd);
         None
       }
     };

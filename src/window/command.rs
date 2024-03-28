@@ -12,6 +12,7 @@ use super::data::{CursorMode, Fullscreen, Position, Size, Visibility};
 #[repr(u32)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Command {
+  Exit,
   Destroy,
   Redraw,
   SetVisibility(Visibility),

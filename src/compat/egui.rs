@@ -1,7 +1,7 @@
 #![cfg(feature = "egui")]
 // _TEMPORARY_ fix to shut up the compiler while I work on the port
-// #![allow(unused)]
-// #![allow(unused_variables)]
+#![allow(unused)]
+#![allow(unused_variables)]
 #![allow(clippy::unnecessary_cast)]
 #![allow(clippy::manual_range_contains)]
 
