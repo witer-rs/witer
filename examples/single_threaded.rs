@@ -409,7 +409,7 @@ impl App {
 
   fn draw(&mut self, _response: &EventResponse) -> Result<(), wgpu::SurfaceError> {
     if self.window.inner_size().is_any_zero() {
-      return Ok(());
+      return Ok(()); // this early out prevents issues with serious lag after minimization
     }
 
     let output = self.surface.get_current_texture()?;
