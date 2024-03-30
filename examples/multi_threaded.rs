@@ -96,18 +96,6 @@ fn app_loop(
           _ => (),
         }
 
-        if !matches!(
-          message,
-          Some(
-            Message::Paint
-              | Message::Loop(..)
-              | Message::RawInput(..)
-              | Message::CursorMove { .. }
-          ) | None
-        ) {
-          tracing::info!("{message:?}");
-        }
-
         app.update(&window);
         app.draw(&window);
 
@@ -189,7 +177,8 @@ impl App {
       };
       surface.configure(&device, &config);
 
-      let shader = device.create_shader_module(wgpu::include_wgsl!("common/shader.wgsl"));
+      let shader =
+        device.create_shader_module(wgpu::include_wgsl!("common/simple_shader.wgsl"));
 
       let egui_renderer =
         EguiRenderer::new(&device, wgpu::TextureFormat::Bgra8UnormSrgb, None, 1, window);
@@ -277,6 +266,18 @@ impl App {
     while self.time.should_do_tick_unchecked() {
       self.time.tick();
     }
+
+    // if !matches!(
+    //   message,
+    //   Some(
+    //     Message::Paint
+    //       | Message::Loop(..)
+    //       | Message::RawInput(..)
+    //       | Message::CursorMove { .. }
+    //   ) | None
+    // ) {
+    //   tracing::info!("{message:?}");
+    // }
   }
 
   fn draw(&mut self, window: &Window) {

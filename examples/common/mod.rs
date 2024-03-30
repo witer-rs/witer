@@ -1,6 +1,9 @@
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+pub mod camera;
 pub mod egui;
+pub mod frame;
+pub mod window;
 
 pub fn init_log(crate_name: &'static str) {
   tracing_subscriber::registry()

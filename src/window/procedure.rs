@@ -48,6 +48,7 @@ pub struct CreateInfo {
   pub settings: WindowSettings,
   pub class_atom: u16,
   pub window: Option<Window>,
+  pub message: Arc<Mutex<Option<Message>>>,
   pub sync: SyncData,
   pub style: Style,
 }
@@ -147,6 +148,7 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
     hinstance: create_struct.hInstance,
     hwnd,
     class_atom: create_info.class_atom,
+    message: create_info.message.clone(),
     sync: create_info.sync.clone(),
     thread: Mutex::new(None),
     data: Mutex::new(Data {
@@ -194,14 +196,13 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
   Command::SetVisibility(create_info.settings.visibility).send(hwnd);
   Command::SetFullscreen(create_info.settings.fullscreen).send(hwnd);
 
-  window.0.data.lock().unwrap().stage = Stage::Ready;
-
   tracing::trace!("[`{}`]: window is ready", create_info.title);
+  window.0.data.lock().unwrap().stage = Stage::Ready;
+  *window.0.sync.skip_wait.lock().unwrap() = false;
 
   create_info.window = Some(window);
 
   create_info
-    .sync
     .message
     .lock()
     .unwrap()

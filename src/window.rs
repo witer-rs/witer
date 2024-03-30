@@ -138,9 +138,9 @@ impl Window {
     tracing::trace!("[`{}`]: creating window", &title);
 
     let sync = SyncData {
-      message: Arc::new(Mutex::new(None)),
       new_message: Arc::new((Mutex::new(false), Condvar::new())),
-      next_frame: Arc::new((Mutex::new(false), Condvar::new())),
+      next_frame: Arc::new((Mutex::new(true), Condvar::new())),
+      skip_wait: Arc::new(Mutex::new(true)),
     };
 
     let create_info = CreateInfo {
@@ -150,6 +150,7 @@ impl Window {
       settings: settings.clone(),
       class_atom: 0,
       window: None,
+      message: Arc::new(Mutex::new(None)),
       sync: sync.clone(),
       style: Style {
         visibility: settings.visibility,
@@ -188,6 +189,7 @@ impl Window {
       .name("window".to_owned())
       .spawn(move || -> Result<(), WindowError> {
         let title = create_info.title.clone();
+        // let flow = create_info.settings.flow;
         let window = Self::create_hwnd(create_info)?;
 
         tracing::trace!("[`{}`]: sending window back to main thread", title);
@@ -273,7 +275,7 @@ impl Window {
 
   fn message_pump() -> bool {
     let mut msg = MSG::default();
-    if unsafe { GetMessageW(&mut msg, None, 0, 0).as_bool() } {
+    if unsafe { GetMessageW(&mut msg, None, 0, 0) }.as_bool() {
       unsafe {
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
@@ -287,14 +289,16 @@ impl Window {
   fn take_message(&self) -> Option<Message> {
     let flow = self.0.data.lock().unwrap().flow;
     if let Flow::Wait = flow {
-      let (lock, cvar) = self.0.sync.new_message.as_ref();
-      let mut new = cvar.wait_while(lock.lock().unwrap(), |new| !*new).unwrap();
-      *new = false;
+      let should_wait = self.0.message.lock().unwrap().is_none();
+      if should_wait {
+        let (lock, cvar) = self.0.sync.new_message.as_ref();
+        let mut new = cvar.wait_while(lock.lock().unwrap(), |new| !*new).unwrap();
+        *new = false;
+      }
     }
 
     self
       .0
-      .sync
       .message
       .lock()
       .unwrap()
@@ -303,10 +307,9 @@ impl Window {
   }
 
   fn next_message(&self) -> Option<Message> {
-    let current_stage = self.0.data.lock().unwrap().stage;
-
     self.0.sync.signal_next_frame();
 
+    let current_stage = self.0.data.lock().unwrap().stage;
     let next = match current_stage {
       Stage::Setup | Stage::Ready | Stage::Destroyed => None,
       Stage::Looping => {
@@ -322,6 +325,7 @@ impl Window {
       Stage::Closing => {
         let _ = self.take_message();
         self.0.data.lock().unwrap().stage = Stage::ExitLoop;
+        *self.0.sync.skip_wait.lock().unwrap() = true;
         Some(Message::Loop(LoopMessage::Exit))
       }
       Stage::ExitLoop => {

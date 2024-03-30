@@ -4,9 +4,15 @@ use std::time::{Duration, Instant};
 
 use egui_wgpu::ScreenDescriptor;
 use foxy_time::{Time, TimeSettings};
+use wgpu::util::DeviceExt;
 use witer::{compat::egui::EventResponse, error::*, prelude::*};
 
-use self::common::egui::EguiRenderer;
+use self::common::{
+  camera::{Camera, CameraUniform},
+  egui::EguiRenderer,
+  frame::FrameUniform,
+  window::WindowUniform,
+};
 
 mod common;
 
@@ -24,7 +30,7 @@ fn main() -> Result<(), WindowError> {
     .with_visibility(Visibility::Hidden)
     .build()?;
 
-  let mut app = App::new(&window);
+  let mut app = App::new(window.clone());
 
   for message in &window {
     if message.is_key(Key::F11, KeyState::Pressed) {
@@ -51,12 +57,20 @@ fn main() -> Result<(), WindowError> {
       message
     };
 
-    if let Message::Resized(new_size) = &message {
-      app.resize(*new_size);
-    }
+    // if let Message::Resized(new_size) = &message {
+    //   app.resize(*new_size);
+    // }
 
-    app.update(&window, &message, &response);
-    app.draw(&window, &response);
+    app.update(&message, &response);
+    match app.draw(&response) {
+      Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
+        app.resize(window.inner_size());
+      }
+      Err(error) => {
+        tracing::error!("{error}");
+      }
+      _ => (),
+    };
   }
 
   Ok(())
@@ -66,6 +80,7 @@ struct App {
   last_time: Instant,
   time: Time,
 
+  window: Window,
   surface: wgpu::Surface<'static>,
   device: wgpu::Device,
   queue: wgpu::Queue,
@@ -77,10 +92,23 @@ struct App {
   fps: f32,
 
   egui_renderer: EguiRenderer,
+
+  window_uniform: WindowUniform,
+  window_buffer: wgpu::Buffer,
+  window_bind_group: wgpu::BindGroup,
+
+  frame_uniform: FrameUniform,
+  frame_buffer: wgpu::Buffer,
+  frame_bind_group: wgpu::BindGroup,
+
+  camera: Camera,
+  camera_uniform: CameraUniform,
+  camera_buffer: wgpu::Buffer,
+  camera_bind_group: wgpu::BindGroup,
 }
 
 impl App {
-  fn new(window: &Window) -> Self {
+  fn new(window: Window) -> Self {
     pollster::block_on(async {
       let last_time = Instant::now();
       let time = TimeSettings::default().build();
@@ -136,12 +164,128 @@ impl App {
       let shader = device.create_shader_module(wgpu::include_wgsl!("common/shader.wgsl"));
 
       let egui_renderer =
-        EguiRenderer::new(&device, wgpu::TextureFormat::Bgra8UnormSrgb, None, 1, window);
+        EguiRenderer::new(&device, wgpu::TextureFormat::Bgra8UnormSrgb, None, 1, &window);
+
+      let frame_uniform = FrameUniform::new();
+
+      let frame_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Frame Buffer"),
+        contents: bytemuck::cast_slice(&[frame_uniform]),
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+      });
+
+      let frame_bind_group_layout =
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+          entries: &[wgpu::BindGroupLayoutEntry {
+            binding: 0,
+            visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Buffer {
+              ty: wgpu::BufferBindingType::Uniform,
+              has_dynamic_offset: false,
+              min_binding_size: None,
+            },
+            count: None,
+          }],
+          label: Some("frame_bind_group_layout"),
+        });
+
+      let frame_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        layout: &frame_bind_group_layout,
+        entries: &[wgpu::BindGroupEntry {
+          binding: 0,
+          resource: frame_buffer.as_entire_binding(),
+        }],
+        label: Some("frame_bind_group"),
+      });
+
+      let mut window_uniform = WindowUniform::new();
+      window_uniform.update(window.inner_size());
+
+      let window_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Window Buffer"),
+        contents: bytemuck::cast_slice(&[window_uniform]),
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+      });
+
+      let window_bind_group_layout =
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+          entries: &[wgpu::BindGroupLayoutEntry {
+            binding: 0,
+            visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Buffer {
+              ty: wgpu::BufferBindingType::Uniform,
+              has_dynamic_offset: false,
+              min_binding_size: None,
+            },
+            count: None,
+          }],
+          label: Some("window_bind_group_layout"),
+        });
+
+      let window_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        layout: &window_bind_group_layout,
+        entries: &[wgpu::BindGroupEntry {
+          binding: 0,
+          resource: window_buffer.as_entire_binding(),
+        }],
+        label: Some("window_bind_group"),
+      });
+
+      let camera = Camera {
+        // position the camera 1 unit up and 2 units back
+        // +z is out of the screen
+        eye: (0.0, 1.0, 2.0).into(),
+        // have it look at the origin
+        target: (0.0, 0.0, 0.0).into(),
+        // which way is "up"
+        up: cgmath::Vector3::unit_y(),
+        aspect: config.width as f32 / config.height as f32,
+        fovy: 45.0,
+        znear: 0.1,
+        zfar: 100.0,
+      };
+
+      let mut camera_uniform = CameraUniform::new();
+      camera_uniform.update_view_proj(&camera);
+
+      let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Camera Buffer"),
+        contents: bytemuck::cast_slice(&[camera_uniform]),
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+      });
+
+      let camera_bind_group_layout =
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+          entries: &[wgpu::BindGroupLayoutEntry {
+            binding: 0,
+            visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Buffer {
+              ty: wgpu::BufferBindingType::Uniform,
+              has_dynamic_offset: false,
+              min_binding_size: None,
+            },
+            count: None,
+          }],
+          label: Some("camera_bind_group_layout"),
+        });
+
+      let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        layout: &camera_bind_group_layout,
+        entries: &[wgpu::BindGroupEntry {
+          binding: 0,
+          resource: camera_buffer.as_entire_binding(),
+        }],
+        label: Some("camera_bind_group"),
+      });
 
       let render_pipeline_layout =
         device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
           label: Some("Render Pipeline Layout"),
-          bind_group_layouts: &[],
+          bind_group_layouts: &[
+            &window_bind_group_layout,
+            &frame_bind_group_layout,
+            &camera_bind_group_layout,
+          ],
           push_constant_ranges: &[],
         });
 
@@ -190,6 +334,7 @@ impl App {
       Self {
         last_time,
         time,
+        window,
         surface,
         device,
         queue,
@@ -199,6 +344,16 @@ impl App {
         frame_count: 0,
         fps: 0.0,
         egui_renderer,
+        window_uniform,
+        window_buffer,
+        window_bind_group,
+        frame_uniform,
+        frame_buffer,
+        frame_bind_group,
+        camera,
+        camera_uniform,
+        camera_buffer,
+        camera_bind_group,
       }
     })
   }
@@ -212,28 +367,52 @@ impl App {
     }
   }
 
-  fn update(&mut self, _window: &Window, message: &Message, _response: &EventResponse) {
+  fn update(&mut self, _message: &Message, _response: &EventResponse) {
     self.time.update();
     while self.time.should_do_tick_unchecked() {
       self.time.tick();
     }
 
-    if !matches!(
-      message,
-      Message::Paint
-        | Message::Loop(..)
-        | Message::RawInput(..)
-        | Message::CursorMove { .. }
-    ) {
-      tracing::info!("{message:?}");
-    }
+    // if !matches!(
+    //   message,
+    //   Message::Paint
+    //     | Message::Loop(..)
+    //     | Message::RawInput(..)
+    //     | Message::CursorMove { .. }
+    // ) {
+    //   tracing::info!("{message:?}");
+    // }
   }
 
-  fn draw(&mut self, window: &Window, _response: &EventResponse) {
-    let size = window.inner_size();
-    if size.width <= 1 || size.height <= 1 {
-      return;
-    }
+  fn update_buffers(&mut self) {
+    self.window_uniform.update(self.window.inner_size());
+    self.queue.write_buffer(
+      &self.window_buffer,
+      0,
+      bytemuck::cast_slice(&[self.window_uniform]),
+    );
+
+    self.frame_uniform.update();
+    self.queue.write_buffer(
+      &self.frame_buffer,
+      0,
+      bytemuck::cast_slice(&[self.frame_uniform]),
+    );
+
+    self.camera_uniform.update_view_proj(&self.camera);
+    self.queue.write_buffer(
+      &self.camera_buffer,
+      0,
+      bytemuck::cast_slice(&[self.camera_uniform]),
+    );
+  }
+
+  fn draw(&mut self, _response: &EventResponse) -> Result<(), wgpu::SurfaceError> {
+    // if self.window.inner_size().is_any_zero() {
+    //   return Ok(());
+    // }
+
+    let output = self.surface.get_current_texture()?;
 
     let now = Instant::now();
     let elapsed = now.duration_since(self.last_time);
@@ -242,17 +421,7 @@ impl App {
       self.last_time = now;
     }
 
-    let output = match self.surface.get_current_texture() {
-      Ok(output) => output,
-      Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
-        self.resize(window.inner_size());
-        return;
-      }
-      Err(error) => {
-        tracing::error!("{error}");
-        return;
-      }
-    };
+    self.update_buffers();
 
     let view = output
       .texture
@@ -263,6 +432,7 @@ impl App {
         .create_command_encoder(&wgpu::CommandEncoderDescriptor {
           label: Some("Render Encoder"),
         });
+
     {
       let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
         label: Some("Render Pass"),
@@ -271,9 +441,9 @@ impl App {
           resolve_target: None,
           ops: wgpu::Operations {
             load: wgpu::LoadOp::Clear(wgpu::Color {
-              r: 0.1,
-              g: 0.3,
-              b: 0.7,
+              r: 0.0,
+              g: 1.0,
+              b: 0.0,
               a: 1.0,
             }),
             store: wgpu::StoreOp::Store,
@@ -284,34 +454,42 @@ impl App {
         timestamp_writes: None,
       });
       render_pass.set_pipeline(&self.render_pipeline); // 2.
+      render_pass.set_bind_group(0, &self.window_bind_group, &[]);
+      render_pass.set_bind_group(1, &self.frame_bind_group, &[]);
+      render_pass.set_bind_group(2, &self.camera_bind_group, &[]);
       render_pass.draw(0..3, 0..1); // 3.
     }
 
     let screen_descriptor = ScreenDescriptor {
       size_in_pixels: [self.config.width, self.config.height],
-      pixels_per_point: window.scale_factor() as f32,
+      pixels_per_point: self.window.scale_factor() as f32,
     };
 
     self.egui_renderer.draw(
       &self.device,
       &self.queue,
       &mut encoder,
-      window,
+      &self.window,
       &view,
       screen_descriptor,
       |ctx| {
         egui::Window::new("Debug")
           .default_open(true)
-          .default_size((50.0, 50.0))
           .resizable(false)
           .anchor(egui::Align2::LEFT_BOTTOM, (5.0, -5.0))
           .show(ctx, |ctx| {
             ctx.label(format!("fps: {:.1}", self.fps));
+            ctx.label(format!("resolution: {:.1?}", self.window_uniform.resolution));
+            ctx.label(format!("frame_index: {:.1}", self.frame_uniform.frame_index));
           });
       },
     );
 
     self.queue.submit(std::iter::once(encoder.finish()));
     output.present();
+
+    Ok(())
   }
 }
+
+// TODO: see comment in SyncData

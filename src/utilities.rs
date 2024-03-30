@@ -284,7 +284,7 @@ pub fn register_raw_input_devices(devices: &[RAWINPUTDEVICE]) -> bool {
 }
 
 pub fn read_raw_input(handle: HRAWINPUT) -> Option<RAWINPUT> {
-  let mut data: RAWINPUT = unsafe { std::mem::zeroed() };
+  let mut data = RAWINPUT::default();
   let mut data_size = std::mem::size_of::<RAWINPUT>() as u32;
   let header_size = std::mem::size_of::<RAWINPUTHEADER>() as u32;
 

@@ -34,6 +34,7 @@ tracing   = { version = "0.1", default-features = false }
 rwh_05 = { package = "raw-window-handle", version = "0.5.2", features = ["std"], optional = true }
 rwh_06 = { package = "raw-window-handle", version = "0.6", features = ["std"], optional = true }
 
+# crossbeam = "0.8.4"
 cursor-icon = "1.1"
 
 # glium = { version = "0.34", optional = true }
@@ -53,6 +54,8 @@ foxy_time          = { version = "1", path = "../foxy_time" }
 pollster           = "0.3"
 wgpu               = "0.19"
 egui-wgpu          = "0.27"
+cgmath             = "0.18"
+bytemuck           = "1.15"
 
 [[example]]
 name              = "opengl"

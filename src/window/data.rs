@@ -30,7 +30,6 @@ use windows::{
         GetClientRect,
         GetWindowRect,
         LoadCursorW,
-        PostMessageW,
         SetCursor,
         SetWindowLongW,
         SetWindowPos,
@@ -77,54 +76,36 @@ use crate::{
 
 #[derive(Clone)]
 pub struct SyncData {
-  pub message: Arc<Mutex<Option<Message>>>,
   pub new_message: Arc<(Mutex<bool>, Condvar)>,
   pub next_frame: Arc<(Mutex<bool>, Condvar)>,
+  pub skip_wait: Arc<Mutex<bool>>,
 }
 
 impl SyncData {
-  pub fn send_to_main(&self, message: Message, state: &Internal) {
-    let should_wait = self.message.lock().unwrap().is_some();
-    if should_wait {
-      self.wait_on_frame(|| {
-        matches!(
-          state.data.lock().unwrap().stage,
-          Stage::Setup | Stage::ExitLoop | Stage::Destroyed
-        )
-      });
-    }
-
-    self.message.lock().unwrap().replace(message);
-    self.signal_new_message();
-
-    self.wait_on_frame(|| {
-      matches!(
-        state.data.lock().unwrap().stage,
-        Stage::Setup | Stage::ExitLoop | Stage::Destroyed
-      )
-    });
-  }
-
   pub fn signal_new_message(&self) {
     let (lock, cvar) = self.new_message.as_ref();
     let mut new = lock.lock().unwrap();
-    *new = true;
-    cvar.notify_one();
+    if !*new {
+      *new = true;
+      cvar.notify_all();
+    }
   }
 
-  pub fn wait_on_frame(&self, interrupt: impl Fn() -> bool) {
+  pub fn wait_on_frame(&self) {
     let (lock, cvar) = self.next_frame.as_ref();
     let mut next = cvar
-      .wait_while(lock.lock().unwrap(), |next| !*next && !interrupt())
+      .wait_while(lock.lock().unwrap(), |next| !*next)
       .unwrap();
-    *next = false;
+    *next = *self.skip_wait.lock().unwrap();
   }
 
   pub fn signal_next_frame(&self) {
     let (lock, cvar) = self.next_frame.as_ref();
     let mut next = lock.lock().unwrap();
-    *next = true;
-    cvar.notify_one();
+    if !*next {
+      *next = true;
+      cvar.notify_all();
+    }
   }
 }
 
@@ -132,6 +113,7 @@ pub struct Internal {
   pub hinstance: HINSTANCE,
   pub hwnd: HWND,
   pub class_atom: u16,
+  pub message: Arc<Mutex<Option<Message>>>,
   pub sync: SyncData,
   pub thread: Mutex<Option<JoinHandle<Result<(), WindowError>>>>,
   pub data: Mutex<Data>,
@@ -189,6 +171,20 @@ impl Internal {
     *self.thread.lock().unwrap() = handle;
   }
 
+  pub fn send_message_to_main(&self, message: Message) {
+    let should_wait = self.message.lock().unwrap().is_some();
+    if should_wait {
+      self.sync.wait_on_frame();
+    }
+
+    self.message.lock().unwrap().replace(message);
+    self.sync.signal_new_message();
+
+    // TODO: try inverting these locks so that they don't lock unless the main thread tells them to lock.
+
+    self.sync.wait_on_frame();
+  }
+
   pub(crate) fn join_thread(&self) {
     let thread = self.thread.lock().unwrap().take();
     if let Some(thread) = thread {
@@ -230,10 +226,7 @@ impl Internal {
     wparam: WPARAM,
     lparam: LPARAM,
   ) -> LRESULT {
-    let mut messages = Vec::with_capacity(0);
-    messages.reserve_exact(1);
-
-    let result = match msg {
+    match msg {
       Command::MESSAGE_ID => {
         let command = unsafe { Box::from_raw(wparam.0 as *mut Command) };
         // tracing::debug!("{command:?}");
@@ -462,53 +455,66 @@ impl Internal {
           let hcursor =
             unsafe { LoadCursorW(HINSTANCE::default(), cursor_icon) }.unwrap();
           unsafe { SetCursor(hcursor) };
-          LRESULT(0)
-        } else {
-          unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
         }
+
+        unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
       }
       // WindowsAndMessaging::WM_SIZING | WindowsAndMessaging::WM_MOVING => {
       //   // ignore certain messages
       //   return unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) };
       // }
       WindowsAndMessaging::WM_CLOSE => {
-        messages.push(Message::CloseRequested);
+        self.send_message_to_main(Message::CloseRequested);
         LRESULT(0)
       }
       WindowsAndMessaging::WM_PAINT => {
-        messages.push(Message::Paint);
+        self.data.lock().unwrap().requested_redraw = false;
+        self.send_message_to_main(Message::Paint);
         unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
       }
       WindowsAndMessaging::WM_SIZE => {
-        self.data.lock().unwrap().style.minimized =
-          is_flag_set(wparam.0 as u32, WindowsAndMessaging::SIZE_MINIMIZED);
         self.data.lock().unwrap().style.maximized =
           is_flag_set(wparam.0 as u32, WindowsAndMessaging::SIZE_MAXIMIZED);
+
+        // info!("RESIZED: {_size:?}");
+        let is_windowed = self.data.lock().unwrap().style.fullscreen.is_none();
+        // // data.state.write_lock().size = size;
+        if is_windowed {
+          self.update_last_windowed_pos_size(hwnd);
+        }
 
         let width = lo_word(lparam.0 as u32) as u32;
         let height = hi_word(lparam.0 as u32) as u32;
 
-        messages.push(Message::Resized(PhysicalSize::new(width, height)));
+        self.send_message_to_main(Message::Resized(PhysicalSize::new(width, height)));
         unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
       }
       WindowsAndMessaging::WM_MOVE => {
         let x = lo_word(lparam.0 as u32) as i32;
         let y = hi_word(lparam.0 as u32) as i32;
 
-        messages.push(Message::Moved(PhysicalPosition::new(x, y)));
+        self.send_message_to_main(Message::Moved(PhysicalPosition::new(x, y)));
         unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
       }
       WindowsAndMessaging::WM_WINDOWPOSCHANGED => {
         let window_pos = unsafe { &*(lparam.0 as *const WINDOWPOS) };
+
         // if (window_pos.flags & WindowsAndMessaging::SWP_NOMOVE) !=
         // WindowsAndMessaging::SWP_NOMOVE {
         //   out.push(Message::Moved(PhysicalPosition::new((x, y))))
         // }
+        // info!("BOUNDSCHANGED: {outer_position:?}, {outer_size:?}");
+        let is_windowed = self.data.lock().unwrap().style.fullscreen.is_none();
+        // // data.state.write_lock().position = position;
+        if is_windowed {
+          self.update_last_windowed_pos_size(hwnd);
+        }
 
-        messages.push(Message::BoundsChanged {
+        self.send_message_to_main(Message::BoundsChanged {
           outer_position: PhysicalPosition::new(window_pos.x, window_pos.y),
           outer_size: PhysicalSize::new(window_pos.cx as u32, window_pos.cy as u32),
         });
+
         unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
       }
       WindowsAndMessaging::WM_NCACTIVATE => {
@@ -518,21 +524,38 @@ impl Internal {
         unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
       }
       WindowsAndMessaging::WM_SETFOCUS => {
-        messages.push(Message::Focus(Focus::Gained));
+        let cursor_visibility = self.data.lock().unwrap().cursor.visibility;
+        let cursor_mode = self.data.lock().unwrap().cursor.mode;
+
+        Command::SetCursorMode(cursor_mode).post(hwnd);
+        Command::SetCursorVisibility(cursor_visibility).post(hwnd);
+
         self.data.lock().unwrap().style.focused = true;
+        self.send_message_to_main(Message::Focus(Focus::Gained));
+
         unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
       }
       WindowsAndMessaging::WM_KILLFOCUS => {
-        messages.push(Message::Focus(Focus::Lost));
         self.data.lock().unwrap().style.focused = false;
+        self.send_message_to_main(Message::Focus(Focus::Lost));
         unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
       }
       WindowsAndMessaging::WM_COMMAND => {
-        messages.push(Message::Command);
+        self.send_message_to_main(Message::Command);
         unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
       }
       WindowsAndMessaging::WM_SYSCOMMAND => {
-        messages.push(Message::SystemCommand);
+        match wparam.0 as u32 {
+          WindowsAndMessaging::SC_MINIMIZE => {
+            self.data.lock().unwrap().style.minimized = true;
+          }
+          WindowsAndMessaging::SC_RESTORE => {
+            self.data.lock().unwrap().style.minimized = false;
+          }
+          _ => {}
+        }
+
+        self.send_message_to_main(Message::SystemCommand);
         unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
       }
       WindowsAndMessaging::WM_DPICHANGED => {
@@ -552,7 +575,7 @@ impl Internal {
         .unwrap();
         let scale_factor = dpi_to_scale_factor(dpi);
         self.data.lock().unwrap().scale_factor = scale_factor;
-        messages.push(Message::ScaleFactorChanged(scale_factor));
+        self.send_message_to_main(Message::ScaleFactorChanged(scale_factor));
         unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
       }
       WindowsAndMessaging::WM_INPUT => {
@@ -560,28 +583,35 @@ impl Internal {
           return unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) };
         };
 
+        if wparam.0 as u32 == WindowsAndMessaging::RIM_INPUT {
+          unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) };
+        }
+
         match RID_DEVICE_INFO_TYPE(data.header.dwType) {
           UI::Input::RIM_TYPEMOUSE => {
             let mouse_data = unsafe { data.data.mouse };
             let button_flags = unsafe { mouse_data.Anonymous.Anonymous.usButtonFlags };
 
-            if mouse_data.usFlags == UI::Input::MOUSE_MOVE_RELATIVE {
+            if is_flag_set(mouse_data.usFlags.0, UI::Input::MOUSE_MOVE_RELATIVE.0) {
               let x = mouse_data.lLastX as f32;
               let y = mouse_data.lLastY as f32;
 
-              if x != 0.0 || y != 0.0 {
-                messages.push(Message::RawInput(RawInputMessage::MouseMove {
-                  delta_x: x,
-                  delta_y: y,
-                }));
+              if mouse_data.lLastX != 0 || mouse_data.lLastY != 0 {
+                self.send_message_to_main(Message::RawInput(
+                  RawInputMessage::MouseMove {
+                    delta_x: x,
+                    delta_y: y,
+                  },
+                ));
               }
             }
 
             for (id, state) in mouse_button_states(button_flags).iter().enumerate() {
               if let Some(state) = *state {
                 let button = MouseButton::from_state(id);
-                messages
-                  .push(Message::RawInput(RawInputMessage::MouseButton { button, state }))
+                self.send_message_to_main(Message::RawInput(
+                  RawInputMessage::MouseButton { button, state },
+                ))
               }
             }
           }
@@ -602,18 +632,21 @@ impl Internal {
             );
 
             if let Some(state) = RawKeyState::from_bools(pressed, released) {
-              messages.push(Message::RawInput(RawInputMessage::Keyboard { key, state }));
+              self.send_message_to_main(Message::RawInput(RawInputMessage::Keyboard {
+                key,
+                state,
+              }));
             }
           }
           _ => (),
         };
-        unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+        LRESULT(0)
       }
       WindowsAndMessaging::WM_CHAR => {
         let text = char::from_u32(wparam.0 as u32)
           .unwrap_or_default()
           .to_string();
-        messages.push(Message::Text(text));
+        self.send_message_to_main(Message::Text(text));
         unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
       }
       WindowsAndMessaging::WM_KEYDOWN
@@ -623,14 +656,24 @@ impl Internal {
         let (changed, shift, ctrl, alt, win) =
           self.data.lock().unwrap().input.update_modifiers_state();
         if changed {
-          messages.push(Message::ModifiersChanged {
+          self.send_message_to_main(Message::ModifiersChanged {
             shift,
             ctrl,
             alt,
             win,
           });
         }
-        messages.push(Message::new_keyboard_message(lparam));
+        let message = Message::new_keyboard_message(lparam);
+        if let Message::Key { key, state, .. } = &message {
+          self
+            .data
+            .lock()
+            .unwrap()
+            .input
+            .update_key_state(*key, *state);
+        }
+        self.send_message_to_main(message);
+        // messages.push();
         unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
       }
       WindowsAndMessaging::WM_MOUSEMOVE => {
@@ -674,15 +717,16 @@ impl Internal {
         };
 
         if send_message {
-          messages.push(Message::CursorMove { position, kind });
+          self.send_message_to_main(Message::CursorMove { position, kind });
           self.data.lock().unwrap().cursor.last_position = position;
         }
         unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
       }
       Controls::WM_MOUSELEAVE => {
         self.data.lock().unwrap().cursor.inside_window = false;
-        messages.push(Message::CursorMove {
-          position: self.data.lock().unwrap().cursor.last_position,
+        let position = self.data.lock().unwrap().cursor.last_position;
+        self.send_message_to_main(Message::CursorMove {
+          position,
           kind: CursorMoveKind::Left,
         });
         unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
@@ -690,7 +734,7 @@ impl Internal {
       WindowsAndMessaging::WM_MOUSEWHEEL => {
         let delta = signed_hi_word(wparam.0 as i32) as f32
           / WindowsAndMessaging::WHEEL_DELTA as f32;
-        messages.push(Message::MouseWheel {
+        self.send_message_to_main(Message::MouseWheel {
           delta_x: 0.0,
           delta_y: delta,
         });
@@ -699,7 +743,7 @@ impl Internal {
       WindowsAndMessaging::WM_MOUSEHWHEEL => {
         let delta = signed_hi_word(wparam.0 as i32) as f32
           / WindowsAndMessaging::WHEEL_DELTA as f32;
-        messages.push(Message::MouseWheel {
+        self.send_message_to_main(Message::MouseWheel {
           delta_x: delta,
           delta_y: 0.0,
         });
@@ -710,79 +754,20 @@ impl Internal {
           .contains(&msg) =>
       {
         // mouse move / wheels will match earlier
-        messages.push(Message::new_mouse_button_message(msg, wparam, lparam));
-        unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
-      }
-      _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
-    };
-
-    // pass message to main thread
-    if !messages.is_empty() {
-      for message in messages {
-        match &message {
-          &Message::Focus(focus) => {
-            let cursor_visibility = self.data.lock().unwrap().cursor.visibility;
-            let cursor_mode = self.data.lock().unwrap().cursor.mode;
-            if focus == Focus::Gained {
-              Command::SetCursorMode(cursor_mode).post(hwnd);
-              Command::SetCursorVisibility(cursor_visibility).post(hwnd);
-              unsafe {
-                PostMessageW(hwnd, WindowsAndMessaging::WM_APP, WPARAM(0), LPARAM(0))
-              }
-              .unwrap();
-            }
-          }
-          &Message::Resized(_size) => {
-            // info!("RESIZED: {_size:?}");
-            let is_windowed = self.data.lock().unwrap().style.fullscreen.is_none();
-            // // data.state.write_lock().size = size;
-            if is_windowed {
-              self.update_last_windowed_pos_size(hwnd);
-            }
-          }
-          &Message::BoundsChanged {
-            outer_position: _,
-            outer_size: _,
-          } => {
-            // info!("BOUNDSCHANGED: {outer_position:?}, {outer_size:?}");
-            let is_windowed = self.data.lock().unwrap().style.fullscreen.is_none();
-            // // data.state.write_lock().position = position;
-            if is_windowed {
-              self.update_last_windowed_pos_size(hwnd);
-            }
-          }
-          &Message::Key {
-            key,
-            state: key_state,
-            ..
-          } => {
-            self
-              .data
-              .lock()
-              .unwrap()
-              .input
-              .update_key_state(key, key_state);
-          }
-          &Message::MouseButton {
-            button,
-            state: button_state,
-            ..
-          } => self
+        let message = Message::new_mouse_button_message(msg, wparam, lparam);
+        if let Message::MouseButton { button, state, .. } = &message {
+          self
             .data
             .lock()
             .unwrap()
             .input
-            .update_mouse_button_state(button, button_state),
-          Message::Paint => {
-            self.data.lock().unwrap().requested_redraw = false;
-          }
-          _ => (),
+            .update_mouse_button_state(*button, *state);
         }
-        self.sync.send_to_main(message, self);
+        self.send_message_to_main(message);
+        unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
       }
+      _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
     }
-
-    result
   }
 }
 
