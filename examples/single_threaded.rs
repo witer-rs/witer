@@ -408,9 +408,9 @@ impl App {
   }
 
   fn draw(&mut self, _response: &EventResponse) -> Result<(), wgpu::SurfaceError> {
-    // if self.window.inner_size().is_any_zero() {
-    //   return Ok(());
-    // }
+    if self.window.inner_size().is_any_zero() {
+      return Ok(());
+    }
 
     let output = self.surface.get_current_texture()?;
 
