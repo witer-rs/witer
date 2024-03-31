@@ -18,9 +18,6 @@ mod common;
   This example showcases how to render a triangle using WGPU on a separate thread while
   staying in lockstep with the window in key scenarios. This is done to prevent desync
   issues such as input lag or swapchain losses.
-
-  Rendering on a separate thread adds complexity, but allows for unlocking the app
-  from the window message pump, which is vital for updating while moving/resizing.
 */
 
 fn main() -> Result<(), WindowError> {

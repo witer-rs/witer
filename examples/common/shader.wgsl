@@ -38,17 +38,38 @@ fn vs_main(
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let unnorm = vec2(in.uv.x * window.resolution.x, in.uv.y * window.resolution.y);
-    let index = u32(unnorm.x + (unnorm.y * window.resolution.y));
-    let seed = index * frame.frame_index;
-    // let value = f32(index) / (window.resolution.x * window.resolution.y);
+    let coord = (in.uv * 2.0 - 1.0) * vec2(window.resolution.x / window.resolution.y, 1.0);
 
-    // return vec4<f32>(0.7, 0.3, 0.1, 1.0);
-    // return vec4<f32>(in.uv, 0.0, 1.0);
-    let r = random_float(u32(seed + 0));
-    let g = random_float(u32(seed + 1));
-    let b = random_float(u32(seed + 2));
-    return vec4(r, g, b, 1.0);
+    let ray_origin = (camera.view_proj * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+    let ray_dir = vec3(coord.x, coord.y, -1.0);
+    let radius = 0.5;
+
+    var a: f32 = dot(ray_dir, ray_dir);
+    var b: f32 = 2.0 * dot(ray_origin, ray_dir);
+    var c: f32 = dot(ray_origin, ray_origin) - radius * radius;
+
+    var discriminant: f32 = b * b - 4.0 * a * c;
+
+    if discriminant >= 0.0 {
+        return vec4(0.7, 0.3, 0.1, 1.0);
+    } else {
+        return vec4(0.1, 0.2, 0.3, 1.0);
+    }
+}
+
+fn random_noise(uv: vec2<f32>) -> vec4<f32> {
+    let coord = vec2(uv.x * window.resolution.x, uv.y * window.resolution.y);
+    let index = u32(coord.x + (coord.y * window.resolution.y));
+    let seed = index * frame.frame_index;
+
+    let color = vec4(
+        random_float(u32(seed + 0)) * 0.1 + 0.05,
+        random_float(u32(seed + 1)) * 0.2 + 0.25,
+        random_float(u32(seed + 2)) * 0.3 + 0.35,
+        1.0,
+    );
+
+    return color;
 }
 
 fn pcg_hash(input: u32) -> u32 {
