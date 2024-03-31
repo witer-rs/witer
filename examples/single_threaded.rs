@@ -8,9 +8,10 @@ use wgpu::util::DeviceExt;
 use witer::{compat::egui::EventResponse, error::*, prelude::*};
 
 use self::common::{
-  camera::{Camera, CameraUniform},
+  camera::{Camera, CameraController, CameraUniform},
   egui::EguiRenderer,
   frame::FrameUniform,
+  model::ModelUniform,
   window::WindowUniform,
 };
 
@@ -102,9 +103,14 @@ struct App {
   frame_bind_group: wgpu::BindGroup,
 
   camera: Camera,
+  camera_controller: CameraController,
   camera_uniform: CameraUniform,
   camera_buffer: wgpu::Buffer,
   camera_bind_group: wgpu::BindGroup,
+
+  model_uniform: ModelUniform,
+  model_buffer: wgpu::Buffer,
+  model_bind_group: wgpu::BindGroup,
 }
 
 impl App {
@@ -232,7 +238,7 @@ impl App {
       });
 
       let camera = Camera {
-        // position the camera 1 unit up and 2 units back
+        // position the camera 2 units back
         // +z is out of the screen
         eye: (0.0, 0.0, 2.0).into(),
         // have it look at the origin
@@ -245,6 +251,7 @@ impl App {
         zfar: 100.0,
       };
 
+      let camera_controller = CameraController::new(1.0);
       let mut camera_uniform = CameraUniform::new();
       camera_uniform.update_view_proj(&camera);
 
@@ -278,6 +285,38 @@ impl App {
         label: Some("camera_bind_group"),
       });
 
+      let model_uniform = ModelUniform::new();
+
+      let model_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Model Buffer"),
+        contents: bytemuck::cast_slice(&[model_uniform]),
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+      });
+
+      let model_bind_group_layout =
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+          entries: &[wgpu::BindGroupLayoutEntry {
+            binding: 0,
+            visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Buffer {
+              ty: wgpu::BufferBindingType::Uniform,
+              has_dynamic_offset: false,
+              min_binding_size: None,
+            },
+            count: None,
+          }],
+          label: Some("model_bind_group_layout"),
+        });
+
+      let model_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        layout: &model_bind_group_layout,
+        entries: &[wgpu::BindGroupEntry {
+          binding: 0,
+          resource: model_buffer.as_entire_binding(),
+        }],
+        label: Some("model_bind_group"),
+      });
+
       let render_pipeline_layout =
         device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
           label: Some("Render Pipeline Layout"),
@@ -285,6 +324,7 @@ impl App {
             &window_bind_group_layout,
             &frame_bind_group_layout,
             &camera_bind_group_layout,
+            &model_bind_group_layout,
           ],
           push_constant_ranges: &[],
         });
@@ -351,9 +391,13 @@ impl App {
         frame_buffer,
         frame_bind_group,
         camera,
+        camera_controller,
         camera_uniform,
         camera_buffer,
         camera_bind_group,
+        model_uniform,
+        model_buffer,
+        model_bind_group,
       }
     })
   }
@@ -367,11 +411,20 @@ impl App {
     }
   }
 
-  fn update(&mut self, _message: &Message, _response: &EventResponse) {
+  fn update(&mut self, message: &Message, response: &EventResponse) {
     self.time.update();
     while self.time.should_do_tick_unchecked() {
       self.time.tick();
     }
+
+    if !response.consumed {
+      self.camera_controller.process_events(message);
+    }
+
+    self
+      .camera_controller
+      .update_camera(&mut self.camera, self.time.delta_secs() as f32);
+    self.camera_uniform.update_view_proj(&self.camera);
 
     // if !matches!(
     //   message,
@@ -399,11 +452,16 @@ impl App {
       bytemuck::cast_slice(&[self.frame_uniform]),
     );
 
-    self.camera_uniform.update_view_proj(&self.camera);
     self.queue.write_buffer(
       &self.camera_buffer,
       0,
       bytemuck::cast_slice(&[self.camera_uniform]),
+    );
+
+    self.queue.write_buffer(
+      &self.model_buffer,
+      0,
+      bytemuck::cast_slice(&[self.model_uniform]),
     );
   }
 
@@ -457,6 +515,7 @@ impl App {
       render_pass.set_bind_group(0, &self.window_bind_group, &[]);
       render_pass.set_bind_group(1, &self.frame_bind_group, &[]);
       render_pass.set_bind_group(2, &self.camera_bind_group, &[]);
+      render_pass.set_bind_group(3, &self.model_bind_group, &[]);
       render_pass.draw(0..3, 0..1); // 3.
     }
 
@@ -481,6 +540,17 @@ impl App {
             ctx.label(format!("fps: {:.1}", self.fps));
             ctx.label(format!("resolution: {:.1?}", self.window_uniform.resolution));
             ctx.label(format!("frame_index: {:.1}", self.frame_uniform.frame_index));
+
+            ctx.label("Model Position:");
+            ctx
+              .add(egui::Slider::new(&mut self.model_uniform.model_pos[0], -5.0..=5.0))
+              .labelled_by("X: ".into());
+            ctx
+              .add(egui::Slider::new(&mut self.model_uniform.model_pos[1], -5.0..=5.0))
+              .labelled_by("Y: ".into());
+            ctx
+              .add(egui::Slider::new(&mut self.model_uniform.model_pos[2], -5.0..=0.0))
+              .labelled_by("Z: ".into());
           });
       },
     );

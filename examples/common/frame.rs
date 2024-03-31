@@ -1,5 +1,3 @@
-use witer::PhysicalSize;
-
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct FrameUniform {
