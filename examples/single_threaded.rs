@@ -537,6 +537,7 @@ impl App {
           .resizable(false)
           .anchor(egui::Align2::LEFT_BOTTOM, (5.0, -5.0))
           .show(ctx, |ctx| {
+            ctx.label(format!("ft: {:.3}ms", self.time.average_delta_secs() * 1000.0));
             ctx.label(format!("fps: {:.1}", self.fps));
             ctx.label(format!("resolution: {:.1?}", self.window_uniform.resolution));
             ctx.label(format!("frame_index: {:.1}", self.frame_uniform.frame_index));
@@ -549,7 +550,7 @@ impl App {
               .add(egui::Slider::new(&mut self.model_uniform.model_pos[1], -5.0..=5.0))
               .labelled_by("Y: ".into());
             ctx
-              .add(egui::Slider::new(&mut self.model_uniform.model_pos[2], -5.0..=0.0))
+              .add(egui::Slider::new(&mut self.model_uniform.model_pos[2], 0.0..=5.0))
               .labelled_by("Z: ".into());
           });
       },
