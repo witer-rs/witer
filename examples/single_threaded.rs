@@ -532,26 +532,41 @@ impl App {
       &view,
       screen_descriptor,
       |ctx| {
-        egui::Window::new("Debug")
+        egui::Window::new("Settings")
           .default_open(true)
           .resizable(false)
-          .anchor(egui::Align2::LEFT_BOTTOM, (5.0, -5.0))
+          .max_width(150.0)
+          .anchor(egui::Align2::LEFT_TOP, (5.0, 5.0))
           .show(ctx, |ctx| {
+            ctx.heading("Debug Info");
             ctx.label(format!("ft: {:.3}ms", self.time.average_delta_secs() * 1000.0));
             ctx.label(format!("fps: {:.1}", self.fps));
             ctx.label(format!("resolution: {:.1?}", self.window_uniform.resolution));
             ctx.label(format!("frame_index: {:.1}", self.frame_uniform.frame_index));
 
-            ctx.label("Model Position:");
+            ctx.separator();
+
+            ctx.heading("Model Position");
             ctx
-              .add(egui::Slider::new(&mut self.model_uniform.model_pos[0], -5.0..=5.0))
+              .add(
+                egui::Slider::new(&mut self.model_uniform.model_pos[0], -5.0..=5.0)
+                  .step_by(0.01),
+              )
               .labelled_by("X: ".into());
             ctx
-              .add(egui::Slider::new(&mut self.model_uniform.model_pos[1], -5.0..=5.0))
+              .add(
+                egui::Slider::new(&mut self.model_uniform.model_pos[1], -5.0..=5.0)
+                  .step_by(0.01),
+              )
               .labelled_by("Y: ".into());
             ctx
-              .add(egui::Slider::new(&mut self.model_uniform.model_pos[2], 0.0..=5.0))
+              .add(
+                egui::Slider::new(&mut self.model_uniform.model_pos[2], -5.0..=5.0)
+                  .step_by(0.01),
+              )
               .labelled_by("Z: ".into());
+
+            ctx.shrink_width_to_current();
           });
       },
     );

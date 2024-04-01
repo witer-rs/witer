@@ -28,8 +28,10 @@ The main goal of `witer` is to have a simple, easy-to-use API. The target audien
 a window quickly, easily, and idiomatically. I aim to have feature-parity with `winit` eventually as a secondary goal.
 
 Cross-platform support is highly unlikely, but pull requests are welcomed if anyone else wants to tackle it.
+`egui` support is experimental and a point of active development. OpenGL context creation is similarly under active development.
 
-⚠️ Warning ⚠️ This project is still hilariously incomplete. I am only one student, after all.
+⚠️ Warning ⚠️ This project is still hilariously incomplete and may contain major bugs. I am only one student, after all, so please
+report any and all issues or feature requests!
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/R6R8PGIU6)
 
