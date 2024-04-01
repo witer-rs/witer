@@ -39,6 +39,7 @@ use crate::{
     data::{Internal, PhysicalPosition},
     stage::Stage,
   },
+  LoopMessage,
 };
 
 pub struct CreateInfo {
@@ -81,6 +82,9 @@ pub extern "system" fn wnd_proc(
           match command {
             Command::Exit => {
               let user_data = unsafe { Box::from_raw(state_ptr as *mut UserData) };
+              user_data
+                .state
+                .send_message_to_main(Message::Loop(LoopMessage::Exit));
               drop(user_data);
               LRESULT(0)
             }

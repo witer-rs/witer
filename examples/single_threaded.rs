@@ -34,6 +34,12 @@ fn main() -> Result<(), WindowError> {
   let mut app = App::new(window.clone());
 
   for message in &window {
+    // if let Message::Loop(LoopMessage::Exit) = &message {
+    //   tracing::info!("exit");
+    // } else {
+    //   tracing::debug!("idc");
+    // }
+
     if message.is_key(Key::F11, KeyState::Pressed) {
       let fullscreen = window.fullscreen();
       match fullscreen {

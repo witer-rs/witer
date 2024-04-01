@@ -312,25 +312,24 @@ impl Window {
     let current_stage = self.0.data.lock().unwrap().stage;
     let next = match current_stage {
       Stage::Setup | Stage::Ready | Stage::Destroyed => None,
-      Stage::Looping => {
+      Stage::Looping | Stage::Closing => {
         let message = self.take_message();
-        if let Some(Message::CloseRequested) = message {
-          let x = self.0.data.lock().unwrap().close_on_x;
-          if x {
-            self.close();
+        match message {
+          Some(Message::CloseRequested) => {
+            let x = self.0.data.lock().unwrap().close_on_x;
+            if x {
+              self.close();
+            }
           }
+          Some(Message::Loop(LoopMessage::Exit)) => {
+            self.0.data.lock().unwrap().stage = Stage::ExitLoop;
+          }
+          _ => (),
         }
         message
       }
-      Stage::Closing => {
-        let _ = self.take_message();
-        self.0.data.lock().unwrap().stage = Stage::ExitLoop;
-        *self.0.sync.skip_wait.lock().unwrap() = true;
-        Some(Message::Loop(LoopMessage::Exit))
-      }
       Stage::ExitLoop => {
         tracing::trace!("[`{}`]: exiting loop", self.title());
-        Command::Exit.post(self.0.hwnd);
         None
       }
     };
@@ -338,7 +337,22 @@ impl Window {
     next
   }
 
+  /// Request the window be closed
+  pub fn close(&self) {
+    if self.is_closing() {
+      return; // already closing
+    }
+    tracing::trace!("[`{}`]: closing window", self.title());
+    self.0.data.lock().unwrap().stage = Stage::Closing;
+    *self.0.sync.skip_wait.lock().unwrap() = true;
+    Command::Exit.post(self.0.hwnd);
+  }
+
   // GETTERS
+
+  pub fn is_closing(&self) -> bool {
+    self.0.is_closing()
+  }
 
   pub fn visibility(&self) -> Visibility {
     self.0.data.lock().unwrap().style.visibility
@@ -474,10 +488,6 @@ impl Window {
 
   pub fn win(&self) -> ButtonState {
     self.0.data.lock().unwrap().input.win()
-  }
-
-  pub fn is_closing(&self) -> bool {
-    self.0.is_closing()
   }
 
   pub fn is_minimized(&self) -> bool {
@@ -715,14 +725,6 @@ impl Window {
       return;
     }
     self.force_request_redraw()
-  }
-
-  /// Request the window be closed
-  pub fn close(&self) {
-    if self.is_closing() {
-      return; // already closing
-    }
-    self.0.data.lock().unwrap().stage = Stage::Closing;
   }
 
   #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
