@@ -74,7 +74,23 @@ pub extern "system" fn wnd_proc(
   match (user_data_ptr, msg) {
     (0, WindowsAndMessaging::WM_NCCREATE) => on_nccreate(hwnd, msg, wparam, lparam),
     (0, WindowsAndMessaging::WM_CREATE) => on_create(hwnd, msg, wparam, lparam),
-    (0, _) => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
+    (0, message) => match message {
+      Command::MESSAGE_ID => {
+        let command = unsafe { (wparam.0 as *mut Command).as_mut() }.unwrap();
+        match command {
+          Command::Destroy => {
+            unsafe { DestroyWindow(hwnd) }.unwrap();
+            LRESULT(0)
+          }
+          _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
+        }
+      }
+      WindowsAndMessaging::WM_DESTROY => {
+        unsafe { PostQuitMessage(0) };
+        unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+      }
+      _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
+    },
     (state_ptr, message) => {
       let result = match message {
         Command::MESSAGE_ID => {
@@ -86,10 +102,7 @@ pub extern "system" fn wnd_proc(
                 .state
                 .send_message_to_main(Message::Loop(LoopMessage::Exit));
               drop(user_data);
-              LRESULT(0)
-            }
-            Command::Destroy => {
-              unsafe { DestroyWindow(hwnd) }.unwrap();
+              unsafe { SetWindowLongPtrW(hwnd, WindowsAndMessaging::GWLP_USERDATA, 0) };
               LRESULT(0)
             }
             _ => {
@@ -100,10 +113,6 @@ pub extern "system" fn wnd_proc(
               }
             }
           }
-        }
-        WindowsAndMessaging::WM_DESTROY => {
-          unsafe { PostQuitMessage(0) };
-          unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
         }
         _ => {
           if let Some(user_data) = unsafe { (state_ptr as *mut UserData).as_mut() } {

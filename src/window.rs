@@ -322,6 +322,7 @@ impl Window {
             }
           }
           Some(Message::Loop(LoopMessage::Exit)) => {
+            *self.0.sync.skip_wait.lock().unwrap() = true;
             self.0.data.lock().unwrap().stage = Stage::ExitLoop;
           }
           _ => (),
@@ -344,7 +345,6 @@ impl Window {
     }
     tracing::trace!("[`{}`]: closing window", self.title());
     self.0.data.lock().unwrap().stage = Stage::Closing;
-    *self.0.sync.skip_wait.lock().unwrap() = true;
     Command::Exit.post(self.0.hwnd);
   }
 
