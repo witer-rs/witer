@@ -102,13 +102,26 @@ impl State {
   pub fn new(
     egui_ctx: egui::Context,
     viewport_id: ViewportId,
-    display_target: &dyn HasDisplayHandle,
+    #[cfg(feature = "rwh_05")] display_target: &dyn rwh_05::HasRawDisplayHandle,
+    #[cfg(feature = "rwh_06")] display_target: &dyn HasDisplayHandle,
     native_pixels_per_point: Option<f32>,
     max_texture_side: Option<usize>,
   ) -> Self {
     let egui_input = egui::RawInput {
       focused: false, // winit will tell us when we have focus
       ..Default::default()
+    };
+
+    let rdh = {
+      #[cfg(feature = "rwh_05")]
+      {
+        use rwh_05::HasRawDisplayHandle;
+        Some(display_target.raw_display_handle())
+      }
+      #[cfg(feature = "rwh_06")]
+      {
+        display_target.display_handle().ok().map(|h| h.as_raw())
+      }
     };
 
     let mut slf = Self {
@@ -120,19 +133,7 @@ impl State {
       any_pointer_button_down: false,
       current_cursor_icon: None,
 
-      clipboard: clipboard::Clipboard::new(display_target.display_handle().ok().map(
-        |h| {
-          #[cfg(feature = "rwh_05")]
-          {
-            use rwh_05::HasRawDisplayHandle;
-            h.raw_display_handle()
-          }
-          #[cfg(feature = "rwh_06")]
-          {
-            h.as_raw()
-          }
-        },
-      )),
+      clipboard: clipboard::Clipboard::new(rdh),
 
       simulate_touch_screen: false,
       pointer_touch_id: None,

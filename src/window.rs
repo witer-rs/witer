@@ -868,3 +868,21 @@ impl<'a> IntoIterator for &'a mut Window {
     self.iter_mut()
   }
 }
+
+#[cfg(feature = "egui")]
+impl Window {
+  pub fn create_egui_state(
+    &self,
+    egui_ctx: egui::Context,
+    viewport_id: egui::ViewportId,
+    max_texture_size: Option<usize>,
+  ) -> crate::compat::egui::State {
+    crate::compat::egui::State::new(
+      egui_ctx,
+      viewport_id,
+      self,
+      Some(self.scale_factor() as f32),
+      max_texture_size,
+    )
+  }
+}
