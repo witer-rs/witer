@@ -7,9 +7,10 @@ use std::{
 use windows::{
   core::PCWSTR,
   Win32::{
-    Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM},
+    Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM},
     Graphics::Gdi::{
       self,
+      ClientToScreen,
       GetMonitorInfoW,
       InvalidateRgn,
       MonitorFromWindow,
@@ -53,6 +54,7 @@ use super::{
 use crate::{
   error::WindowError,
   utilities::{
+    self,
     dpi_to_scale_factor,
     get_window_ex_style,
     get_window_style,
@@ -60,8 +62,6 @@ use crate::{
     is_flag_set,
     lo_word,
     read_raw_input,
-    set_cursor_clip,
-    set_cursor_visibility,
     signed_hi_word,
     signed_lo_word,
     to_windows_cursor,
@@ -203,6 +203,70 @@ impl Internal {
 
   // pub(crate) fn exit_loop(&self) {
   // }
+  pub fn refresh_os_cursor(&self) -> Result<(), WindowError> {
+    let mut client_rect = RECT::default();
+    unsafe { GetClientRect(self.hwnd, &mut client_rect) }.unwrap();
+    let mut top_left = POINT::default();
+    unsafe { ClientToScreen(self.hwnd, &mut top_left) }.unwrap();
+    client_rect.left += top_left.x;
+    client_rect.top += top_left.y;
+    client_rect.right += top_left.x;
+    client_rect.bottom += top_left.y;
+
+    let is_focused = {
+      let style = &self.data_lock().style;
+      style.focused && style.active
+    };
+    if is_focused {
+      let is_confined = matches!(self.data_lock().cursor.mode, CursorMode::Confined);
+      let is_hidden = matches!(self.data_lock().cursor.visibility, Visibility::Hidden);
+      let cursor_clip = match is_confined {
+        true => {
+          if is_hidden {
+            // Confine the cursor to the center of the window if the cursor is hidden. This avoids
+            // problems with the cursor activating the taskbar if the window borders or overlaps that.
+            let cx = (client_rect.left + client_rect.right) / 2;
+            let cy = (client_rect.top + client_rect.bottom) / 2;
+            Some(RECT {
+              left: cx,
+              right: cx + 1,
+              top: cy,
+              bottom: cy + 1,
+            })
+          } else {
+            Some(client_rect)
+          }
+        }
+        false => None,
+      };
+
+      let rect_to_tuple = |rect: RECT| (rect.left, rect.top, rect.right, rect.bottom);
+      let active_cursor_clip = rect_to_tuple(utilities::get_cursor_clip()?);
+      let desktop_rect = rect_to_tuple(utilities::get_desktop_rect());
+
+      let active_cursor_clip = match desktop_rect == active_cursor_clip {
+        true => None,
+        false => Some(active_cursor_clip),
+      };
+
+      // We do this check because calling `set_cursor_clip` incessantly will flood the event
+      // loop with `WM_MOUSEMOVE` events, and `refresh_os_cursor` is called by `set_cursor_flags`
+      // which at times gets called once every iteration of the eventloop.
+      if active_cursor_clip != cursor_clip.map(rect_to_tuple) {
+        utilities::set_cursor_clip(cursor_clip.as_ref());
+      }
+    }
+
+    let cursor_visibility = self.data_lock().cursor.visibility;
+    let cursor_in_client = self.data_lock().cursor.inside_window;
+    if cursor_in_client {
+      utilities::set_cursor_visibility(cursor_visibility);
+    } else {
+      utilities::set_cursor_visibility(Visibility::Shown);
+    }
+
+    Ok(())
+  }
 
   pub(crate) fn update_last_windowed_pos_size(&self, hwnd: HWND) {
     let mut window_rect = RECT::default();
@@ -421,26 +485,29 @@ impl Internal {
             unsafe { SetCursor(hcursor) };
           }
           Command::SetCursorMode(mode) => {
-            match mode {
-              CursorMode::Normal => {
-                set_cursor_clip(None);
-              }
-              CursorMode::Confined => {
-                let mut client_rect = RECT::default();
-                unsafe { GetClientRect(hwnd, &mut client_rect) }.unwrap();
+            // match mode {
+            //   CursorMode::Normal => {
+            //     set_cursor_clip(None);
+            //   }
+            //   CursorMode::Confined => {
+            //     let mut client_rect = RECT::default();
+            //     unsafe { GetClientRect(hwnd, &mut client_rect) }.unwrap();
+            //     tracing::debug!("{client_rect:?}");
+            //     set_cursor_clip(Some(&client_rect));
+            //   }
+            // };
 
-                set_cursor_clip(Some(&client_rect));
-              }
+            self.data.lock().unwrap().cursor.mode = mode;
+            if let Err(e) = self.refresh_os_cursor() {
+              tracing::error!("{e}");
             };
           }
-          Command::SetCursorVisibility(visibility) => match visibility {
-            Visibility::Shown => {
-              set_cursor_visibility(Visibility::Shown);
-            }
-            Visibility::Hidden => {
-              set_cursor_visibility(Visibility::Hidden);
-            }
-          },
+          Command::SetCursorVisibility(visibility) => {
+            self.data.lock().unwrap().cursor.visibility = visibility;
+            if let Err(e) = self.refresh_os_cursor() {
+              tracing::error!("{e}");
+            };
+          }
         }
 
         LRESULT(0)
@@ -524,19 +591,19 @@ impl Internal {
         unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
       }
       WindowsAndMessaging::WM_SETFOCUS => {
-        let cursor_visibility = self.data.lock().unwrap().cursor.visibility;
-        let cursor_mode = self.data.lock().unwrap().cursor.mode;
-
-        Command::SetCursorMode(cursor_mode).post(hwnd);
-        Command::SetCursorVisibility(cursor_visibility).post(hwnd);
-
         self.data.lock().unwrap().style.focused = true;
+        if let Err(e) = self.refresh_os_cursor() {
+          tracing::error!("{e}");
+        };
         self.send_message_to_main(Message::Focus(Focus::Gained));
 
         unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
       }
       WindowsAndMessaging::WM_KILLFOCUS => {
         self.data.lock().unwrap().style.focused = false;
+        if let Err(e) = self.refresh_os_cursor() {
+          tracing::error!("{e}");
+        };
         self.send_message_to_main(Message::Focus(Focus::Lost));
         unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
       }
@@ -692,6 +759,9 @@ impl Internal {
           match kind {
             CursorMoveKind::Entered => {
               self.data.lock().unwrap().cursor.inside_window = true;
+              if let Err(e) = self.refresh_os_cursor() {
+                tracing::error!("{e}");
+              };
 
               unsafe {
                 TrackMouseEvent(&mut TRACKMOUSEEVENT {
@@ -707,6 +777,9 @@ impl Internal {
             }
             CursorMoveKind::Left => {
               self.data.lock().unwrap().cursor.inside_window = false;
+              if let Err(e) = self.refresh_os_cursor() {
+                tracing::error!("{e}");
+              };
 
               true
             }
@@ -719,11 +792,17 @@ impl Internal {
         if send_message {
           self.send_message_to_main(Message::CursorMove { position, kind });
           self.data.lock().unwrap().cursor.last_position = position;
+          if let Err(e) = self.refresh_os_cursor() {
+            tracing::error!("{e}");
+          };
         }
         unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
       }
       Controls::WM_MOUSELEAVE => {
         self.data.lock().unwrap().cursor.inside_window = false;
+        if let Err(e) = self.refresh_os_cursor() {
+          tracing::error!("{e}");
+        };
         let position = self.data.lock().unwrap().cursor.last_position;
         self.send_message_to_main(Message::CursorMove {
           position,

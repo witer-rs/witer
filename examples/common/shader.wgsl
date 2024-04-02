@@ -12,6 +12,7 @@ var<uniform> frame: FrameUniform;
 
 struct CameraUniform {
     view_proj: mat4x4<f32>,
+    position: vec3<f32>,
 };
 @group(2) @binding(0)
 var<uniform> camera: CameraUniform;
@@ -45,40 +46,50 @@ fn vs_main(
     return out;
 }
 
+struct Ray {
+    origin: vec3<f32>,
+    dir: vec3<f32>,
+}
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let ray_origin = vec3(0.0, 0.0, 1.0);
-    let ray_dir = vec3(in.coord.x, in.coord.y, -1.0);
+    let view_point: vec3<f32> = (camera.view_proj * vec4(in.coord, 0.0, 1.0)).xyz;
+
     let radius = 0.5;
+    var ray: Ray;
+    ray.origin = camera.position;
+    ray.dir = normalize(view_point - ray.origin);
 
-    var a: f32 = dot(ray_dir, ray_dir);
-    var b: f32 = 2.0 * dot(ray_origin, ray_dir);
-    var c: f32 = dot(ray_origin, ray_origin) - (radius * radius);
-    var discriminant: f32 = (b * b) - (4.0 * a * c);
+    return vec4(ray.dir, 0.0);
 
-    var ambient_color = vec4(0.0, 0.0, 0.0, 1.0);
+    // var a: f32 = dot(ray_dir, ray_dir);
+    // var b: f32 = 2.0 * dot(ray_origin, ray_dir);
+    // var c: f32 = dot(ray_origin, ray_origin) - (radius * radius);
+    // var discriminant: f32 = (b * b) - (4.0 * a * c);
 
-    if discriminant < 0.0 {
-        return ambient_color;
-    }
+    // var ambient_color = vec4(0.0, 0.0, 0.0, 1.0);
 
-    // let furthest_t: f32 = (-b + sqrt(discriminant)) / (2.0 * a);
-    let closest_t: f32 = (-b - sqrt(discriminant)) / (2.0 * a);
+    // if discriminant < 0.0 {
+    //     return ambient_color;
+    // }
 
-    let hit_point: vec3<f32> = ray_origin + (ray_dir * closest_t);
+    // // let furthest_t: f32 = (-b + sqrt(discriminant)) / (2.0 * a);
+    // let closest_t: f32 = (-b - sqrt(discriminant)) / (2.0 * a);
 
-    let normal = normalize(hit_point);
-    let light_dir = normalize(vec3(-1.0, -1.0, -0.75));
+    // let hit_point: vec3<f32> = ray_origin + (ray_dir * closest_t);
 
-    let light_intensity: f32 = max(dot(normal, -light_dir), 0.0);
+    // let normal = normalize(hit_point);
+    // let light_dir = normalize(vec3(-1.0, -1.0, -0.75));
 
-    var color = vec4(0.7, 0.7, 0.7, 1.0);
+    // let light_intensity: f32 = max(dot(normal, -light_dir), 0.0);
 
-    color *= light_intensity;
+    // var color = vec4(0.7, 0.7, 0.7, 1.0);
 
-    let final_color = color + ambient_color;
+    // color *= light_intensity;
 
-    return clamp(final_color, vec4(vec3(0.0), 1.0), vec4(1.0)) ;
+    // let final_color = color + ambient_color;
+
+    // return clamp(final_color, vec4(vec3(0.0), 1.0), vec4(1.0)) ;
 }
 
 fn random_noise(uv: vec2<f32>) -> vec4<f32> {

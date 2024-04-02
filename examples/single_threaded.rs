@@ -5,7 +5,12 @@ use std::time::{Duration, Instant};
 use egui_wgpu::ScreenDescriptor;
 use foxy_time::{Time, TimeSettings};
 use wgpu::util::DeviceExt;
-use witer::{compat::egui::EventResponse, error::*, prelude::*};
+use witer::{
+  compat::egui::EventResponse,
+  error::*,
+  prelude::*,
+  window::message::CursorMoveKind,
+};
 
 use self::common::{
   camera::{Camera, CameraController, CameraUniform},
@@ -39,6 +44,16 @@ fn main() -> Result<(), WindowError> {
     // } else {
     //   tracing::debug!("idc");
     // }
+
+    if message.is_mouse_button(MouseButton::Middle, ButtonState::Pressed) {
+      tracing::debug!("Confined");
+      window.set_cursor_mode(CursorMode::Confined);
+      // window.set_cursor_visibility(Visibility::Hidden);
+    } else if message.is_mouse_button(MouseButton::Middle, ButtonState::Released) {
+      tracing::debug!("Normal");
+      window.set_cursor_mode(CursorMode::Normal);
+      // window.set_cursor_visibility(Visibility::Shown);
+    }
 
     if message.is_key(Key::F11, KeyState::Pressed) {
       let fullscreen = window.fullscreen();

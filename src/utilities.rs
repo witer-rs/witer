@@ -31,6 +31,8 @@ use windows::{
       WindowsAndMessaging::{
         self,
         ClipCursor,
+        GetClipCursor,
+        GetSystemMetrics,
         ShowCursor,
         WINDOW_EX_STYLE,
         WINDOW_STYLE,
@@ -41,6 +43,7 @@ use windows::{
 };
 
 use crate::{
+  error::WindowError,
   prelude::{PhysicalPosition, PhysicalSize},
   window::{
     data::{Fullscreen, Visibility},
@@ -223,6 +226,26 @@ pub(crate) fn get_window_ex_style(info: &Style) -> WINDOW_EX_STYLE {
 pub(crate) fn set_cursor_clip(rect: Option<&RECT>) {
   if let Err(_e) = unsafe { ClipCursor(rect.map(|r| r as _)) } {
     tracing::error!("{_e}");
+  }
+}
+
+pub fn get_cursor_clip() -> Result<RECT, WindowError> {
+  unsafe {
+    let mut rect = RECT::default();
+    Ok(GetClipCursor(&mut rect).map(|_| rect)?)
+  }
+}
+
+pub fn get_desktop_rect() -> RECT {
+  unsafe {
+    let left = GetSystemMetrics(WindowsAndMessaging::SM_XVIRTUALSCREEN);
+    let top = GetSystemMetrics(WindowsAndMessaging::SM_YVIRTUALSCREEN);
+    RECT {
+      left,
+      top,
+      right: left + GetSystemMetrics(WindowsAndMessaging::SM_CXVIRTUALSCREEN),
+      bottom: top + GetSystemMetrics(WindowsAndMessaging::SM_CYVIRTUALSCREEN),
+    }
   }
 }
 
