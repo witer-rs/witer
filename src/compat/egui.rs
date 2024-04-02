@@ -120,9 +120,19 @@ impl State {
       any_pointer_button_down: false,
       current_cursor_icon: None,
 
-      clipboard: clipboard::Clipboard::new(
-        display_target.display_handle().ok().map(|h| h.as_raw()),
-      ),
+      clipboard: clipboard::Clipboard::new(display_target.display_handle().ok().map(
+        |h| {
+          #[cfg(feature = "rwh_05")]
+          {
+            use rwh_05::HasRawDisplayHandle;
+            h.raw_display_handle()
+          }
+          #[cfg(feature = "rwh_06")]
+          {
+            h.as_raw()
+          }
+        },
+      )),
 
       simulate_touch_screen: false,
       pointer_touch_id: None,
