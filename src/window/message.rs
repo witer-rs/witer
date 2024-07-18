@@ -41,7 +41,7 @@ pub enum Message {
   /// Messages sent by devices registered for raw input.
   RawInput(RawInputMessage),
   /// Message sent when window is created.
-  Created { hwnd: HWND, hinstance: HINSTANCE },
+  Created { hwnd: usize, hinstance: usize },
   /// Message sent when window X button is pressed.
   CloseRequested,
   /// Message sent when Windows requests the window be repainted.

@@ -29,6 +29,7 @@ use windows::{
         self,
         DefWindowProcW,
         GetClientRect,
+        GetWindowLongPtrW,
         GetWindowRect,
         LoadCursorW,
         SetCursor,
@@ -37,6 +38,7 @@ use windows::{
         SetWindowTextW,
         ShowWindow,
         UnregisterClassW,
+        GWLP_HINSTANCE,
         WINDOWPOS,
       },
     },
@@ -110,8 +112,8 @@ impl SyncData {
 }
 
 pub struct Internal {
-  pub hinstance: HINSTANCE,
-  pub hwnd: HWND,
+  pub hinstance: usize,
+  pub hwnd: usize,
   pub class_atom: u16,
   pub message: Arc<Mutex<Option<Message>>>,
   pub sync: SyncData,
@@ -136,7 +138,9 @@ impl Drop for Internal {
     self.join_thread();
 
     tracing::trace!("[`{}`]: unregistering window class", title);
-    unsafe { UnregisterClassW(PCWSTR(self.class_atom as *const u16), self.hinstance) }
+    let hinstance =
+      HINSTANCE(unsafe { GetWindowLongPtrW(HWND(self.hwnd as _), GWLP_HINSTANCE) } as _);
+    unsafe { UnregisterClassW(PCWSTR(self.class_atom as *const u16), hinstance) }
       .unwrap();
 
     tracing::trace!("[`{}`]: destroyed window", title);
@@ -205,9 +209,9 @@ impl Internal {
   // }
   pub fn refresh_os_cursor(&self) -> Result<(), WindowError> {
     let mut client_rect = RECT::default();
-    unsafe { GetClientRect(self.hwnd, &mut client_rect) }.unwrap();
+    unsafe { GetClientRect(HWND(self.hwnd as _), &mut client_rect) }.unwrap();
     let mut top_left = POINT::default();
-    unsafe { ClientToScreen(self.hwnd, &mut top_left) }.unwrap();
+    unsafe { ClientToScreen(HWND(self.hwnd as _), &mut top_left) }.unwrap();
     client_rect.left += top_left.x;
     client_rect.top += top_left.y;
     client_rect.right += top_left.x;
@@ -646,7 +650,7 @@ impl Internal {
         unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
       }
       WindowsAndMessaging::WM_INPUT => {
-        let Some(data) = read_raw_input(HRAWINPUT(lparam.0)) else {
+        let Some(data) = read_raw_input(HRAWINPUT(lparam.0 as _)) else {
           return unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) };
         };
 

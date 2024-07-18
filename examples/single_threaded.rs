@@ -5,12 +5,7 @@ use std::time::{Duration, Instant};
 use egui_wgpu::ScreenDescriptor;
 use foxy_time::{Time, TimeSettings};
 use wgpu::util::DeviceExt;
-use witer::{
-  compat::egui::EventResponse,
-  error::*,
-  prelude::*,
-  window::message::CursorMoveKind,
-};
+use witer::{compat::egui::EventResponse, error::*, prelude::*};
 
 use self::common::{
   camera::{Camera, CameraController, CameraUniform},
@@ -46,13 +41,11 @@ fn main() -> Result<(), WindowError> {
     // }
 
     if message.is_mouse_button(MouseButton::Middle, ButtonState::Pressed) {
-      tracing::debug!("Confined");
       window.set_cursor_mode(CursorMode::Confined);
-      // window.set_cursor_visibility(Visibility::Hidden);
+      window.set_cursor_visibility(Visibility::Hidden);
     } else if message.is_mouse_button(MouseButton::Middle, ButtonState::Released) {
-      tracing::debug!("Normal");
       window.set_cursor_mode(CursorMode::Normal);
-      // window.set_cursor_visibility(Visibility::Shown);
+      window.set_cursor_visibility(Visibility::Shown);
     }
 
     if message.is_key(Key::F11, KeyState::Pressed) {
@@ -182,7 +175,7 @@ impl App {
         width: size.width,
         height: size.height,
         present_mode: wgpu::PresentMode::AutoNoVsync,
-        alpha_mode: surface_caps.alpha_modes[0],
+        alpha_mode: wgpu::CompositeAlphaMode::Auto,
         view_formats: vec![],
         desired_maximum_frame_latency: 2,
       };
@@ -190,8 +183,7 @@ impl App {
 
       let shader = device.create_shader_module(wgpu::include_wgsl!("common/shader.wgsl"));
 
-      let egui_renderer =
-        EguiRenderer::new(&device, wgpu::TextureFormat::Bgra8UnormSrgb, None, 1, &window);
+      let egui_renderer = EguiRenderer::new(&device, surface_format, None, 1, &window);
 
       let frame_uniform = FrameUniform::new();
 
@@ -357,7 +349,8 @@ impl App {
           vertex: wgpu::VertexState {
             module: &shader,
             entry_point: "vs_main", // 1.
-            buffers: &[],           // 2.
+            buffers: &[],
+            compilation_options: wgpu::PipelineCompilationOptions::default(), // 2.
           },
           fragment: Some(wgpu::FragmentState {
             // 3.
@@ -366,9 +359,10 @@ impl App {
             targets: &[Some(wgpu::ColorTargetState {
               // 4.
               format: config.format,
-              blend: Some(wgpu::BlendState::REPLACE),
+              blend: Some(wgpu::BlendState::ALPHA_BLENDING),
               write_mask: wgpu::ColorWrites::ALL,
             })],
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
           }),
           primitive: wgpu::PrimitiveState {
             topology: wgpu::PrimitiveTopology::TriangleList, // 1.

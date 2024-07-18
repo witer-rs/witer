@@ -638,12 +638,17 @@ impl State {
     } else if self.egui_input.modifiers.shift {
       // Treat as horizontal scrolling.
       // Note: one Mac we already get horizontal scroll events when shift is down.
-      self
-        .egui_input
-        .events
-        .push(egui::Event::Scroll(egui::vec2(delta.x + delta.y, 0.0)));
+      self.egui_input.events.push(egui::Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Point,
+        delta: egui::vec2(delta.x + delta.y, 0.0),
+        modifiers: self.egui_input.modifiers,
+      });
     } else {
-      self.egui_input.events.push(egui::Event::Scroll(delta));
+      self.egui_input.events.push(egui::Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Point,
+        delta,
+        modifiers: self.egui_input.modifiers,
+      });
     }
   }
 
@@ -874,15 +879,15 @@ pub fn update_viewport_info(
 }
 
 fn open_url_in_browser(_url: &str) {
-  #[cfg(feature = "webbrowser")]
-  if let Err(err) = webbrowser::open(_url) {
-    log::warn!("Failed to open url: {}", err);
-  }
+  // #[cfg(feature = "webbrowser")]
+  // if let Err(err) = webbrowser::open(_url) {
+  //   log::warn!("Failed to open url: {}", err);
+  // }
 
-  #[cfg(not(feature = "webbrowser"))]
-  {
-    tracing::warn!("Cannot open url - feature \"links\" not enabled.");
-  }
+  // #[cfg(not(feature = "webbrowser"))]
+  // {
+  //   tracing::warn!("Cannot open url - feature \"links\" not enabled.");
+  // }
 }
 
 /// Winit sends special keys (backspace, delete, F1, …) as characters.

@@ -195,6 +195,7 @@ impl App {
             module: &shader,
             entry_point: "vs_main", // 1.
             buffers: &[],           // 2.
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
           },
           fragment: Some(wgpu::FragmentState {
             // 3.
@@ -206,6 +207,7 @@ impl App {
               blend: Some(wgpu::BlendState::REPLACE),
               write_mask: wgpu::ColorWrites::ALL,
             })],
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
           }),
           primitive: wgpu::PrimitiveState {
             topology: wgpu::PrimitiveTopology::TriangleList, // 1.

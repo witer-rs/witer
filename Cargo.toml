@@ -39,21 +39,21 @@ cursor-icon = "1.1"
 
 # glium = { version = "0.34", optional = true }
 
-egui       = { version = "0.27", optional = true }
+egui       = { version = "0.28", optional = true }
 arboard    = { version = "3.3", optional = true, default-features = false }
-webbrowser = { version = "0.8.3", optional = true }
-web-time   = { version = "1.1.0", optional = true }                         # Timekeeping for native and web
+webbrowser = { version = "1.0", optional = true }
+web-time   = { version = "1.1", optional = true }                           # Timekeeping for native and web
 
 [dependencies.windows]
-version  = "0.54"
+version  = "0.58.0"
 features = ["UI_ViewManagement", "Win32_Devices_HumanInterfaceDevice", "Win32_Foundation", "Win32_Security", "Win32_System_SystemInformation", "Win32_System_Threading", "Win32_UI_Accessibility", "Win32_UI_Controls", "Win32_UI_HiDpi", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_System_LibraryLoader", "Win32_System_SystemServices", "Win32_UI_Input", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Shell_Common", "Win32_UI_Shell_PropertiesSystem"]
 
 [dev-dependencies]
 tracing-subscriber = { version = "0.3" }
 foxy_time          = { version = "1", path = "../foxy_time" }
 pollster           = "0.3"
-wgpu               = "0.19"
-egui-wgpu          = "0.27"
+wgpu               = "0.20"
+egui-wgpu          = "0.28"
 cgmath             = "0.18"
 bytemuck           = "1.15"
 

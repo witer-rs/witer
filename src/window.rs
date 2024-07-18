@@ -196,6 +196,7 @@ impl Window {
         window_sender.send(window).expect("failed to send window");
 
         tracing::trace!("[`{}`]: pumping messages", title);
+
         while Self::message_pump() {}
 
         tracing::trace!("[`{}`]: joining main thread", title);
@@ -209,7 +210,7 @@ impl Window {
     tracing::trace!("[`{}`]: creating window class", &create_info.title);
 
     let hinstance: HINSTANCE = unsafe { GetModuleHandleW(None)? }.into();
-    debug_assert_ne!(hinstance.0, 0);
+    debug_assert!(!hinstance.is_invalid());
     let title = HSTRING::from(create_info.title.clone());
     let window_class = title.clone();
 
@@ -260,11 +261,11 @@ impl Window {
         hinstance,
         Some(std::ptr::addr_of_mut!(create_info) as _),
       )
-    };
+    }?;
 
     tracing::trace!("[`{}`]: window handle created", &create_info.title);
 
-    if hwnd.0 == 0 {
+    if hwnd.is_invalid() {
       Err(WindowError::Win32Error(windows::core::Error::from_win32()))
     } else {
       let window = create_info.window.take().unwrap();
@@ -277,7 +278,7 @@ impl Window {
     let mut msg = MSG::default();
     if unsafe { GetMessageW(&mut msg, None, 0, 0) }.as_bool() {
       unsafe {
-        TranslateMessage(&msg);
+        let _ = TranslateMessage(&msg);
         DispatchMessageW(&msg);
       }
       true
@@ -376,7 +377,7 @@ impl Window {
 
   pub fn outer_size(&self) -> PhysicalSize {
     let mut window_rect = RECT::default();
-    let _ = unsafe { GetWindowRect(self.0.hwnd, &mut window_rect) };
+    let _ = unsafe { GetWindowRect(HWND(self.0.hwnd as _), &mut window_rect) };
     PhysicalSize {
       width: (window_rect.right - window_rect.left) as u32,
       height: (window_rect.bottom - window_rect.top) as u32,
@@ -385,7 +386,7 @@ impl Window {
 
   pub fn inner_size(&self) -> PhysicalSize {
     let mut client_rect = RECT::default();
-    let _ = unsafe { GetClientRect(self.0.hwnd, &mut client_rect) };
+    let _ = unsafe { GetClientRect(HWND(self.0.hwnd as _), &mut client_rect) };
     PhysicalSize {
       width: (client_rect.right - client_rect.left) as u32,
       height: (client_rect.bottom - client_rect.top) as u32,
@@ -394,7 +395,7 @@ impl Window {
 
   pub fn outer_position(&self) -> PhysicalPosition {
     let mut window_rect = RECT::default();
-    let _ = unsafe { GetWindowRect(self.0.hwnd, &mut window_rect) };
+    let _ = unsafe { GetWindowRect(HWND(self.0.hwnd as _), &mut window_rect) };
     PhysicalPosition {
       x: window_rect.left,
       y: window_rect.top,
@@ -403,7 +404,7 @@ impl Window {
 
   pub fn inner_position(&self) -> PhysicalPosition {
     let mut window_rect = RECT::default();
-    let _ = unsafe { GetClientRect(self.0.hwnd, &mut window_rect) };
+    let _ = unsafe { GetClientRect(HWND(self.0.hwnd as _), &mut window_rect) };
     PhysicalPosition {
       x: window_rect.left,
       y: window_rect.top,
@@ -456,7 +457,7 @@ impl Window {
 
   pub fn current_monitor(&self) -> Monitor {
     let hmonitor =
-      unsafe { MonitorFromWindow(self.0.hwnd, Gdi::MONITOR_DEFAULTTONEAREST) };
+      unsafe { MonitorFromWindow(HWND(self.0.hwnd as _), Gdi::MONITOR_DEFAULTTONEAREST) };
     Monitor::new(hmonitor)
   }
 
@@ -556,7 +557,7 @@ impl Window {
         get_window_style(&style),
         false,
         get_window_ex_style(&style),
-        hwnd_dpi(self.0.hwnd),
+        hwnd_dpi(HWND(self.0.hwnd as _)),
       )
     }
     .unwrap();
@@ -625,7 +626,7 @@ impl Window {
     let dark_mode = BOOL::from(theme == Theme::Dark);
     if let Err(_error) = unsafe {
       DwmSetWindowAttribute(
-        self.0.hwnd,
+        HWND(self.0.hwnd as _),
         Dwm::DWMWA_USE_IMMERSIVE_DARK_MODE,
         std::ptr::addr_of!(dark_mode) as *const std::ffi::c_void,
         std::mem::size_of::<BOOL>() as u32,
@@ -730,10 +731,10 @@ impl Window {
   #[cfg(all(feature = "rwh_06", not(feature = "rwh_05")))]
   pub fn raw_window_handle(&self) -> RawWindowHandle {
     let mut handle = Win32WindowHandle::new(
-      std::num::NonZeroIsize::new(self.0.hwnd.0)
+      std::num::NonZeroIsize::new(self.0.hwnd as _)
         .expect("window handle should not be zero"),
     );
-    let hinstance = std::num::NonZeroIsize::new(self.0.hinstance.0)
+    let hinstance = std::num::NonZeroIsize::new(self.0.hinstance as _)
       .expect("instance handle should not be zero");
     handle.hinstance = Some(hinstance);
     RawWindowHandle::from(handle)

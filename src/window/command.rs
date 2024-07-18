@@ -29,11 +29,13 @@ pub enum Command {
 impl Command {
   pub const MESSAGE_ID: u32 = WindowsAndMessaging::WM_USER + 69;
 
-  pub fn post(self, hwnd: HWND) {
+  pub fn post(self, hwnd: usize) {
     let command = Box::leak(Box::new(self));
     let addr = command as *mut Command as usize;
     unsafe {
-      if let Err(e) = PostMessageW(hwnd, Self::MESSAGE_ID, WPARAM(addr), LPARAM(0)) {
+      if let Err(e) =
+        PostMessageW(HWND(hwnd as _), Self::MESSAGE_ID, WPARAM(addr), LPARAM(0))
+      {
         tracing::error!("{e}");
       }
     }

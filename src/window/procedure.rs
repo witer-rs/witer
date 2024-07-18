@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Weak};
 
 use cursor_icon::CursorIcon;
 // use crossbeam::channel::{Receiver, Sender};
@@ -55,7 +55,11 @@ pub struct CreateInfo {
 }
 
 pub struct UserData {
-  state: Arc<Internal>,
+  state: Weak<Internal>,
+  // if this is a strong reference, internal is never dropped and will cause Drop not to kick into action the rest.
+  // maybe convert this to use the dropping of the internal to signal the quitting of the window.
+  // this would mean you don't need to pre-handle dropping the internal userdata, and the two matches
+  // below can be combined.
 }
 
 ////////////////////////
@@ -98,16 +102,20 @@ pub extern "system" fn wnd_proc(
           match command {
             Command::Exit => {
               let user_data = unsafe { Box::from_raw(state_ptr as *mut UserData) };
-              user_data
-                .state
-                .send_message_to_main(Message::Loop(LoopMessage::Exit));
+              if let Some(state) = user_data.state.upgrade() {
+                state.send_message_to_main(Message::Loop(LoopMessage::Exit));
+              }
               drop(user_data);
               unsafe { SetWindowLongPtrW(hwnd, WindowsAndMessaging::GWLP_USERDATA, 0) };
               LRESULT(0)
             }
             _ => {
               if let Some(user_data) = unsafe { (state_ptr as *mut UserData).as_mut() } {
-                user_data.state.on_message(hwnd, msg, wparam, lparam)
+                if let Some(state) = user_data.state.upgrade() {
+                  state.on_message(hwnd, msg, wparam, lparam)
+                } else {
+                  unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+                }
               } else {
                 unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
               }
@@ -116,7 +124,11 @@ pub extern "system" fn wnd_proc(
         }
         _ => {
           if let Some(user_data) = unsafe { (state_ptr as *mut UserData).as_mut() } {
-            user_data.state.on_message(hwnd, msg, wparam, lparam)
+            if let Some(state) = user_data.state.upgrade() {
+              state.on_message(hwnd, msg, wparam, lparam)
+            } else {
+              unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+            }
           } else {
             unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
           }
@@ -158,8 +170,8 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
   // create state
   let input = Input::new();
   let state = Arc::new(Internal {
-    hinstance: create_struct.hInstance,
-    hwnd,
+    hinstance: create_struct.hInstance.0 as _,
+    hwnd: hwnd.0 as _,
     class_atom: create_info.class_atom,
     message: create_info.message.clone(),
     sync: create_info.sync.clone(),
@@ -189,7 +201,7 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
 
   // create data ptr
   let user_data = UserData {
-    state: state.clone(),
+    state: Arc::downgrade(&state),
   };
   let user_data_ptr = Box::into_raw(Box::new(user_data));
   unsafe {
@@ -220,8 +232,8 @@ fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT 
     .lock()
     .unwrap()
     .replace(Message::Created {
-      hwnd,
-      hinstance: create_struct.hInstance,
+      hwnd: hwnd.0 as _,
+      hinstance: create_struct.hInstance.0 as _,
     });
   create_info.sync.signal_new_message();
 

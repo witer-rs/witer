@@ -35,7 +35,7 @@ fn vs_main(
     var out: VertexOutput;
 
     var coord = vec2<f32>(
-        f32((index << 1u) & 2u),
+        f32((index << 1) & 2),
         f32(index & 2u),
     ) * 2.0 - 1.0;
     let aspect = window.resolution.x / window.resolution.y;
@@ -51,45 +51,58 @@ struct Ray {
     dir: vec3<f32>,
 }
 
+struct HitInfo {
+    did_hit: bool,
+    dist: f32,
+    hit_pt: vec3<f32>,
+    normal: vec3<f32>,
+}
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let view_point: vec3<f32> = (camera.view_proj * vec4(in.coord, 0.0, 1.0)).xyz;
+    let view_point: vec3<f32> = vec3(in.coord, 1.0);
 
-    let radius = 0.5;
     var ray: Ray;
     ray.origin = camera.position;
     ray.dir = normalize(view_point - ray.origin);
 
-    return vec4(ray.dir, 0.0);
+    let hit: HitInfo = ray_sphere(ray, vec3(0.0), 0.75);
 
-    // var a: f32 = dot(ray_dir, ray_dir);
-    // var b: f32 = 2.0 * dot(ray_origin, ray_dir);
-    // var c: f32 = dot(ray_origin, ray_origin) - (radius * radius);
-    // var discriminant: f32 = (b * b) - (4.0 * a * c);
+    var ambient_color = vec4(0.2, 0.2, 0.2, 1.0);
+    if !hit.did_hit {
+        return ambient_color;
+    }
 
-    // var ambient_color = vec4(0.0, 0.0, 0.0, 1.0);
+    var color = vec4(0.7, 0.7, 0.7, 1.0);
 
-    // if discriminant < 0.0 {
-    //     return ambient_color;
-    // }
+    let light_dir = vec3(-1.0, -1.0, -1.0);
+    let light_intensity: f32 = dot(hit.normal, -light_dir);
+    color *= light_intensity;
+    let final_color = color + ambient_color;
 
-    // // let furthest_t: f32 = (-b + sqrt(discriminant)) / (2.0 * a);
-    // let closest_t: f32 = (-b - sqrt(discriminant)) / (2.0 * a);
+    return clamp(final_color, vec4(vec3(0.0), 1.0), vec4(1.0));
+}
 
-    // let hit_point: vec3<f32> = ray_origin + (ray_dir * closest_t);
+fn ray_sphere(ray: Ray, sphere_center: vec3<f32>, sphere_radius: f32) -> HitInfo {
+    var hit_info: HitInfo;
+    var offset_ray_origin = ray.origin - sphere_center;
 
-    // let normal = normalize(hit_point);
-    // let light_dir = normalize(vec3(-1.0, -1.0, -0.75));
+    var a: f32 = dot(ray.dir, ray.dir);
+    var b: f32 = 2.0 * dot(offset_ray_origin, ray.dir);
+    var c: f32 = dot(offset_ray_origin, offset_ray_origin) - (sphere_radius * sphere_radius);
 
-    // let light_intensity: f32 = max(dot(normal, -light_dir), 0.0);
+    var discriminant: f32 = (b * b) - (4.0 * a * c);
+    if discriminant >= 0.0 {
+        let dist: f32 = (-b - sqrt(discriminant)) / (2.0 * a);
+        if dist >= 0.0 {
+            hit_info.did_hit = true;
+            hit_info.dist = dist;
+            hit_info.hit_pt = ray.origin + ray.dir * dist;
+            hit_info.normal = normalize(hit_info.hit_pt - sphere_center);
+        }
+    }
 
-    // var color = vec4(0.7, 0.7, 0.7, 1.0);
-
-    // color *= light_intensity;
-
-    // let final_color = color + ambient_color;
-
-    // return clamp(final_color, vec4(vec3(0.0), 1.0), vec4(1.0)) ;
+    return hit_info;
 }
 
 fn random_noise(uv: vec2<f32>) -> vec4<f32> {
