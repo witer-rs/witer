@@ -1,46 +1,20 @@
 use std::sync::{Arc, Mutex, Weak};
 
-use cursor_icon::CursorIcon;
-// use crossbeam::channel::{Receiver, Sender};
 use windows::Win32::{
-  Foundation::*,
-  UI::{
-    HiDpi::EnableNonClientDpiScaling,
-    WindowsAndMessaging::{
-      self,
-      DefWindowProcW,
-      DestroyWindow,
-      GetWindowLongPtrW,
-      PostQuitMessage,
-      SetWindowLongPtrW,
-      CREATESTRUCTW,
-    },
-  },
+  Foundation::{HWND, LPARAM, LRESULT, WPARAM},
+  UI::WindowsAndMessaging::{self, GetWindowLongPtrW},
 };
 
 #[allow(unused)]
 use super::message::Message;
 use super::{
-  command::Command,
-  data::{Data, Position, Size, SyncData, Visibility},
+  data::{Position, Size, SyncData},
   frame::Style,
+  message::RawMessage,
   settings::WindowSettings,
   Window,
 };
-use crate::{
-  prelude::Input,
-  utilities::{
-    dpi_to_scale_factor,
-    hwnd_dpi,
-    register_all_mice_and_keyboards_for_raw_input,
-  },
-  window::{
-    cursor::Cursor,
-    data::{Internal, PhysicalPosition},
-    stage::Stage,
-  },
-  LoopMessage,
-};
+use crate::window::data::Internal;
 
 pub struct CreateInfo {
   pub title: String,
@@ -55,7 +29,7 @@ pub struct CreateInfo {
 }
 
 pub struct UserData {
-  state: Weak<Internal>,
+  pub internal: Weak<Internal>,
   // if this is a strong reference, internal is never dropped and will cause Drop not to kick into action the rest.
   // maybe convert this to use the dropping of the internal to signal the quitting of the window.
   // this would mean you don't need to pre-handle dropping the internal userdata, and the two matches
@@ -72,170 +46,17 @@ pub extern "system" fn wnd_proc(
   wparam: WPARAM,
   lparam: LPARAM,
 ) -> LRESULT {
+  let message = RawMessage {
+    id: msg,
+    w: wparam,
+    l: lparam,
+  };
+
   let user_data_ptr =
     unsafe { GetWindowLongPtrW(hwnd, WindowsAndMessaging::GWLP_USERDATA) };
+  let internal: Option<Arc<Internal>> =
+    unsafe { (user_data_ptr as *mut UserData).as_mut() }
+      .and_then(|ptr| ptr.internal.upgrade());
 
-  match (user_data_ptr, msg) {
-    (0, WindowsAndMessaging::WM_NCCREATE) => on_nccreate(hwnd, msg, wparam, lparam),
-    (0, WindowsAndMessaging::WM_CREATE) => on_create(hwnd, msg, wparam, lparam),
-    (0, message) => match message {
-      Command::MESSAGE_ID => {
-        let command = unsafe { (wparam.0 as *mut Command).as_mut() }.unwrap();
-        match command {
-          Command::Destroy => {
-            unsafe { DestroyWindow(hwnd) }.unwrap();
-            LRESULT(0)
-          }
-          _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
-        }
-      }
-      WindowsAndMessaging::WM_DESTROY => {
-        unsafe { PostQuitMessage(0) };
-        unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
-      }
-      _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
-    },
-    (state_ptr, message) => {
-      let result = match message {
-        Command::MESSAGE_ID => {
-          let command = unsafe { (wparam.0 as *mut Command).as_mut() }.unwrap();
-          match command {
-            Command::Exit => {
-              let user_data = unsafe { Box::from_raw(state_ptr as *mut UserData) };
-              if let Some(state) = user_data.state.upgrade() {
-                state.send_message_to_main(Message::Loop(LoopMessage::Exit));
-              }
-              drop(user_data);
-              unsafe { SetWindowLongPtrW(hwnd, WindowsAndMessaging::GWLP_USERDATA, 0) };
-              LRESULT(0)
-            }
-            _ => {
-              if let Some(user_data) = unsafe { (state_ptr as *mut UserData).as_mut() } {
-                if let Some(state) = user_data.state.upgrade() {
-                  state.on_message(hwnd, msg, wparam, lparam)
-                } else {
-                  unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
-                }
-              } else {
-                unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
-              }
-            }
-          }
-        }
-        _ => {
-          if let Some(user_data) = unsafe { (state_ptr as *mut UserData).as_mut() } {
-            if let Some(state) = user_data.state.upgrade() {
-              state.on_message(hwnd, msg, wparam, lparam)
-            } else {
-              unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
-            }
-          } else {
-            unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
-          }
-        }
-      };
-      result
-    }
-  }
-}
-
-fn on_nccreate(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT {
-  if let Err(e) = unsafe { EnableNonClientDpiScaling(hwnd) } {
-    tracing::error!("{e}");
-  }
-
-  register_all_mice_and_keyboards_for_raw_input(hwnd);
-
-  unsafe { DefWindowProcW(hwnd, msg, w_param, l_param) }
-}
-
-fn on_create(hwnd: HWND, msg: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT {
-  let create_struct = unsafe { (l_param.0 as *mut CREATESTRUCTW).as_mut().unwrap() };
-  let create_info = unsafe {
-    (create_struct.lpCreateParams as *mut CreateInfo)
-      .as_mut()
-      .unwrap()
-  };
-
-  let scale_factor = dpi_to_scale_factor(hwnd_dpi(hwnd));
-  let size = create_info.size;
-  let position = create_info.position.unwrap_or(
-    PhysicalPosition::new(
-      WindowsAndMessaging::CW_USEDEFAULT,
-      WindowsAndMessaging::CW_USEDEFAULT,
-    )
-    .into(),
-  );
-
-  // create state
-  let input = Input::new();
-  let state = Arc::new(Internal {
-    hinstance: create_struct.hInstance.0 as _,
-    hwnd: hwnd.0 as _,
-    class_atom: create_info.class_atom,
-    message: create_info.message.clone(),
-    sync: create_info.sync.clone(),
-    thread: Mutex::new(None),
-    data: Mutex::new(Data {
-      title: create_info.title.clone(),
-      subtitle: Default::default(),
-      theme: Default::default(),
-      style: create_info.style.clone(),
-      scale_factor,
-      last_windowed_position: position,
-      last_windowed_size: size,
-      cursor: Cursor {
-        mode: create_info.settings.cursor_mode,
-        visibility: Visibility::Shown,
-        inside_window: false,
-        last_position: PhysicalPosition::default(),
-        selected_icon: CursorIcon::Default,
-      },
-      flow: create_info.settings.flow,
-      close_on_x: create_info.settings.close_on_x,
-      stage: Stage::Setup,
-      input,
-      requested_redraw: false,
-    }),
-  });
-
-  // create data ptr
-  let user_data = UserData {
-    state: Arc::downgrade(&state),
-  };
-  let user_data_ptr = Box::into_raw(Box::new(user_data));
-  unsafe {
-    SetWindowLongPtrW(hwnd, WindowsAndMessaging::GWLP_USERDATA, user_data_ptr as isize)
-  };
-
-  tracing::trace!("[`{}`]: finalizing window settings", create_info.title);
-
-  let window = Window(state.clone());
-  window.force_set_theme(create_info.settings.theme);
-
-  if let Some(position) = create_info.position {
-    Command::SetPosition(position).send(hwnd);
-  }
-  Command::SetSize(size).send(hwnd);
-  Command::SetDecorations(create_info.settings.decorations).send(hwnd);
-  Command::SetVisibility(create_info.settings.visibility).send(hwnd);
-  Command::SetFullscreen(create_info.settings.fullscreen).send(hwnd);
-
-  tracing::trace!("[`{}`]: window is ready", create_info.title);
-  window.0.data.lock().unwrap().stage = Stage::Ready;
-  *window.0.sync.skip_wait.lock().unwrap() = false;
-
-  create_info.window = Some(window);
-
-  create_info
-    .message
-    .lock()
-    .unwrap()
-    .replace(Message::Created {
-      hwnd: hwnd.0 as _,
-      hinstance: create_struct.hInstance.0 as _,
-    });
-  create_info.sync.signal_new_message();
-
-  unsafe { DefWindowProcW(hwnd, msg, w_param, l_param) }
+  message.process(hwnd, internal)
 }

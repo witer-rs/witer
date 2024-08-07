@@ -113,8 +113,6 @@ pub mod stage;
 pub struct Window(Arc<Internal>);
 
 impl Window {
-  pub const WINDOW_SUBCLASS_ID: usize = 0;
-
   /// Create a new [`WindowBuilder`] to set up a [`Window`].
   ///
   /// [`WindowBuilder::with_size`] is relative to the whole window frame,
@@ -220,7 +218,7 @@ impl Window {
         | WindowsAndMessaging::CS_HREDRAW
         | WindowsAndMessaging::CS_DBLCLKS
         | WindowsAndMessaging::CS_OWNDC,
-      cbWndExtra: std::mem::size_of::<WNDCLASSEXW>() as i32,
+      // cbWndExtra: std::mem::size_of::<WNDCLASSEXW>() as i32,
       lpfnWndProc: Some(procedure::wnd_proc),
       hInstance: hinstance,
       hCursor: unsafe { LoadCursorW(None, WindowsAndMessaging::IDC_ARROW)? },
@@ -259,32 +257,31 @@ impl Window {
         None,
         None,
         hinstance,
-        Some(std::ptr::addr_of_mut!(create_info) as _),
+        Some(std::ptr::addr_of_mut!(create_info).cast()),
       )
     }?;
 
     tracing::trace!("[`{}`]: window handle created", &create_info.title);
 
-    if hwnd.is_invalid() {
-      Err(WindowError::Win32Error(windows::core::Error::from_win32()))
-    } else {
-      let window = create_info.window.take().unwrap();
-
-      Ok(window)
+    match hwnd.is_invalid() {
+      true => Err(WindowError::Win32Error(windows::core::Error::from_win32())),
+      false => Ok(create_info.window.take().unwrap()),
     }
   }
 
   fn message_pump() -> bool {
     let mut msg = MSG::default();
-    if unsafe { GetMessageW(&mut msg, None, 0, 0) }.as_bool() {
+
+    let result = unsafe { GetMessageW(&mut msg, None, 0, 0) }.as_bool();
+
+    if result {
       unsafe {
         let _ = TranslateMessage(&msg);
         DispatchMessageW(&msg);
       }
-      true
-    } else {
-      false
     }
+
+    result
   }
 
   fn take_message(&self) -> Option<Message> {
@@ -312,7 +309,7 @@ impl Window {
 
     let current_stage = self.0.data.lock().unwrap().stage;
     let next = match current_stage {
-      Stage::Setup | Stage::Ready | Stage::Destroyed => None,
+      Stage::Setup | Stage::Ready | Stage::ExitLoop | Stage::Destroyed => None,
       Stage::Looping | Stage::Closing => {
         let message = self.take_message();
         match message {
@@ -329,10 +326,6 @@ impl Window {
           _ => (),
         }
         message
-      }
-      Stage::ExitLoop => {
-        tracing::trace!("[`{}`]: exiting loop", self.title());
-        None
       }
     };
 
@@ -444,7 +437,7 @@ impl Window {
   pub fn available_monitors(&self) -> VecDeque<Monitor> {
     let mut monitors: VecDeque<HMONITOR> = VecDeque::new();
     unsafe {
-      EnumDisplayMonitors(
+      let _ = EnumDisplayMonitors(
         HDC::default(),
         None,
         Some(Self::monitor_enum_proc),

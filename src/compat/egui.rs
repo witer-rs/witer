@@ -1,4 +1,3 @@
-#![cfg(feature = "egui")]
 // _TEMPORARY_ fix to shut up the compiler while I work on the port
 #![allow(unused)]
 #![allow(unused_variables)]

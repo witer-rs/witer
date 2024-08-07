@@ -1,8 +1,8 @@
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 pub mod camera;
-#[cfg(feature = "egui")]
-pub mod egui;
+// #[cfg(feature = "egui")]
+// pub mod egui;
 pub mod frame;
 pub mod model;
 pub mod window;

@@ -1,5 +1,8 @@
+use std::sync::{Arc, Mutex};
+
+use cursor_icon::CursorIcon;
 use windows::Win32::{
-  Foundation::{HINSTANCE, HWND, LPARAM, RECT, WPARAM},
+  Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM},
   System::SystemServices::{
     MK_LBUTTON,
     MK_MBUTTON,
@@ -9,22 +12,72 @@ use windows::Win32::{
     MODIFIERKEYS_FLAGS,
   },
   UI::{
-    Input::KeyboardAndMouse::{MapVirtualKeyW, MAPVK_VSC_TO_VK_EX, VIRTUAL_KEY},
-    WindowsAndMessaging::{self, GetClientRect},
+    self,
+    Controls,
+    HiDpi::EnableNonClientDpiScaling,
+    Input::{
+      KeyboardAndMouse::{
+        self,
+        MapVirtualKeyW,
+        TrackMouseEvent,
+        MAPVK_VSC_TO_VK_EX,
+        TRACKMOUSEEVENT,
+        VIRTUAL_KEY,
+      },
+      HRAWINPUT,
+      RID_DEVICE_INFO_TYPE,
+    },
+    WindowsAndMessaging::{
+      self,
+      DefWindowProcW,
+      GetClientRect,
+      GetWindowLongPtrW,
+      LoadCursorW,
+      PostQuitMessage,
+      SetCursor,
+      SetWindowLongPtrW,
+      SetWindowPos,
+      CREATESTRUCTW,
+      WINDOWPOS,
+    },
   },
 };
 
 use super::{
   command::Command,
-  data::{PhysicalPosition, PhysicalSize},
-  input::{mouse::MouseButton, state::RawKeyState},
+  data::{Internal, PhysicalPosition, PhysicalSize},
+  input::{
+    mouse::{mouse_button_states, MouseButton},
+    state::RawKeyState,
+  },
+  procedure::UserData,
 };
 use crate::{
-  utilities::{hi_word, is_flag_set, lo_byte, lo_word, signed_hi_word, signed_lo_word},
-  window::input::{
-    key::Key,
-    state::{ButtonState, KeyState},
+  utilities::{
+    dpi_to_scale_factor,
+    hi_word,
+    hwnd_dpi,
+    is_flag_set,
+    lo_byte,
+    lo_word,
+    read_raw_input,
+    register_all_mice_and_keyboards_for_raw_input,
+    signed_hi_word,
+    signed_lo_word,
+    to_windows_cursor,
   },
+  window::{
+    cursor::Cursor,
+    data::Data,
+    input::{
+      key::Key,
+      state::{ButtonState, KeyState},
+    },
+    procedure::CreateInfo,
+    stage::Stage,
+  },
+  Input,
+  Visibility,
 };
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -313,5 +366,502 @@ pub(crate) fn get_cursor_move_kind(
     CursorMoveKind::Left
   } else {
     CursorMoveKind::Inside
+  }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub(crate) struct RawMessage {
+  pub id: u32,
+  pub w: WPARAM,
+  pub l: LPARAM,
+}
+
+impl From<WindowsAndMessaging::MSG> for RawMessage {
+  fn from(value: WindowsAndMessaging::MSG) -> Self {
+    Self {
+      id: value.message,
+      w: value.wParam,
+      l: value.lParam,
+    }
+  }
+}
+
+impl RawMessage {
+  pub(crate) fn process(&self, hwnd: HWND, internal: Option<Arc<Internal>>) -> LRESULT {
+    match (internal, self.id) {
+      (internal, Command::MESSAGE_ID) => {
+        Command::from_wparam(self.w).process(hwnd, internal)
+      }
+      (None, WindowsAndMessaging::WM_NCCREATE) => self.on_nccreate(hwnd),
+      (None, WindowsAndMessaging::WM_CREATE) => self.on_create(hwnd),
+      (None, WindowsAndMessaging::WM_DESTROY) => {
+        let user_data_ptr =
+          unsafe { GetWindowLongPtrW(hwnd, WindowsAndMessaging::GWLP_USERDATA) };
+        drop(unsafe { Box::from_raw(user_data_ptr as *mut UserData) });
+        unsafe { SetWindowLongPtrW(hwnd, WindowsAndMessaging::GWLP_USERDATA, 0) };
+        unsafe { PostQuitMessage(0) };
+
+        unsafe { DefWindowProcW(hwnd, self.id, self.w, self.l) }
+      }
+      (Some(internal), WindowsAndMessaging::WM_SETCURSOR) => {
+        let in_client_area =
+          lo_word(self.l.0 as u32) as u32 == WindowsAndMessaging::HTCLIENT;
+
+        if in_client_area {
+          let icon = internal.data.lock().unwrap().cursor.selected_icon;
+          let cursor_icon = to_windows_cursor(icon);
+          let hcursor =
+            unsafe { LoadCursorW(HINSTANCE::default(), cursor_icon) }.unwrap();
+          unsafe { SetCursor(hcursor) };
+        }
+
+        unsafe { DefWindowProcW(hwnd, self.id, self.w, self.l) }
+      }
+      // WindowsAndMessaging::WM_SIZING | WindowsAndMessaging::WM_MOVING => {
+      //   // ignore certain messages
+      //   return unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) };
+      // }
+      (Some(internal), WindowsAndMessaging::WM_CLOSE) => {
+        internal.send_message_to_main(Message::CloseRequested);
+        LRESULT(0)
+      }
+      (Some(internal), WindowsAndMessaging::WM_PAINT) => {
+        internal.data.lock().unwrap().requested_redraw = false;
+        internal.send_message_to_main(Message::Paint);
+
+        unsafe { DefWindowProcW(hwnd, self.id, self.w, self.l) }
+      }
+      (Some(internal), WindowsAndMessaging::WM_SIZE) => {
+        internal.data.lock().unwrap().style.maximized =
+          is_flag_set(self.w.0 as u32, WindowsAndMessaging::SIZE_MAXIMIZED);
+
+        // info!("RESIZED: {_size:?}");
+        let is_windowed = internal.data.lock().unwrap().style.fullscreen.is_none();
+        // // data.state.write_lock().size = size;
+        if is_windowed {
+          internal.update_last_windowed_pos_size(hwnd);
+        }
+
+        let width = lo_word(self.l.0 as u32) as u32;
+        let height = hi_word(self.l.0 as u32) as u32;
+
+        internal.send_message_to_main(Message::Resized(PhysicalSize::new(width, height)));
+
+        unsafe { DefWindowProcW(hwnd, self.id, self.w, self.l) }
+      }
+      (Some(internal), WindowsAndMessaging::WM_MOVE) => {
+        let x = lo_word(self.l.0 as u32) as i32;
+        let y = hi_word(self.l.0 as u32) as i32;
+
+        internal.send_message_to_main(Message::Moved(PhysicalPosition::new(x, y)));
+
+        unsafe { DefWindowProcW(hwnd, self.id, self.w, self.l) }
+      }
+      (Some(internal), WindowsAndMessaging::WM_WINDOWPOSCHANGED) => {
+        let window_pos = unsafe { &*(self.l.0 as *const WINDOWPOS) };
+
+        // if (window_pos.flags & WindowsAndMessaging::SWP_NOMOVE) !=
+        // WindowsAndMessaging::SWP_NOMOVE {
+        //   out.push(Message::Moved(PhysicalPosition::new((x, y))))
+        // }
+        // info!("BOUNDSCHANGED: {outer_position:?}, {outer_size:?}");
+        let is_windowed = internal.data.lock().unwrap().style.fullscreen.is_none();
+        // // data.state.write_lock().position = position;
+        if is_windowed {
+          internal.update_last_windowed_pos_size(hwnd);
+        }
+
+        internal.send_message_to_main(Message::BoundsChanged {
+          outer_position: PhysicalPosition::new(window_pos.x, window_pos.y),
+          outer_size: PhysicalSize::new(window_pos.cx as u32, window_pos.cy as u32),
+        });
+
+        unsafe { DefWindowProcW(hwnd, self.id, self.w, self.l) }
+      }
+      (Some(internal), WindowsAndMessaging::WM_NCACTIVATE) => {
+        let is_active = self.w.0 == true.into();
+        internal.data.lock().unwrap().style.active = is_active;
+
+        unsafe { DefWindowProcW(hwnd, self.id, self.w, self.l) }
+      }
+      (Some(internal), WindowsAndMessaging::WM_SETFOCUS) => {
+        internal.data.lock().unwrap().style.focused = true;
+        if let Err(e) = internal.refresh_os_cursor() {
+          tracing::error!("{e}");
+        };
+        internal.send_message_to_main(Message::Focus(Focus::Gained));
+
+        unsafe { DefWindowProcW(hwnd, self.id, self.w, self.l) }
+      }
+      (Some(internal), WindowsAndMessaging::WM_KILLFOCUS) => {
+        internal.data.lock().unwrap().style.focused = false;
+        if let Err(e) = internal.refresh_os_cursor() {
+          tracing::error!("{e}");
+        };
+        internal.send_message_to_main(Message::Focus(Focus::Lost));
+
+        unsafe { DefWindowProcW(hwnd, self.id, self.w, self.l) }
+      }
+      (Some(internal), WindowsAndMessaging::WM_COMMAND) => {
+        internal.send_message_to_main(Message::Command);
+
+        unsafe { DefWindowProcW(hwnd, self.id, self.w, self.l) }
+      }
+      (Some(internal), WindowsAndMessaging::WM_SYSCOMMAND) => {
+        match self.w.0 as u32 {
+          WindowsAndMessaging::SC_MINIMIZE => {
+            internal.data.lock().unwrap().style.minimized = true;
+          }
+          WindowsAndMessaging::SC_RESTORE => {
+            internal.data.lock().unwrap().style.minimized = false;
+          }
+          _ => {}
+        }
+
+        internal.send_message_to_main(Message::SystemCommand);
+
+        unsafe { DefWindowProcW(hwnd, self.id, self.w, self.l) }
+      }
+      (Some(internal), WindowsAndMessaging::WM_DPICHANGED) => {
+        let dpi = lo_word(self.w.0 as u32) as u32;
+        let suggested_rect = unsafe { *(self.l.0 as *const RECT) };
+        unsafe {
+          SetWindowPos(
+            hwnd,
+            None,
+            suggested_rect.left,
+            suggested_rect.top,
+            suggested_rect.right - suggested_rect.left,
+            suggested_rect.bottom - suggested_rect.top,
+            WindowsAndMessaging::SWP_NOZORDER | WindowsAndMessaging::SWP_NOACTIVATE,
+          )
+        }
+        .unwrap();
+        let scale_factor = dpi_to_scale_factor(dpi);
+        internal.data.lock().unwrap().scale_factor = scale_factor;
+        internal.send_message_to_main(Message::ScaleFactorChanged(scale_factor));
+
+        unsafe { DefWindowProcW(hwnd, self.id, self.w, self.l) }
+      }
+      (Some(internal), WindowsAndMessaging::WM_INPUT) => {
+        let Some(data) = read_raw_input(HRAWINPUT(self.l.0 as _)) else {
+          return unsafe { DefWindowProcW(hwnd, self.id, self.w, self.l) };
+        };
+
+        if self.w.0 as u32 == WindowsAndMessaging::RIM_INPUT {
+          unsafe { DefWindowProcW(hwnd, self.id, self.w, self.l) };
+        }
+
+        match RID_DEVICE_INFO_TYPE(data.header.dwType) {
+          UI::Input::RIM_TYPEMOUSE => {
+            let mouse_data = unsafe { data.data.mouse };
+            let button_flags = unsafe { mouse_data.Anonymous.Anonymous.usButtonFlags };
+
+            if is_flag_set(mouse_data.usFlags.0, UI::Input::MOUSE_MOVE_RELATIVE.0) {
+              let x = mouse_data.lLastX as f32;
+              let y = mouse_data.lLastY as f32;
+
+              if mouse_data.lLastX != 0 || mouse_data.lLastY != 0 {
+                internal.send_message_to_main(Message::RawInput(
+                  RawInputMessage::MouseMove {
+                    delta_x: x,
+                    delta_y: y,
+                  },
+                ));
+              }
+            }
+
+            for (id, button_state) in mouse_button_states(button_flags).iter().enumerate()
+            {
+              if let Some(button_state) = *button_state {
+                let button = MouseButton::from_state(id);
+                internal.send_message_to_main(Message::RawInput(
+                  RawInputMessage::MouseButton {
+                    button,
+                    state: button_state,
+                  },
+                ))
+              }
+            }
+          }
+          UI::Input::RIM_TYPEKEYBOARD => {
+            let keyboard_data = unsafe { data.data.keyboard };
+
+            let Some(key) = Key::from_raw(keyboard_data) else {
+              return unsafe { DefWindowProcW(hwnd, self.id, self.w, self.l) };
+            };
+
+            let pressed = matches!(
+              keyboard_data.Message,
+              WindowsAndMessaging::WM_KEYDOWN | WindowsAndMessaging::WM_SYSKEYDOWN
+            );
+            let released = matches!(
+              keyboard_data.Message,
+              WindowsAndMessaging::WM_KEYUP | WindowsAndMessaging::WM_SYSKEYUP
+            );
+
+            if let Some(key_state) = RawKeyState::from_bools(pressed, released) {
+              internal.send_message_to_main(Message::RawInput(
+                RawInputMessage::Keyboard {
+                  key,
+                  state: key_state,
+                },
+              ));
+            }
+          }
+          _ => (),
+        };
+
+        LRESULT(0)
+      }
+      (Some(internal), WindowsAndMessaging::WM_CHAR) => {
+        let text = char::from_u32(self.w.0 as u32)
+          .unwrap_or_default()
+          .to_string();
+        internal.send_message_to_main(Message::Text(text));
+
+        unsafe { DefWindowProcW(hwnd, self.id, self.w, self.l) }
+      }
+      (
+        Some(internal),
+        WindowsAndMessaging::WM_KEYDOWN
+        | WindowsAndMessaging::WM_SYSKEYDOWN
+        | WindowsAndMessaging::WM_KEYUP
+        | WindowsAndMessaging::WM_SYSKEYUP,
+      ) => {
+        let (changed, shift, ctrl, alt, win) =
+          internal.data.lock().unwrap().input.update_modifiers_state();
+        if changed {
+          internal.send_message_to_main(Message::ModifiersChanged {
+            shift,
+            ctrl,
+            alt,
+            win,
+          });
+        }
+        let message = Message::new_keyboard_message(self.l);
+        if let Message::Key { key, state, .. } = &message {
+          internal
+            .data
+            .lock()
+            .unwrap()
+            .input
+            .update_key_state(*key, *state);
+        }
+        internal.send_message_to_main(message);
+
+        // messages.push();
+        unsafe { DefWindowProcW(hwnd, self.id, self.w, self.l) }
+      }
+      (Some(internal), WindowsAndMessaging::WM_MOUSEMOVE) => {
+        let x = signed_lo_word(self.l.0 as i32) as i32;
+        let y = signed_hi_word(self.l.0 as i32) as i32;
+        let position = PhysicalPosition::new(x, y);
+
+        let kind = get_cursor_move_kind(
+          hwnd,
+          internal.data.lock().unwrap().cursor.inside_window,
+          x,
+          y,
+        );
+
+        let send_message = {
+          match kind {
+            CursorMoveKind::Entered => {
+              internal.data.lock().unwrap().cursor.inside_window = true;
+              if let Err(e) = internal.refresh_os_cursor() {
+                tracing::error!("{e}");
+              };
+
+              unsafe {
+                TrackMouseEvent(&mut TRACKMOUSEEVENT {
+                  cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
+                  dwFlags: KeyboardAndMouse::TME_LEAVE,
+                  hwndTrack: hwnd,
+                  dwHoverTime: Controls::HOVER_DEFAULT,
+                })
+              }
+              .unwrap();
+
+              true
+            }
+            CursorMoveKind::Left => {
+              internal.data.lock().unwrap().cursor.inside_window = false;
+              if let Err(e) = internal.refresh_os_cursor() {
+                tracing::error!("{e}");
+              };
+
+              true
+            }
+            CursorMoveKind::Inside => {
+              internal.data.lock().unwrap().cursor.last_position != position
+            }
+          }
+        };
+
+        if send_message {
+          internal.send_message_to_main(Message::CursorMove { position, kind });
+          internal.data.lock().unwrap().cursor.last_position = position;
+          if let Err(e) = internal.refresh_os_cursor() {
+            tracing::error!("{e}");
+          };
+        }
+
+        unsafe { DefWindowProcW(hwnd, self.id, self.w, self.l) }
+      }
+      (Some(internal), Controls::WM_MOUSELEAVE) => {
+        internal.data.lock().unwrap().cursor.inside_window = false;
+        if let Err(e) = internal.refresh_os_cursor() {
+          tracing::error!("{e}");
+        };
+        let position = internal.data.lock().unwrap().cursor.last_position;
+        internal.send_message_to_main(Message::CursorMove {
+          position,
+          kind: CursorMoveKind::Left,
+        });
+
+        unsafe { DefWindowProcW(hwnd, self.id, self.w, self.l) }
+      }
+      (Some(internal), WindowsAndMessaging::WM_MOUSEWHEEL) => {
+        let delta = signed_hi_word(self.w.0 as i32) as f32
+          / WindowsAndMessaging::WHEEL_DELTA as f32;
+        internal.send_message_to_main(Message::MouseWheel {
+          delta_x: 0.0,
+          delta_y: delta,
+        });
+
+        unsafe { DefWindowProcW(hwnd, self.id, self.w, self.l) }
+      }
+      (Some(internal), WindowsAndMessaging::WM_MOUSEHWHEEL) => {
+        let delta = signed_hi_word(self.w.0 as i32) as f32
+          / WindowsAndMessaging::WHEEL_DELTA as f32;
+        internal.send_message_to_main(Message::MouseWheel {
+          delta_x: delta,
+          delta_y: 0.0,
+        });
+
+        unsafe { DefWindowProcW(hwnd, self.id, self.w, self.l) }
+      }
+      (Some(internal), ..)
+        if (WindowsAndMessaging::WM_MOUSEFIRST..=WindowsAndMessaging::WM_MOUSELAST)
+          .contains(&self.id) =>
+      {
+        // mouse move / wheels will match earlier
+        let message = Message::new_mouse_button_message(self.id, self.w, self.l);
+        if let Message::MouseButton { button, state, .. } = &message {
+          internal
+            .data
+            .lock()
+            .unwrap()
+            .input
+            .update_mouse_button_state(*button, *state);
+        }
+        internal.send_message_to_main(message);
+
+        unsafe { DefWindowProcW(hwnd, self.id, self.w, self.l) }
+      }
+      _ => unsafe { DefWindowProcW(hwnd, self.id, self.w, self.l) },
+    }
+  }
+
+  fn on_nccreate(&self, hwnd: HWND) -> LRESULT {
+    if let Err(e) = unsafe { EnableNonClientDpiScaling(hwnd) } {
+      tracing::error!("{e}");
+    }
+
+    register_all_mice_and_keyboards_for_raw_input(hwnd);
+
+    unsafe { DefWindowProcW(hwnd, self.id, self.w, self.l) }
+  }
+
+  fn on_create(&self, hwnd: HWND) -> LRESULT {
+    let create_struct = unsafe { (self.l.0 as *mut CREATESTRUCTW).as_mut().unwrap() };
+    let create_info = unsafe {
+      (create_struct.lpCreateParams as *mut CreateInfo)
+        .as_mut()
+        .unwrap()
+    };
+
+    let scale_factor = dpi_to_scale_factor(hwnd_dpi(hwnd));
+    let size = create_info.size;
+    let position = create_info.position.unwrap_or(
+      PhysicalPosition::new(
+        WindowsAndMessaging::CW_USEDEFAULT,
+        WindowsAndMessaging::CW_USEDEFAULT,
+      )
+      .into(),
+    );
+
+    // create state
+    let input = Input::new();
+    let state = Arc::new(Internal {
+      hinstance: create_struct.hInstance.0 as _,
+      hwnd: hwnd.0 as _,
+      class_atom: create_info.class_atom,
+      message: create_info.message.clone(),
+      sync: create_info.sync.clone(),
+      thread: Mutex::new(None),
+      data: Mutex::new(Data {
+        title: create_info.title.clone(),
+        subtitle: Default::default(),
+        theme: Default::default(),
+        style: create_info.style.clone(),
+        scale_factor,
+        last_windowed_position: position,
+        last_windowed_size: size,
+        cursor: Cursor {
+          mode: create_info.settings.cursor_mode,
+          visibility: Visibility::Shown,
+          inside_window: false,
+          last_position: PhysicalPosition::default(),
+          selected_icon: CursorIcon::Default,
+        },
+        flow: create_info.settings.flow,
+        close_on_x: create_info.settings.close_on_x,
+        stage: Stage::Setup,
+        input,
+        requested_redraw: false,
+      }),
+    });
+
+    // create data ptr
+    let user_data = UserData {
+      internal: Arc::downgrade(&state),
+    };
+    let user_data_ptr = Box::into_raw(Box::new(user_data));
+    unsafe {
+      SetWindowLongPtrW(hwnd, WindowsAndMessaging::GWLP_USERDATA, user_data_ptr as isize)
+    };
+
+    tracing::trace!("[`{}`]: finalizing window settings", create_info.title);
+
+    let window = crate::window::Window(state.clone());
+    window.force_set_theme(create_info.settings.theme);
+
+    if let Some(position) = create_info.position {
+      Command::SetPosition(position).send(hwnd);
+    }
+    Command::SetSize(size).send(hwnd);
+    Command::SetDecorations(create_info.settings.decorations).send(hwnd);
+    Command::SetVisibility(create_info.settings.visibility).send(hwnd);
+    Command::SetFullscreen(create_info.settings.fullscreen).send(hwnd);
+
+    tracing::trace!("[`{}`]: window is ready", create_info.title);
+    window.0.data.lock().unwrap().stage = Stage::Ready;
+    *window.0.sync.skip_wait.lock().unwrap() = false;
+
+    create_info.window = Some(window);
+
+    create_info
+      .message
+      .lock()
+      .unwrap()
+      .replace(Message::Created {
+        hwnd: hwnd.0 as _,
+        hinstance: create_struct.hInstance.0 as _,
+      });
+    create_info.sync.signal_new_message();
+
+    unsafe { DefWindowProcW(hwnd, self.id, self.w, self.l) }
   }
 }

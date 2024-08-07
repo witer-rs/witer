@@ -155,6 +155,7 @@ impl App {
           &wgpu::DeviceDescriptor {
             required_features: wgpu::Features::empty(),
             required_limits: wgpu::Limits::default(),
+            memory_hints: wgpu::MemoryHints::Performance,
             label: None,
           },
           None,
@@ -383,7 +384,8 @@ impl App {
             mask: !0,                         // 3.
             alpha_to_coverage_enabled: false, // 4.
           },
-          multiview: None, // 5.
+          multiview: None,
+          cache: None, // 5.
         });
 
       Self {
