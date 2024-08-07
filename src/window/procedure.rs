@@ -17,11 +17,11 @@ use super::{
 use crate::window::data::Internal;
 
 pub struct CreateInfo {
+  pub class_name: String,
   pub title: String,
   pub size: Size,
   pub position: Option<Position>,
   pub settings: WindowSettings,
-  pub class_atom: u16,
   pub window: Option<Window>,
   pub message: Arc<Mutex<Option<Message>>>,
   pub sync: SyncData,

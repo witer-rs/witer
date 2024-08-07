@@ -85,6 +85,7 @@ impl WindowSettings {
 }
 
 pub struct WindowBuilder {
+  class_name: String,
   title: String,
   size: Size,
   position: Option<Position>,
@@ -94,7 +95,8 @@ pub struct WindowBuilder {
 impl Default for WindowBuilder {
   fn default() -> Self {
     Self {
-      title: "Window".into(),
+      class_name: "Window Class".to_owned(),
+      title: "Window".to_owned(),
       size: LogicalSize::new(800.0, 500.0).into(),
       position: None,
       settings: WindowSettings::default(),
@@ -114,6 +116,11 @@ impl From<WindowSettings> for WindowBuilder {
 impl WindowBuilder {
   pub fn new() -> Self {
     Self::default()
+  }
+
+  pub fn with_class_name(mut self, class_name: impl Into<String>) -> Self {
+    self.class_name = class_name.into();
+    self
   }
 
   pub fn with_title(mut self, title: impl Into<String>) -> Self {
@@ -174,6 +181,6 @@ impl WindowBuilder {
   }
 
   pub fn build(self) -> Result<Window, WindowError> {
-    Window::new(self.title, self.size, self.position, self.settings)
+    Window::new(self.class_name, self.title, self.size, self.position, self.settings)
   }
 }

@@ -797,7 +797,7 @@ impl RawMessage {
     let state = Arc::new(Internal {
       hinstance: create_struct.hInstance.0 as _,
       hwnd: hwnd.0 as _,
-      class_atom: create_info.class_atom,
+      class_name: create_info.class_name.clone().into(),
       message: create_info.message.clone(),
       sync: create_info.sync.clone(),
       thread: Mutex::new(None),

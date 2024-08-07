@@ -124,6 +124,7 @@ impl Window {
   }
 
   pub(crate) fn new(
+    class_name: impl Into<String>,
     title: impl Into<String>,
     size: impl Into<Size>,
     position: impl Into<Option<Position>>,
@@ -142,11 +143,11 @@ impl Window {
     };
 
     let create_info = CreateInfo {
+      class_name: class_name.into(),
       title: title.clone(),
       size,
       position,
       settings: settings.clone(),
-      class_atom: 0,
       window: None,
       message: Arc::new(Mutex::new(None)),
       sync: sync.clone(),
@@ -210,7 +211,7 @@ impl Window {
     let hinstance: HINSTANCE = unsafe { GetModuleHandleW(None)? }.into();
     debug_assert!(!hinstance.is_invalid());
     let title = HSTRING::from(create_info.title.clone());
-    let window_class = title.clone();
+    let class_name = HSTRING::from(create_info.class_name.clone());
 
     let wc = WNDCLASSEXW {
       cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
@@ -222,15 +223,15 @@ impl Window {
       lpfnWndProc: Some(procedure::wnd_proc),
       hInstance: hinstance,
       hCursor: unsafe { LoadCursorW(None, WindowsAndMessaging::IDC_ARROW)? },
-      lpszClassName: PCWSTR(window_class.as_ptr()),
+      lpszClassName: PCWSTR(class_name.as_ptr()),
       ..Default::default()
     };
 
     tracing::trace!("[`{}`]: registering window class", &create_info.title);
 
     {
-      create_info.class_atom = unsafe { RegisterClassExW(&wc) };
-      debug_assert_ne!(create_info.class_atom, 0);
+      let atom = unsafe { RegisterClassExW(&wc) };
+      debug_assert_ne!(atom, 0);
     }
 
     tracing::trace!("[`{}`]: creating window handle", &create_info.title);
@@ -240,14 +241,14 @@ impl Window {
     }
     .is_err()
     {
-      unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE) }
-        .unwrap();
+      let _ =
+        unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE) };
     }
 
     let hwnd = unsafe {
       CreateWindowExW(
         get_window_ex_style(&create_info.style),
-        &window_class,
+        &class_name,
         &title,
         get_window_style(&create_info.style) & !WindowsAndMessaging::WS_VISIBLE,
         WindowsAndMessaging::CW_USEDEFAULT,

@@ -5,7 +5,7 @@ use std::{
 };
 
 use windows::{
-  core::PCWSTR,
+  core::{HSTRING, PCWSTR},
   Win32::{
     Foundation::{HINSTANCE, HWND, POINT, RECT},
     Graphics::Gdi::ClientToScreen,
@@ -59,7 +59,7 @@ impl SyncData {
 pub struct Internal {
   pub hinstance: usize,
   pub hwnd: usize,
-  pub class_atom: u16,
+  pub class_name: HSTRING,
   pub message: Arc<Mutex<Option<Message>>>,
   pub sync: SyncData,
   pub thread: Mutex<Option<JoinHandle<Result<(), WindowError>>>>,
@@ -86,10 +86,7 @@ impl Drop for Internal {
     // let hinstance =
     //   HINSTANCE(unsafe { GetWindowLongPtrW(HWND(self.hwnd as _), GWLP_HINSTANCE) } as _);
     unsafe {
-      UnregisterClassW(
-        PCWSTR(self.class_atom as *const u16),
-        HINSTANCE(self.hinstance as _),
-      )
+      UnregisterClassW(PCWSTR(self.class_name.as_ptr()), HINSTANCE(self.hinstance as _))
     }
     .unwrap();
 
