@@ -32,15 +32,5 @@ fn main() {
     if window.has_focus() {
       tracing::debug!("{message:?}")
     }
-
-    if let Message::Loop(LoopMessage::Exit) = message {
-      tracing::info!("Exit!");
-    }
   }
-
-  tracing::info!("window about to be dropped!");
-
-  drop(window);
-
-  tracing::info!("window dropped!");
 }
