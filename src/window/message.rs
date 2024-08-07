@@ -760,7 +760,7 @@ impl RawMessage {
 
         unsafe { DefWindowProcW(hwnd, self.id, self.w, self.l) }
       }
-      _ => unsafe { DefWindowProcW(hwnd, self.id, self.w, self.l) },
+      (..) => unsafe { DefWindowProcW(hwnd, self.id, self.w, self.l) },
     }
   }
 
