@@ -1,4 +1,8 @@
-# `witer` [![Crates.io Version](https://img.shields.io/crates/v/witer)](https://crates.io/crates/witer) [![Discord](https://img.shields.io/discord/1215348294105169940?logo=discord&label=discord&color=5865F2)](https://discord.gg/KEtfte9xWZ)
+# <div align="center">`witer`</div> 
+
+[<div align="center">![Crates.io Version](https://img.shields.io/crates/v/witer)](https://crates.io/crates/witer)
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/R6R8PGIU6)
+[![Discord](https://img.shields.io/discord/1215348294105169940?logo=discord&label=discord&color=5865F2)</div>](https://discord.gg/KEtfte9xWZ)
 
 ## An iterator-based Win32 window library built in Rust
 
@@ -30,10 +34,8 @@ a window quickly, easily, and idiomatically. I aim to have feature-parity with `
 Cross-platform support is highly unlikely, but pull requests are welcomed if anyone else wants to tackle it.
 `egui` support is experimental and a point of active development. OpenGL context creation is similarly under active development.
 
-⚠️ Warning ⚠️ This project is still hilariously incomplete and may contain major bugs. I am only one student, after all, so please
-report any and all issues or feature requests!
-
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/R6R8PGIU6)
+> [!WARNING]
+> This project is still hilariously incomplete and may contain major bugs. I am only one student, after all, so please report any and all issues or feature requests!
 
 ## Documentation
 
