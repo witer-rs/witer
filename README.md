@@ -4,10 +4,10 @@
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/R6R8PGIU6)
 [![Discord](https://img.shields.io/discord/1215348294105169940?logo=discord&label=discord&color=5865F2)</div>](https://discord.gg/KEtfte9xWZ)
 
-## An iterator-based Win32 window library built in Rust
-
 > [!WARNING]
 > I am currently working on a cross-platform version of this library: [`ventana`](https://github.com/GTLugo/ventana)
+
+## An iterator-based Win32 window library built in Rust
 
 ```rust
 use witer::prelude::*;
