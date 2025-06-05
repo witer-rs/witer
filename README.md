@@ -6,6 +6,9 @@
 
 ## An iterator-based Win32 window library built in Rust
 
+> [!WARNING]
+> I am currently working on a cross-platform version of this library: [`ventana`](https://github.com/GTLugo/ventana)
+
 ```rust
 use witer::prelude::*;
 
